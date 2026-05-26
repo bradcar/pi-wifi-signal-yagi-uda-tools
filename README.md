@@ -104,7 +104,7 @@ can also run in pycharm
    ls -l /usr/sbin/iwlist
 
 
-### PyCharm Remote Deployment Reset Guide
+### PyCharm Remote Deployment Reset (running out of /tmp issue)
 
 You may run into issues with PyCharm executing your code in a randomized `/tmp/` directory instead of running natively out of your home directory on the Pi.
 This can occur after renaming the repository.
