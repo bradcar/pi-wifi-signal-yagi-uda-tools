@@ -17,7 +17,7 @@ right 32px for circle graphic
  - 32x32 box with circle centered with a radius of 15px
 
  Pi Zero 2 W must be modified to attach an external antenna like a Yagi Uda.
- directions: hhttps://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
+ directions: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
 
  Note: I've heard Uda was the inventor and Yagi was the promoter.
 
@@ -41,7 +41,6 @@ from pi_wifi_rssi_quality_txrate import get_ssid, query_wifi, print_with_string
 
 # TODO REMOVE WHEN YAGI-UDA ADDED: Import the mock test environment
 from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
-
 
 # Radar lines Boundary
 RSSI_STRONG_BOUND = -45
@@ -90,7 +89,12 @@ def init_ssd_display(i2c):
 
     image = Image.new("1", (SSD_WIDTH, SSD_HEIGHT))
     draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default()
+    # Use monospace font instead of the variable-width default
+    try:
+        font = ImageFont.truetype("DejaVuSansMono.ttf", 10)
+    except IOError:
+        font = ImageFont.load_default()  # Fallback if font isn't installed
+    #font = ImageFont.load_default()
     return display, draw, font, image
 
 
@@ -133,7 +137,7 @@ def get_compass_8pt_string(heading: float):
     elif 112.5 <= heading < 157.5:
         return "SE"
     elif 157.5 <= heading < 202.5:
-        return "W"
+        return "S"
     elif 202.5 <= heading < 247.5:
         return "SW"
     elif 247.5 <= heading < 292.5:
@@ -149,12 +153,11 @@ def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, conne
     if not connected or rssi is None or tx_rate is None:
         line1 = "================"
         line2 = "wifi  disconnect"
-        line3 = "wait for connect"
         if heading is not None:
             direction_str = get_compass_8pt_string(heading)
-            line4 = f"compass {heading:.0f}° {direction_str}"
+            line3 = f"compass {heading:.0f}° {direction_str}"
         else:
-            line4 = "================"
+            line3 = "================"
     else:
         line1 = f"ssid  = {ssid if ssid else 'Unknown'}"
         line2 = f"{rssi} dbm  {tx_rate:.0f} mbps"
@@ -162,7 +165,7 @@ def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, conne
         download_str = ",  dload ?" if rssi > -75 else ""
         if heading is not None:
             direction_str = get_compass_8pt_string(heading)
-            line3 = f"{heading:.0f}° {direction_str}{download_str}"
+            line3 = f"{heading:>3.0f}° {direction_str:<2}{download_str}"
         else:
             line3 = f"???° {download_str}"
 
@@ -171,7 +174,7 @@ def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, conne
     draw.text((left_indent, 20), line3, font=font, fill=1)
 
 
-def display_radar_ssd(draw, current_sweep_angle: float):
+def display_radar_ssd(draw, current_sweep_angle: float, heading: float = 0.0):
     """
     Draw a white box with a black radar circle in it.
     Add white directional orientation lines for North, East, South, and West.
@@ -182,23 +185,49 @@ def display_radar_ssd(draw, current_sweep_angle: float):
     center_y = 15
     max_radius = 15
 
+    # Safe fallback if heading is not active yet
+    if heading is None:
+        heading = 0.0
+
     # Radar graphics (white outside, black circle with black center dots
     draw.rectangle((96, 0, 127, 31), fill=1)
-    draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius), outline=0, fill=0)
+    draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius),
+                 outline=0, fill=0)
 
     # Draw the four cardinal compass North in white, other 3 in dashed lines
-    draw.line((center_x, center_y - max_radius, center_x, center_y), fill=1)  # North
+    # Dynamic crosshairs rotate based on heading relative to fixed screen space
+    north_rad = math.radians(0.0 - heading - 90.0)
+    south_rad = math.radians(180.0 - heading - 90.0)
+    west_rad = math.radians(270.0 - heading - 90.0)
+    east_rad = math.radians(90.0 - heading - 90.0)
+
+    # Dynamic Solid North Line
+    nx = int(center_x + max_radius * math.cos(north_rad))
+    ny = int(center_y + max_radius * math.sin(north_rad))
+    draw.line((center_x, center_y, nx, ny), fill=1)  # North
     # draw.line((center_x, center_y + max_radius, center_x, center_y), fill=1)  # South
     # draw.line((center_x - max_radius, center_y, center_x, center_y), fill=1)  # West
     # draw.line((center_x + max_radius, center_y, center_x, center_y), fill=1)  # East
+    # --
     # for y in range(center_y - max_radius, center_y, 2):
     #    draw.point((center_x, y), fill=1)  # North (from center going up)
-    for y in range(center_y, center_y + max_radius + 1, 2):
-        draw.point((center_x, y), fill=1) # South (from center going down)
-    for x in range(center_x - max_radius, center_x, 2):
-        draw.point((x, center_y), fill=1) # West (from center going left)
-    for x in range(center_x, center_x + max_radius + 1, 2):
-        draw.point((x, center_y), fill=1) # East (from center going right)
+
+    # Rotated Dashed Crosshairs
+    for r in range(0, max_radius + 1, 2):
+        # South dot array
+        sx = int(center_x + r * math.cos(south_rad))
+        sy = int(center_y + r * math.sin(south_rad))
+        draw.point((sx, sy), fill=1)  # South (from center going down)
+
+        # West dot array
+        wx = int(center_x + r * math.cos(west_rad))
+        wy = int(center_y + r * math.sin(west_rad))
+        draw.point((wx, wy), fill=1)  # West (from center going left)
+
+        # East dot array
+        ex = int(center_x + r * math.cos(east_rad))
+        ey = int(center_y + r * math.sin(east_rad))
+        draw.point((ex, ey), fill=1)  # East (from center going right)
 
     # Array for "antenna strength" polygon vertex points
     polygon_points = []
@@ -218,8 +247,8 @@ def display_radar_ssd(draw, current_sweep_angle: float):
         proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
         line_length = max_radius * proportion
 
-        # Convert angle to standard coordinate math (0 degrees = Straight Up)
-        angle_rad = math.radians(angle - 90.0)
+        # Shift geometry relative to current compass heading so layout updates dynamically
+        angle_rad = math.radians(angle - heading - 90.0)
 
         # Compute polygon vertex coordinates
         target_x = int(center_x + line_length * math.cos(angle_rad))
@@ -259,6 +288,9 @@ def main():
     # Initialize radar sweep tracker angle to start straight up (0 degrees)
     sweep_angle = 0.0
 
+    # TODO REMOVE WHEN REAL IMU ROTATING: Mock tracking variable to force screen rotation animation
+    mock_heading_tracker = 0.0
+
     try:
         start_time = time.time()
         while True:
@@ -276,6 +308,10 @@ def main():
                 ssid, rssi, quality, tx_rate = None, None, None, None
 
             heading = get_compass_heading(bno_sensor)
+
+            # TODO REMOVE WHEN REAL IMU ROTATING: Fallback to animated loop tracker if physical IMU returns None
+            if heading is None:
+                heading = mock_heading_tracker
 
             # TODO: change to real data. now Pulls directly from your cardiod_test_data_generator.py MOCK_SIGNAL_ARRAY configuration
             # Get signal strength in each direction for radar graphic
@@ -312,13 +348,16 @@ def main():
                 display_text_ssd(draw, font, rssi, ssid, tx_rate, heading, connected=is_connected)
 
                 # Right side track strength/compass for radar graphic
-                display_radar_ssd(draw, sweep_angle)
+                display_radar_ssd(draw, sweep_angle, heading=heading)
 
                 display.image(image)
                 display.show()
 
             # Increment the sweep angle by exactly 5 degrees for the next pass
             sweep_angle = (sweep_angle + 5) % 360
+
+            # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
+            mock_heading_tracker = (mock_heading_tracker + 2.0) % 360
 
             # Dynamic sleep, sleep longer when wifi is disconnected
             time.sleep(0.1 if is_connected else 1.0)
