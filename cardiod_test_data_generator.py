@@ -16,7 +16,7 @@ def setup_mock_environment():
     - Drops to a hard dead-zone (-99 dBm) in only one direction (due North / 0 degrees).
     """
     target_heading = 180  # Access point direction (South)
-    peak_strength = -20.0  # Maximum signal strength
+    peak_strength = -50.0  # Maximum signal strength
     floor_strength = -80.0  # Standard background fall-off limit
     dead_zone_heading = 0  # Only direction with absolute silence (-99 dBm)
 

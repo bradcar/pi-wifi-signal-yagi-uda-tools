@@ -42,6 +42,11 @@ from pi_wifi_rssi_quality_txrate import get_ssid, query_wifi, print_with_string
 # TODO REMOVE WHEN YAGI-UDA ADDED: Import the mock test environment
 from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
 
+
+# Radar lines Boundary
+RSSI_STRONG_BOUND = -45
+RSSI_WEAK_BOUND = -80
+
 SSD_WIDTH = 128
 # TODO uncomment when get ssd 1305 bonnet.
 # SSD_HEIGHT = 32  # TODO uncomment this when get ssd 1305 bonnet
@@ -181,13 +186,13 @@ def display_radar_ssd(draw, current_sweep_angle: float):
     draw.rectangle((96, 0, 127, 31), fill=1)
     draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius), outline=0, fill=0)
 
-    # Draw the four cardinal compass indicators in white (or dashed lines below)
-    # draw.line((center_x, center_y - max_radius, center_x, center_y), fill=1)  # North
+    # Draw the four cardinal compass North in white, other 3 in dashed lines
+    draw.line((center_x, center_y - max_radius, center_x, center_y), fill=1)  # North
     # draw.line((center_x, center_y + max_radius, center_x, center_y), fill=1)  # South
     # draw.line((center_x - max_radius, center_y, center_x, center_y), fill=1)  # West
     # draw.line((center_x + max_radius, center_y, center_x, center_y), fill=1)  # East
-    for y in range(center_y - max_radius, center_y, 2):
-        draw.point((center_x, y), fill=1)  # North (from center going up)
+    # for y in range(center_y - max_radius, center_y, 2):
+    #    draw.point((center_x, y), fill=1)  # North (from center going up)
     for y in range(center_y, center_y + max_radius + 1, 2):
         draw.point((center_x, y), fill=1) # South (from center going down)
     for x in range(center_x - max_radius, center_x, 2):
@@ -203,14 +208,14 @@ def display_radar_ssd(draw, current_sweep_angle: float):
         # Look up what the mock data vector has saved for this exact angle entry
         saved_rssi = MOCK_SIGNAL_ARRAY[angle]
 
-        # Clamp rssi values (-20 to -80 dBm)
-        if saved_rssi > -20.0:
-            saved_rssi = -20.0
-        elif saved_rssi < -80.0:
-            saved_rssi = -80.0
+        # Clamp rssi values (es: -45 to -80 dBm)
+        if saved_rssi > RSSI_STRONG_BOUND:
+            saved_rssi = RSSI_STRONG_BOUND
+        elif saved_rssi < RSSI_WEAK_BOUND:
+            saved_rssi = RSSI_WEAK_BOUND
 
         # Calculate proportional line length based on rssi
-        proportion = (saved_rssi - (-80.0)) / (-20.0 - (-80.0))
+        proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
         line_length = max_radius * proportion
 
         # Convert angle to standard coordinate math (0 degrees = Straight Up)
