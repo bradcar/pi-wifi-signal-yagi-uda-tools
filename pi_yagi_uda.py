@@ -16,6 +16,11 @@ left 96px for text
 right 32px for circle graphic
  - 32x32 box with circle centered with a radius of 15px
 
+ Pi Zero 2 W must be modified to attach an external antenna like a Yagi Uda.
+ directions: hhttps://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
+
+ Note: I've heard Uda was the inventor and Yagi was the promoter.
+
 """
 import math
 import time

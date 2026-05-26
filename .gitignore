@@ -1,2 +1,14 @@
+# PyCharm and IDE files
 .idea/
-backup
+*.iws
+*.iml
+
+# Python Virtual Environment (Local Only)
+.venv/
+
+# Python build and cache files
+__pycache__/
+*.pyc
+
+# my backup directory
+backup/
