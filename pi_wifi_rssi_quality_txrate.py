@@ -34,6 +34,34 @@ def get_ssid():
     return "wlan0 essid unknown"
 
 
+def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
+    """
+    targeted probe for a specific SSID on an unjoined interface,
+    returning its RSSI value if found in the local radio environment.
+    """
+    try:
+        # Trigger an active network scan filtered for the target SSID
+        cmd = f"sudo iwlist {interface} scan essid '{target_ssid}'"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=2.0)
+
+        if result.returncode != 0:
+            return None
+
+        # Parse the output blocks for the specific signal levels found
+        output = result.stdout
+        cells = output.split("Cell ")
+
+        for cell in cells:
+            if f'ESSID:"{target_ssid}"' in cell:
+                # Use a regular expression to extract the signal level integer
+                match = re.search(r"Signal level=(-\d+)\s+dBm", cell)
+                if match:
+                    return int(match.group(1))
+    except Exception:
+        return None
+    return None
+
+
 def query_wifi():
     """
     Queries RSSI, Link Quality, and current Tx Bit Rate dynamically.

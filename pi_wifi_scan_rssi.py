@@ -33,7 +33,7 @@ class PiNetworkMock:
         self._band = band
 
     def ssid(self):
-        return self._ssid if self._ssid != "<hidden>" else None
+        return self._ssid if self._ssid != " hidden." else None
 
     def bssid(self):
         return self._bssid
@@ -145,7 +145,7 @@ def scan_and_print(interface):
 
         ssid_match = re.search(r'ESSID:"(.*)"', cell)
         ssid = ssid_match.group(1) if ssid_match else ""
-        ssid = ssid if ssid else "<hidden>"
+        ssid = ssid if ssid else ".hidden."
 
         rssi_match = re.search(r'Signal level[=:](-?\d+)', cell)
         rssi = int(rssi_match.group(1)) if rssi_match else -100
@@ -171,7 +171,7 @@ def scan_and_print(interface):
     current_row += 1
 
     for net in sorted_networks:
-        ssid = net.ssid() or "<hidden>"
+        ssid = net.ssid() or " hidden."
         bssid = net.bssid() or "Unknown"
         rssi = net.rssi_value()
 
@@ -199,7 +199,7 @@ def main():
                 last_update = time.time()
                 print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, Update every {duration:.2f} secs")
                 print(
-                    f"  Blocked <1-bar and only shows 2.4GHz on Zero 2 W" if BLOCK_LESS_THAN_ONE_BAR else "  Only show 2.4GHz on Zero 2 W")
+                    f"  Blocked <1-bar and Pi Zero only sees 2.4GHz" if BLOCK_LESS_THAN_ONE_BAR else "  Pi Zero only sees 2.4GHz")
                 print()
                 # Pi Zero 2 W doesn't need retry delay like Mac does (MacOS slow)
             else:

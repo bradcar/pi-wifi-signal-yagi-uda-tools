@@ -1,7 +1,16 @@
 # pi_yagi_uda.py
 """
 On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
-and Tx Bit Rate of the currently connected network on interface wlan0.
+and Tx Bit Rate of the currently targeted network on interface wlan0.
+pyro
+
+if the targeted network is connected it can download the data file.
+* this is shown in the OLED SSD display as:
+* "SSID = target-net"
+
+If the targeted network is not connected, it uses a lighter weight probe which scans all available networks looking for the targeted network.
+* this is shown in the OLED SSD display as:
+* "ssid   target-net"
 When connected to a Yagi-Uda Antenna and an IMU we can use this to locate the WiFi source.
 
 It prints the results to std out and an OLED display.
@@ -18,17 +27,20 @@ right 32px for circle graphic
 
  Pi Zero 2 W must be modified to attach an external antenna like a Yagi Uda.
  directions: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
+  Note: I've heard Uda was the inventor and Yagi was the promoter.
 
- Note: I've heard Uda was the inventor and Yagi was the promoter.
-
+ The Pi Zero 2 W is running Debian Trixie base. 64-bit
+  - with no desktop environment
+  - 555.1 MB download, Released: 2026-04-21
+  - uname -a
+Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
 """
 import math
 import time
 from datetime import datetime
 
-import adafruit_ssd1306
-# TODO uncomment when get ssd 1305 bonnet.
-# import adafruit_ssd1305
+# Testing display had to use: import adafruit_ssd1306
+import adafruit_ssd1305
 
 import board
 import busio
@@ -37,19 +49,22 @@ from adafruit_bno08x import BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR
 from adafruit_bno08x.i2c import BNO08X_I2C
 
 # Network signal tracking dependencies
-from pi_wifi_rssi_quality_txrate import get_ssid, query_wifi, print_with_string
+from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_with_string
 
 # TODO REMOVE WHEN YAGI-UDA ADDED: Import the mock test environment
 from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
+
+#TODO fix after testing
+#TARGET_SSID = "shell-fi"
+TARGET_SSID = "ABox-PDX"
 
 # Radar lines Boundary
 RSSI_STRONG_BOUND = -45
 RSSI_WEAK_BOUND = -80
 
 SSD_WIDTH = 128
-# TODO uncomment when get ssd 1305 bonnet.
-# SSD_HEIGHT = 32  # TODO uncomment this when get ssd 1305 bonnet
-SSD_HEIGHT = 64  # Set to 64 for SSD1309
+SSD_HEIGHT = 32  # TODO uncomment this when get ssd 1305 bonnet
+#  SSD_HEIGHT = 64  # Set to 64 for SSD1309
 TEXT_WIDTH_LIMIT = 96  # text on left 96px
 CIRCLE_AREA_START_X = TEXT_WIDTH_LIMIT  # Graphic starts at 96px
 
@@ -81,9 +96,8 @@ def scan_i2c_bus(i2c):
 
 
 def init_ssd_display(i2c):
-    # TODO uncomment this when get ssd 1305 bonnet.
-    # display = adafruit_ssd1305.SSD1305_I2C(SSD_WIDTH, SSD_HEIGHT, i2c)
-    display = adafruit_ssd1306.SSD1306_I2C(SSD_WIDTH, SSD_HEIGHT, i2c)
+    # display = adafruit_ssd1306.SSD1306_I2C(SSD_WIDTH, SSD_HEIGHT, i2c)
+    display = adafruit_ssd1305.SSD1305_I2C(SSD_WIDTH, SSD_HEIGHT, i2c)
     display.fill(0)
     display.show()
 
@@ -148,20 +162,30 @@ def get_compass_8pt_string(heading: float):
 
 
 def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, connected: bool = True):
-    left_indent = 0  # anything greater than 0 limits row length
+    left_indent = 0
 
-    if not connected or rssi is None or tx_rate is None:
-        line1 = "================"
-        line2 = "wifi  disconnect"
+    # Total Signal Blackout, target is out of range
+    if rssi is None:
+        line1 = f"target: {TARGET_SSID}"
+        line2 = "out of range... "
         if heading is not None:
             direction_str = get_compass_8pt_string(heading)
-            line3 = f"compass {heading:.0f}° {direction_str}"
+            line3 = f"{heading:>3.0f}° {direction_str:<2} scanning"
         else:
-            line3 = "================"
-    else:
-        line1 = f"ssid  = {ssid if ssid else 'Unknown'}"
-        line2 = f"{rssi} dbm  {tx_rate:.0f} mbps"
+            line3 = "Scanning airwaves"
 
+    # Signal lock (Either probing OR fully connected)
+    else:
+        if connected:
+            line1 = f"SSID = {ssid}"
+        else:
+            line1 = f"ssid   {ssid}"
+
+        # If connected, show mb/s, else print "probe"
+        rate_str = f"{tx_rate:.0f} mb/s" if connected and tx_rate is not None else "probe"
+        line2 = f"{rssi} dbm  {rate_str}"
+
+        # Notify if download/handshake is possible
         download_str = ",  dload ?" if rssi > -75 else ""
         if heading is not None:
             direction_str = get_compass_8pt_string(heading)
@@ -169,6 +193,7 @@ def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, conne
         else:
             line3 = f"???° {download_str}"
 
+    # Render to the OLED buffer canvas
     draw.text((left_indent, 0), line1, font=font, fill=1)
     draw.text((left_indent, 10), line2, font=font, fill=1)
     draw.text((left_indent, 20), line3, font=font, fill=1)
@@ -201,30 +226,27 @@ def display_radar_ssd(draw, current_sweep_angle: float, heading: float = 0.0):
     west_rad = math.radians(270.0 - heading - 90.0)
     east_rad = math.radians(90.0 - heading - 90.0)
 
-    # Dynamic Solid North Line
+    # Solid North Crosshair rotated with Antenna Angle
     nx = int(center_x + max_radius * math.cos(north_rad))
     ny = int(center_y + max_radius * math.sin(north_rad))
     draw.line((center_x, center_y, nx, ny), fill=1)  # North
-    # draw.line((center_x, center_y + max_radius, center_x, center_y), fill=1)  # South
-    # draw.line((center_x - max_radius, center_y, center_x, center_y), fill=1)  # West
-    # draw.line((center_x + max_radius, center_y, center_x, center_y), fill=1)  # East
-    # --
-    # for y in range(center_y - max_radius, center_y, 2):
-    #    draw.point((center_x, y), fill=1)  # North (from center going up)
 
-    # Rotated Dashed Crosshairs
+    # Dashed Crosshairs rotated with Antenna Angle
     for r in range(0, max_radius + 1, 2):
-        # South dot array
+        # South dashed line
+        # draw.line((center_x, center_y + max_radius, center_x, center_y), fill=1)  # South
         sx = int(center_x + r * math.cos(south_rad))
         sy = int(center_y + r * math.sin(south_rad))
         draw.point((sx, sy), fill=1)  # South (from center going down)
 
-        # West dot array
+        # West dashed line
+        # draw.line((center_x - max_radius, center_y, center_x, center_y), fill=1)  # West
         wx = int(center_x + r * math.cos(west_rad))
         wy = int(center_y + r * math.sin(west_rad))
         draw.point((wx, wy), fill=1)  # West (from center going left)
 
-        # East dot array
+        # East dashed line
+        # draw.line((center_x + max_radius, center_y, center_x, center_y), fill=1)  # East
         ex = int(center_x + r * math.cos(east_rad))
         ey = int(center_y + r * math.sin(east_rad))
         draw.point((ex, ey), fill=1)  # East (from center going right)
@@ -275,7 +297,8 @@ def display_radar_ssd(draw, current_sweep_angle: float, heading: float = 0.0):
 def main():
     print("Starting Pi Zero 2 W Signal & Antenna Tracking...\n")
 
-    i2c = busio.I2C(board.SCL, board.SDA)
+    # Set I2C speed to max frequency
+    i2c = busio.I2C(board.SCL, board.SDA, frequency=1000000)
     ssd_detected, bno_detected = scan_i2c_bus(i2c)
 
     bno_sensor = None
@@ -285,27 +308,50 @@ def main():
     if ssd_detected:
         display, draw, font, image = init_ssd_display(i2c)
 
-    # Initialize radar sweep tracker angle to start straight up (0 degrees)
+    # Initialize radar sweep tracker angle to up (0 degrees)
     sweep_angle = 0.0
 
     # TODO REMOVE WHEN REAL IMU ROTATING: Mock tracking variable to force screen rotation animation
     mock_heading_tracker = 0.0
 
+    # Setup tracking variables
+    last_wifi_query_time = 0.0
+    wifi_query_interval = 1.0  # Only hit the Linux network subsystem every 1 second
+
+    # Initialize metrics
+    ssid, rssi, quality, tx_rate = None, None, None, None
+    is_connected = False
+
     try:
         start_time = time.time()
         while True:
-            # Get data for text display box
-            try:
-                ssid = get_ssid()
-                rssi, quality, tx_rate = query_wifi()
+            current_loop_time = time.time()
 
-                if not ssid or rssi is None or quality is None or tx_rate is None:
+            # Throttle network subsystem checks to prevent loop stalling
+            if current_loop_time - last_wifi_query_time >= wifi_query_interval:
+                try:
+                    current_ssid = get_ssid()
+
+                    if current_ssid == TARGET_SSID:
+                        # Connected Mode - Extract full statistics
+                        rssi, quality, tx_rate = query_wifi()
+                        ssid = current_ssid
+                        is_connected = True
+                    else:
+                        # Lightweight Probe Mode - Scan for remote target
+                        is_connected = False
+                        tx_rate = None
+                        quality = None
+
+                        # Fallback to background radio with probe
+                        rssi = probe_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
+                        ssid = TARGET_SSID if rssi is not None else None
+
+                except Exception as e:
                     is_connected = False
-                else:
-                    is_connected = True
-            except Exception as e:
-                is_connected = False
-                ssid, rssi, quality, tx_rate = None, None, None, None
+                    ssid, rssi, quality, tx_rate = None, None, None, None
+
+                last_wifi_query_time = current_loop_time
 
             heading = get_compass_heading(bno_sensor)
 
@@ -325,14 +371,11 @@ def main():
             if is_connected:
                 print_with_string(quality, rssi, ssid, tx_rate)
             else:
-                print("====================================")
-                print("  STATUS: DISCONNECTED FROM WI-FI  ")
-                print("Scanning & waiting for reconnect...")
-                print("====================================")
+                print(f"**PROBING SSID: {TARGET_SSID} un-connected target")
 
             print(f"Sweep Vector Angle: {sweep_angle}° --> Mock RSSI: {mock_rssi} dBm")
             if heading is not None:
-                print(f"Compass Heading: {heading:.2f}° (Magnetic North = 0°)")
+                print(f"Compass Heading: {heading:.0f}° (Magnetic North = 0°)")
             else:
                 print("Compass Heading: n/a")
 
@@ -359,8 +402,13 @@ def main():
             # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
             mock_heading_tracker = (mock_heading_tracker + 2.0) % 360
 
-            # Dynamic sleep, sleep longer when wifi is disconnected
-            time.sleep(0.1 if is_connected else 1.0)
+            # Dynamic sleep, sleep longer when WiFi is completely out of range
+            if is_connected:
+                time.sleep(0.1)  # Connected and running at high speed (10Hz)
+            elif rssi is not None:
+                time.sleep(0.05)  # tight loop if disconnected but weak signal
+            else:
+                time.sleep(1.5)  # Out of rang, give Linux time to finish active scan.
 
     except KeyboardInterrupt:
         if ssd_detected:
@@ -368,7 +416,6 @@ def main():
             display.image(image)
             display.show()
         print("\nTracking Stopped. Exiting.")
-
 
 if __name__ == "__main__":
     main()
