@@ -38,7 +38,6 @@ Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03
 import math
 import time
 import subprocess
-import re
 from datetime import datetime
 
 # Testing display had to use: import adafruit_ssd1306

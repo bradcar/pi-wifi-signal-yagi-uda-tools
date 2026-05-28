@@ -1,6 +1,6 @@
 # pi-wifi-signal-yagi-uda-tools.py
 """
-Scans and only measures RSSI on available 2.4GHz WiFis (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
+Scans and only measures RSSI on available 2.4GHz WiFi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
 Scans repeatedly, sorted by strongest RSSI first.
 
 Quality or Tx bitrates on unconnected networks. For connected network use:pi_wifi_rssi_quality_txrate.py
@@ -10,12 +10,11 @@ NOTES:
 
 Usage:
   in terminal, python3 mac_wifi_scan_rssi.py
-  can also run in pycharm
+  can also run in PyCharm
 """
 import os
 import re
 import subprocess
-import sys
 import time
 from datetime import datetime
 
@@ -201,7 +200,7 @@ def main():
                 print(
                     f"  Blocked <1-bar and Pi Zero only sees 2.4GHz" if BLOCK_LESS_THAN_ONE_BAR else "  Pi Zero only sees 2.4GHz")
                 print()
-                # Pi Zero 2 W doesn't need retry delay like Mac does (MacOS slow)
+                # Pi Zero 2 W doesn't need retry delay like Mac does (macOS slow)
             else:
                 # If the hardware was busy, retry in 1 second
                 time.sleep(0.1)
