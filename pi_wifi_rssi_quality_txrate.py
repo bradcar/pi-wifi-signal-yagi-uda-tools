@@ -34,34 +34,6 @@ def get_ssid():
     return "wlan0 essid unknown"
 
 
-def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
-    """
-    targeted probe for a specific SSID on an unjoined interface,
-    returning its RSSI value if found in the local radio environment.
-    """
-    try:
-        # Trigger an active network scan filtered for the target SSID
-        cmd = f"sudo iwlist {interface} scan essid '{target_ssid}'"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=2.0)
-
-        if result.returncode != 0:
-            return None
-
-        # Parse the output blocks for the specific signal levels found
-        output = result.stdout
-        cells = output.split("Cell ")
-
-        for cell in cells:
-            if f'ESSID:"{target_ssid}"' in cell:
-                # Use a regular expression to extract the signal level integer
-                match = re.search(r"Signal level=(-\d+)\s+dBm", cell)
-                if match:
-                    return int(match.group(1))
-    except Exception:
-        return None
-    return None
-
-
 def query_wifi():
     """
     Queries RSSI, Link Quality, and current Tx Bit Rate dynamically.
@@ -104,12 +76,42 @@ def query_wifi():
     except Exception:
         pass
 
-    # If we parsed a valid RSSI but tx_rate parsing completely failed,
-    # handle it as a partial connection drop state
-    if rssi is None or quality is None or tx_rate is None:
-        return None, None, None
-
+    # REMOVED the strict all-or-nothing gate here so partial data (like just RSSI)
+    # can safely flow back to the main UI loop without being zeroed out.
     return rssi, quality, tx_rate
+
+
+def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
+    """
+    Lightweight probe extracted from your stable tools script.
+    Scans the airwaves and returns the raw integer RSSI value (dBm)
+    only if the target_ssid matches.
+    """
+    try:
+        # Execute the hardware scan exactly like your standalone tool
+        scan = subprocess.check_output(
+            ["sudo", "iwlist", interface, "scan"],
+            text=True,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        return None
+
+    # Split the raw string blocks by individual wireless access points
+    cells = re.split(r'Cell \d+ - Address: ', scan)
+
+    for cell in cells[1:]:
+        # 1. Parse out the network's name (ESSID)
+        ssid_match = re.search(r'ESSID:"(.*)"', cell)
+        ssid = ssid_match.group(1) if ssid_match else ""
+
+        # 2. If it matches your target, pull the RSSI strength immediately
+        if ssid == target_ssid:
+            rssi_match = re.search(r'Signal level[=:](-?\d+)', cell)
+            if rssi_match:
+                return int(rssi_match.group(1))
+
+    return None  # Target not found in this scan window
 
 
 def rssi_quality_to_string(rssi, quality):
@@ -128,14 +130,17 @@ def rssi_quality_to_string(rssi, quality):
     else:
         rssi_string = "0 bar"
 
-    if quality >= 60:
-        quality_string = "Hi Quality"
-    elif quality >= 45:
-        quality_string = "Stable Link"
-    elif quality >= 30:
-        quality_string = "Low Quality"
+    if quality is not None:
+        if quality >= 60:
+            quality_string = "Hi Quality"
+        elif quality >= 45:
+            quality_string = "Stable Link"
+        elif quality >= 30:
+            quality_string = "Low Quality"
+        else:
+            quality_string = "Unstable Link"
     else:
-        quality_string = "Unstable Link"
+        quality_string = "Disconnected"
 
     return rssi_string, quality_string
 
@@ -149,8 +154,8 @@ def print_with_string(quality, rssi, ssid, tx_rate):
 
     if rssi is not None:
         print(f"RSSI:    {rssi:>3} dBm  {rssi_string}")
-        print(f"Link Q:  {quality:>2}/70    {quality_string}")
-        print(f"Tx Rate: {tx_rate:.1f} Mb/s")
+        print(f"Link Q:  {f'{quality:>2}/70' if quality is not None else 'n/a'}    {quality_string}")
+        print(f"Tx Rate: {f'{tx_rate:.1f} Mb/s' if tx_rate is not None else 'n/a'}")
     else:
         print("RSSI:    n/a")
         print("Link Q:  n/a")
@@ -173,7 +178,7 @@ def main():
             start_time = finish_time
 
             print_with_string(quality, rssi, ssid, tx_rate)
-            print(f"\nUpdates:  {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
+            print(f"Updates:  {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
             time.sleep(0.1)
