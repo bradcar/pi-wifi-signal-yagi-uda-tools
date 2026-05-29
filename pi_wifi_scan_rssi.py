@@ -149,7 +149,7 @@ def scan_and_print(interface):
         rssi_match = re.search(r'Signal level[=:](-?\d+)', cell)
         rssi = int(rssi_match.group(1)) if rssi_match else -100
 
-        # Call modularized band parsing logic
+        # Parse band from cell text
         band = parse_band_from_cell(cell)
 
         # Construct raw records inside our mock wrapper class
@@ -159,14 +159,14 @@ def scan_and_print(interface):
         print("Pi Wifi: No networks found. Ensure Terminal/IDE has Location Services permissions.")
         return False, 1
 
-    # Sort networks by their RSSI value in descending order (strongest first)
+    # Sort networks, show best RSSI at top (strongest first)
     sorted_networks = sorted(networks, key=lambda net: net.rssi_value(), reverse=True)
 
     current_row = 0
 
-    print(f"{'SSID':<23} {'Band':<7} {'BSSID':<17} {'RSSI':<9} {'Bars'}")
+    print(f"{'SSID':<23} {'Band':<7}  {'BSSID':<17}  {'RSSI':<8} {'Bars'}")
     current_row += 1
-    print("-" * 66)
+    print("-" * 67)
     current_row += 1
 
     for net in sorted_networks:
@@ -178,7 +178,7 @@ def scan_and_print(interface):
         rssi_string = rssi_bar_string(rssi)
 
         if not (BLOCK_LESS_THAN_ONE_BAR and rssi <= -80):
-            print(f"{ssid:<23} {band:<7} {bssid} {rssi:>4} dBm  {rssi_string}")
+            print(f"{ssid:<23} {band:<7}  {bssid} {rssi:>4} dBm  {rssi_string}")
             current_row += 1
 
     return True, current_row

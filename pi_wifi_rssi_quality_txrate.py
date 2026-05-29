@@ -21,16 +21,15 @@ def get_ssid():
     Queries the connected SSID name once at startup before the tracking loop begins.
     """
     try:
-        # Startup fallback: query iwconfig once to extract the true ESSID string
+        # query iwconfig to get the ESSID string
         out = subprocess.check_output(["/sbin/iwconfig", "wlan0"], text=True, stderr=subprocess.DEVNULL)
         for line in out.splitlines():
             if "ESSID" in line:
-                # Splits out the string between the quotation marks
                 return line.split('"')[1].strip()
     except Exception:
         pass
 
-    # Final default so the variable never becomes an empty 'None' type
+    # Final default so avoid empty 'None' type
     return "wlan0 essid unknown"
 
 
@@ -60,7 +59,7 @@ def query_wifi():
     except Exception:
         return None, None, None
 
-    # Get Tx speed as a raw float/int numerical value
+    # Get Tx Rate as a raw float/int numerical value
     try:
         out = subprocess.check_output(["/sbin/iwconfig", "wlan0"], text=True, stderr=subprocess.DEVNULL)
         for line in out.splitlines():
@@ -68,7 +67,7 @@ def query_wifi():
                 parts = line.split("Bit Rate=")
                 if len(parts) > 1:
                     raw_rate_str = parts[1].split("   ")[0].strip()
-                    # Use a strict regex match to isolate only numbers/decimals
+                    # regex match to isolate only numbers/decimals
                     match = re.findall(r"[+-]?\d*(?:\.\d+)?", raw_rate_str)
                     if match and match[0] != "":
                         tx_rate = float(match[0])
@@ -76,8 +75,6 @@ def query_wifi():
     except Exception:
         pass
 
-    # REMOVED the strict all-or-nothing gate here so partial data (like just RSSI)
-    # can safely flow back to the main UI loop without being zeroed out.
     return rssi, quality, tx_rate
 
 
@@ -87,7 +84,6 @@ def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
     Reads the kernel's active BSS cache to avoid blocking the main loop.
     """
     try:
-        # scan dump returns instantly (~5-20ms)
         scan = subprocess.check_output(
             ["/usr/sbin/iw", "dev", interface, "scan", "dump"],
             text=True,
@@ -96,31 +92,29 @@ def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
     except Exception:
         return None
 
-    # Split output by individual Access Point blocks
+    # Split Access Point blocks
     cells = scan.split("BSS ")
     target_rssi = None
 
     for cell in cells[1:]:
-        # Extract SSID safely
+        # Extract SSID
         ssid_match = re.search(r"SSID:\s*(.*)", cell)
         if ssid_match:
-            # Strip quotes or trailing spaces if present
+            # Strip quotes or trailing spaces
             ssid = ssid_match.group(1).strip().strip('"')
 
             if ssid == target_ssid:
-                # Extract signal strength (looks like "signal: -65.00 dBm")
+                # Extract signal strength ("signal: -65.00 dBm")
                 rssi_match = re.search(r"signal:\s*([+-]?\d+(?:\.\d+)?)", cell)
                 if rssi_match:
-                    # Convert to integer for consistency with your threshold logic
                     target_rssi = int(float(rssi_match.group(1)))
-                    # Keep looping rather than breaking early to catch the strongest
-                    # signal if there are multiple APs with the same SSID
+                    # loop to catch the strongest signal if there are multiple APs with same SSID
 
     return target_rssi
 
 
 def rssi_quality_to_string(rssi, quality):
-    """Generates qualitative text interpretations for signal metrics."""
+    """Generates text strings for signal metrics."""
     if rssi is None:
         return "0 bar", "Unstable Link"
 
@@ -176,7 +170,7 @@ def main():
     try:
         start_time = time.time()
         while True:
-            # Get RSSI, Quality, and Mb/s (numerical)
+            # Get RSSI, Quality, and Mb/s
             rssi, quality, tx_rate = query_wifi()
             finish_time = time.time()
             duration = finish_time - start_time
