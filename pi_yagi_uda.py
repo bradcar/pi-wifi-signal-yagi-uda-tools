@@ -49,6 +49,7 @@ import digitalio
 from PIL import Image, ImageDraw, ImageFont
 from adafruit_bno08x import BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR
 from adafruit_bno08x.i2c import BNO08X_I2C
+from gpiozero import Button
 
 # Network signal tracking dependencies
 from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_with_string
@@ -74,29 +75,67 @@ SSD_HEIGHT = 32  # TODO uncomment this when get ssd 1305 bonnet
 TEXT_WIDTH_LIMIT = 96  # text on left 96px
 CIRCLE_AREA_START_X = TEXT_WIDTH_LIMIT  # Graphic starts at 96px
 
+# Initialize the button on GPIO 26 (Physical Pin 37)
+# bounce_time=0.05 adds a 50ms software debounce filter to eliminate electrical noise
+button0 = Button(26, pull_up=True, bounce_time=0.05)
 
-def scan_i2c_bus(i2c):
+def on_button_pressed():
+    print("* Button Pressed! Initiating hardware connection protocol...")
+    # TODO Insert state toggle here
+
+def on_button_released():
+    print("*Button Released.")
+
+# Assign event triggers (Asynchronous - runs in the background)
+button0.when_pressed = on_button_pressed
+button0.when_released = on_button_released
+print("GPIO 26 Button Listener Active.")
+
+def scan_i2c_bus(i2c_primary, i2c_secondary):
     print("I2C device Scan...")
     bno_detected = None
     ssd_detected = None
 
-    while not i2c.try_lock(): pass
     try:
-        devices = i2c.scan()
-        if not devices:
-            print("Error: No I2C devices detected. Check your wiring")
+        # Scan the two buses directly
+        devices1 = i2c_primary.scan()
+        if not devices1:
+            print("Error: No I2C1 devices detected (primary). Check your wiring")
         else:
-            print(f"\nFound {len(devices)} device(s):")
-            for address in devices:
-                print(f" I2C Device: Hex: {hex(address)} ({address})")
+            print(f"\nFound I2C1 {len(devices1)} device(s):")
+            for address in devices1:
+                print(f" I2C1 Device: Hex: {hex(address)} ({address})")
                 if address == 0x3C:
                     print(" -> likely SSD1305 OLED display")
                     ssd_detected = True
-                if address == 0x4B or address == 0x4A:
+                elif address == 0x4B or address == 0x4A:
                     print(" -> likely BNO086 IMU")
                     bno_detected = address
-    finally:
-        i2c.unlock()
+                else:
+                    print(f" -> unknown device {hex(address)}")
+    except RuntimeError as e:
+        print(f"I2C Hardware Error: {e}")
+
+        # Check Secondary I2C0 bus
+    if i2c_secondary is None:
+        print("\nSkipping I2C0 scan: Secondary bus not available.")
+    else:
+        devices0 = i2c_secondary.scan()
+        if not devices0:
+            print("Error: No I2C0 devices detected (secondary). Check your wiring")
+        else:
+            print(f"\nFound I2C0 (secondary) {len(devices0)} device(s):")
+            for address in devices0:
+                print(f" I2C0 Device: Hex: {hex(address)} ({address})")
+                if address == 0x3C:
+                    print(" -> likely SSD1305 OLED display")
+                    ssd_detected = True
+                elif address == 0x4B or address == 0x4A:
+                    print(" -> likely BNO086 IMU")
+                    bno_detected = address
+                else:
+                    print(f" -> unknown device {hex(address)}")
+
     print("\n")
     return ssd_detected, bno_detected
 
@@ -109,7 +148,7 @@ def init_ssd_display(i2c):
 
     image = Image.new("1", (SSD_WIDTH, SSD_HEIGHT))
     draw = ImageDraw.Draw(image)
-    # Use monospace font instead of the variable-width default
+    # Use monospace font, not variable-width default
     try:
         font = ImageFont.truetype("DejaVuSansMono.ttf", 10)
     except IOError:
@@ -186,7 +225,7 @@ def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, conne
             rate_str = f"{tx_rate:.0f} mb/s" if tx_rate is not None else "linked"
             line2 = f"{rssi} dbm  {rate_str}"
 
-            # Notify if download/handshake is possible based on -70 dBm rule
+            # Notify if download is possible based on -70 dBm rule
             if rssi >= RSSI_DOWNLOAD_THRESHOLD:
                 line3 = f"{heading_str} {direction_str:<2} dload?"
             else:
@@ -201,7 +240,7 @@ def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, conne
             else:
                 line3 = f"{heading_str} {direction_str:<2} weak signal"
 
-    # Render to the OLED buffer canvas
+    # Write text to OLED buffer canvas
     draw.text((left_indent, 0), line1, font=font, fill=1)
     draw.text((left_indent, 10), line2, font=font, fill=1)
     draw.text((left_indent, 20), line3, font=font, fill=1)
@@ -213,7 +252,7 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
     Add white directional orientation lines for North, East, South, and West.
     Calculates a solid white polygon tracking signal strength vs compass directions.
     """
-    # circle coordinates centering in the 32x32 right panel
+    # Circle coordinates centering in the 32x32 right panel
     center_x = 112
     center_y = 15
     max_radius = 15
@@ -227,11 +266,11 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
     draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius),
                  outline=0, fill=0)
 
-    # draw cadence box outline and cadence indicator to visually toggle with cadence_fill flag
+    # Draw cadence box outline and cadence indicator to visually toggle with cadence_fill flag
     draw.rectangle((97, 26, 101, 30), fill=0)
     draw.rectangle((98, 27, 100, 29), fill=int(cadence_fill))
 
-    # Draw the four cardinal compass North in white, other 3 in dashed lines
+    # Draw the four cardinal compass North in white solid, other 3 in dashed lines
     # Dynamic crosshairs rotate based on heading relative to fixed screen space
     north_rad = math.radians(0.0 - heading - 90.0)
     south_rad = math.radians(180.0 - heading - 90.0)
@@ -309,21 +348,34 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
 def main():
     print("Starting Pi Zero 2 W Signal & Antenna Tracking...\n")
 
-    # Initialize Hardware Selection Button (Pin 26 / Physical Pin 37)
-    btn = digitalio.DigitalInOut(board.D26)
-    btn.direction = digitalio.Direction.INPUT
-    btn.pull = digitalio.Pull.UP
+    # Set I2C 1M is max for SSD1305 display, i2c1 is primary on Pi Zero 2 W
+    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
 
-    # Set I2C speed to max frequency
-    i2c = busio.I2C(board.SCL, board.SDA, frequency=1000000)
-    ssd_detected, bno_detected = scan_i2c_bus(i2c)
+    # Set I2C 400K is standard mode ofr  for SSD1305 display, i2c0 is secondary on Pi Zero 2 W
+    # note: must have 4.7k to 10k ohm pullups for sda and sck on 400K
+    # SDA pin 27
+    # SCL pin 28
+    # must edit config.txt
+    # # enable second i2c port (i2c0)
+    # dtparam=i2c_vc=on
+    # # BRADD:DO NOT load overlays for detected cameras (=1 is on)
+    # camera_auto_detect=0
+    # https://www.youtube.com/watch?v=FUAiELC76aw
+    i2c0 = None
+    try:
+        i2c0 = busio.I2C(board.SCL0, board.SDA0, frequency=400000)
+    except Exception as e:
+        i2c0 = None
+        print(f"i2c0 (secondary) not available: {e}")
+
+    ssd_detected, bno_detected = scan_i2c_bus(i2c1, i2c0)
 
     bno_sensor = None
     if bno_detected:
-        bno_sensor = init_bno086(i2c, address=bno_detected)
+        bno_sensor = init_bno086(i2c0, address=bno_detected)
 
     if ssd_detected:
-        display, draw, font, image = init_ssd_display(i2c)
+        display, draw, font, image = init_ssd_display(i2c1)
 
     # Initialize radar sweep tracker angle to up (0 degrees)
     sweep_angle = 0.0
@@ -344,11 +396,11 @@ def main():
         start_time = time.time()
         cadence_fill = False
         while True:
-            cadence_fill =  not cadence_fill
+            cadence_fill = not cadence_fill
             current_loop_time = time.time()
 
-            # Read physical hardware button (False means pressed when pulled UP)
-            button_pressed = not btn.value
+            # Button0 state
+            button0_pressed = button0.is_pressed
 
             # Throttle network subsystem checks to prevent loop stalling
             if current_loop_time - last_wifi_query_time >= wifi_query_interval:
@@ -379,8 +431,10 @@ def main():
 
                         # If signal hits the connection floor threshold, evaluate button input
                         if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-                            if button_pressed:
-                                print(f"\n[!] Button pressed  ({rssi} dBm). Connecting...")
+                            # TODO REMOVE WHEN ADD BUTTON
+                            # button_pressed = True
+                            if button0_pressed:
+                                print(f"\n* Button pressed  ({rssi} dBm). Connecting...")
                                 subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID], timeout=8)
                                 manual_lock_mode = True
 
@@ -426,21 +480,16 @@ def main():
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-            # Update OLED SSD Display
+            # OLED SSD Display, Left side is text stats, right side is radar graphic
             if ssd_detected:
-                # Clear buffer canvas
-                draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)
-
-                # Left side is text output for connected WiFi
+                draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  #clear canvas
                 display_text_ssd(draw, font, rssi, ssid, tx_rate, heading, connected=is_connected)
-
-                # Right side track strength/compass for radar graphic
                 display_radar_ssd(draw, sweep_angle, cadence_fill, heading=heading)
-
                 display.image(image)
                 display.show()
 
-            # Increment the sweep angle by exactly 5 degrees for the next pass
+            # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
+            # Increment the sweep angle by 5 degrees for the next pass
             sweep_angle = (sweep_angle + 5) % 360
 
             # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
@@ -448,7 +497,7 @@ def main():
 
             # Dynamic sleep, sleep longer when WiFi is completely out of range
             if is_connected:
-                time.sleep(0.1)  # Connected and running at high speed (10Hz)
+                time.sleep(0.05)  # Connected and running at high speed (10Hz)
             elif rssi is not None:
                 time.sleep(0.01)  # Tightest loop configuration when scanning actively
             else:
