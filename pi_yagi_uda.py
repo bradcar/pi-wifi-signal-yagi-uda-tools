@@ -34,6 +34,16 @@ right 32px for circle graphic
   - 555.1 MB download, Released: 2026-04-21
   - uname -a
 Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
+
+Requirements:
+ TODO must edit config.txt
+
+    # on Mac edit microSD's config.txt
+    # enable second i2c port (i2c0)
+    # dtparam=i2c_vc=on
+    # DO NOT load overlays for detected cameras (=1 is on)
+    # camera_auto_detect=0
+
 """
 import math
 import time
@@ -45,14 +55,13 @@ import adafruit_ssd1305
 
 import board
 import busio
-import digitalio
 from PIL import Image, ImageDraw, ImageFont
 from adafruit_bno08x import BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR
 from adafruit_bno08x.i2c import BNO08X_I2C
 from gpiozero import Button
 
 # Network signal tracking dependencies
-from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_with_string
+from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics
 
 # TODO REMOVE WHEN YAGI-UDA ADDED: Import the mock test environment
 from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
@@ -75,21 +84,38 @@ SSD_HEIGHT = 32  # TODO uncomment this when get ssd 1305 bonnet
 TEXT_WIDTH_LIMIT = 96  # text on left 96px
 CIRCLE_AREA_START_X = TEXT_WIDTH_LIMIT  # Graphic starts at 96px
 
-# Initialize the button on GPIO 26 (Physical Pin 37)
-# bounce_time=0.05 adds a 50ms software debounce filter to eliminate electrical noise
-button0 = Button(26, pull_up=True, bounce_time=0.05)
+# Globals
+long_press = False
+short_press = False
+
+# Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
+button0 = Button(26, pull_up=True, bounce_time=0.05, hold_time=2.0)
 
 def on_button_pressed():
-    print("* Button Pressed! Initiating hardware connection protocol...")
-    # TODO Insert state toggle here
+    global long_press
+    long_press = False  # Reset on down-stroke
+
+
+def on_button_held():
+    global long_press
+    long_press = True
+    print("\n* Long Press Detected (2.0s).")
+
 
 def on_button_released():
-    print("*Button Released.")
+    global long_press, short_press
 
-# Assign event triggers (Asynchronous - runs in the background)
+    if long_press:
+        return  # Do nothing if trailing a 2-second reset drop
+    short_press = True
+    print("\n* Short Press Detected <2sec.")
+
+# Assign button states
 button0.when_pressed = on_button_pressed
+button0.when_held = on_button_held
 button0.when_released = on_button_released
-print("GPIO 26 Button Listener Active.")
+print("Button0 Listener Active (GPIO 26) for Short Clicks and long_press (>=2 sec).")
+
 
 def scan_i2c_bus(i2c_primary, i2c_secondary):
     print("I2C device Scan...")
@@ -138,6 +164,31 @@ def scan_i2c_bus(i2c_primary, i2c_secondary):
 
     print("\n")
     return ssd_detected, bno_detected
+
+
+def init_i2c():
+    # Set I2C 1M is max for SSD1305 display, i2c1 is primary on Pi Zero 2 W
+    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
+
+    # Set I2C 400K is standard mode ofr  for SSD1305 display, i2c0 is secondary on Pi Zero 2 W
+    # note: must have 4.7k to 10k ohm pullups for sda and sck on 400K
+    # SDA pin 27
+    # SCL pin 28
+    # must edit config.txt
+    # # enable second i2c port (i2c0)
+    # dtparam=i2c_vc=on
+    # # BRAD: DO NOT load overlays for detected cameras (=1 is on)
+    # camera_auto_detect=0
+    # https://www.youtube.com/watch?v=FUAiELC76aw
+    i2c0 = None
+    try:
+        i2c0 = busio.I2C(board.SCL0, board.SDA0, frequency=400000)
+    except Exception as e:
+        i2c0 = None
+        print(f"i2c0 (secondary) not available: {e}")
+
+    ssd_detected, bno_detected = scan_i2c_bus(i2c1, i2c0)
+    return i2c1, i2c0, ssd_detected, bno_detected
 
 
 def init_ssd_display(i2c):
@@ -206,7 +257,7 @@ def get_compass_8pt_string(heading: float):
     return ""
 
 
-def display_text_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, connected: bool = True):
+def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, connected: bool = True):
     left_indent = 0
     direction_str = get_compass_8pt_string(heading) if heading is not None else ""
     heading_str = f"{heading:>3.0f}°" if heading is not None else "???°"
@@ -346,34 +397,16 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
 
 
 def main():
+    global short_press, long_press
+
     print("Starting Pi Zero 2 W Signal & Antenna Tracking...\n")
+    probe_mode = True
+    connected_mode = False
 
-    # Set I2C 1M is max for SSD1305 display, i2c1 is primary on Pi Zero 2 W
-    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
-
-    # Set I2C 400K is standard mode ofr  for SSD1305 display, i2c0 is secondary on Pi Zero 2 W
-    # note: must have 4.7k to 10k ohm pullups for sda and sck on 400K
-    # SDA pin 27
-    # SCL pin 28
-    # must edit config.txt
-    # # enable second i2c port (i2c0)
-    # dtparam=i2c_vc=on
-    # # BRADD:DO NOT load overlays for detected cameras (=1 is on)
-    # camera_auto_detect=0
-    # https://www.youtube.com/watch?v=FUAiELC76aw
-    i2c0 = None
-    try:
-        i2c0 = busio.I2C(board.SCL0, board.SDA0, frequency=400000)
-    except Exception as e:
-        i2c0 = None
-        print(f"i2c0 (secondary) not available: {e}")
-
-    ssd_detected, bno_detected = scan_i2c_bus(i2c1, i2c0)
-
+    i2c1, i2c0, ssd_detected, bno_detected = init_i2c()
     bno_sensor = None
     if bno_detected:
         bno_sensor = init_bno086(i2c0, address=bno_detected)
-
     if ssd_detected:
         display, draw, font, image = init_ssd_display(i2c1)
 
@@ -383,14 +416,8 @@ def main():
     # TODO REMOVE WHEN REAL IMU ROTATING: Mock tracking variable to force screen rotation animation
     mock_heading_tracker = 0.0
 
-    # Setup tracking variables
-    last_wifi_query_time = 0.0
-    wifi_query_interval = 0.6  # Match the 600ms physical scan rate to keep antenna sweep fluid
-
-    # Initialize metrics and tracking state variables
     ssid, rssi, quality, tx_rate = None, None, None, None
-    is_connected = False
-    manual_lock_mode = False  # Track state: False = Probing, True = Hard Connection Lock
+    connected_mode = False  # Track state: False = Probing, True = Hard Connection Lock
 
     try:
         start_time = time.time()
@@ -399,55 +426,69 @@ def main():
             cadence_fill = not cadence_fill
             current_loop_time = time.time()
 
-            # Button0 state
-            button0_pressed = button0.is_pressed
+            # On long_press revert to Probe Mode
+            if long_press:
+                print("\nLong_press: revert to Probe Mode...")
+                if connected_mode:
+                    try:
+                        # Set OS interface link to down
+                        subprocess.run(["sudo", "nmcli", "connection", "down", TARGET_SSID], timeout=5)
+                    except Exception as e:
+                        print(f"Disconnect failed: {e}")
 
-            # Throttle network subsystem checks to prevent loop stalling
-            if current_loop_time - last_wifi_query_time >= wifi_query_interval:
-                try:
-                    if manual_lock_mode:
-                        current_ssid = get_ssid()
+                connected_mode = False
+                tx_rate = None
+                quality = None
+                long_press = False
 
-                        if current_ssid == TARGET_SSID:
-                            # Connected Mode - Extract full statistics
-                            rssi, quality, tx_rate = query_wifi()
-                            ssid = current_ssid
-                            is_connected = True
-                        else:
-                            # Connection broken or dropped out; drop down to probing phase
-                            manual_lock_mode = False
-                            is_connected = False
-                            tx_rate = None
-                            quality = None
-                    else:
-                        # Lightweight Probe Mode - Scan for remote target
-                        is_connected = False
-                        tx_rate = None
-                        quality = None
+            if connected_mode:
+                current_ssid = get_ssid()
 
-                        # Fallback to background radio with probe
-                        rssi = probe_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
-                        ssid = TARGET_SSID if rssi is not None else None
+                if current_ssid == TARGET_SSID:
+                    # Connected Mode - Extract full metrics
+                    rssi, quality, tx_rate = query_wifi()
+                    ssid = current_ssid
 
-                        # If signal hits the connection floor threshold, evaluate button input
-                        if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-                            # TODO REMOVE WHEN ADD BUTTON
-                            # button_pressed = True
-                            if button0_pressed:
-                                print(f"\n* Button pressed  ({rssi} dBm). Connecting...")
-                                subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID], timeout=8)
-                                manual_lock_mode = True
+                    # If signal above download threshold, test button state
+                    if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
+                        if short_press:
+                            print(f"\n* Button pressed  ({rssi} dBm). Downloading...")
+                            # TODO Add download code
+                            print(f"TODO Add Download code !!!")
 
-                except Exception as e:
-                    is_connected = False
-                    manual_lock_mode = False
-                    ssid, rssi, quality, tx_rate = None, None, None, None
+                        short_press = False
+                else:
+                    # Connection broken. Return to Probe Mode
+                    connected_mode = False
+                    tx_rate = None
+                    quality = None
 
-                last_wifi_query_time = current_loop_time
+            else:
+                # Probe Mode - Scan for remote target, only rssi measured
+                connected_mode = False
+                tx_rate = None
+                quality = None
+
+                # scan unconnected signals
+                rssi = probe_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
+                ssid = TARGET_SSID if rssi is not None else None
+
+                # If signal hits the connection threshold, evaluate button input
+                if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
+                    if short_press:
+                        print(f"\n* Button pressed  ({rssi} dBm). Connecting...")
+                        try:
+                            subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID], timeout=8)
+                            connected_mode = True
+                        except Exception as e:
+                            print(f"Connection command failed: {e}")
+                            connected_mode = False
+
+                    short_press = False
 
             heading = get_compass_heading(bno_sensor)
 
-            # TODO REMOVE WHEN REAL IMU ROTATING: Fallback to animated loop tracker if physical IMU returns None
+            # TODO REMOVE WHEN REAL IMU INSTALLED: Fallback to animated loop tracker if physical IMU returns None
             if heading is None:
                 heading = mock_heading_tracker
 
@@ -460,12 +501,12 @@ def main():
             start_time = finish_time
 
             # Print Metrics to Standard Out
-            if is_connected:
-                print_with_string(quality, rssi, ssid, tx_rate)
+            if connected_mode:
+                print_metrics(quality, rssi, ssid, tx_rate)
                 if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                    print("-> enough signal for download (download?)")
+                    print("-> download possible (download?)")
                 else:
-                    print("-> connected but insufficient for download")
+                    print("-> connected, but signal too weak for download")
             else:
                 print(f"**Probing ssid: {TARGET_SSID} un-connected")
                 if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
@@ -483,7 +524,7 @@ def main():
             # OLED SSD Display, Left side is text stats, right side is radar graphic
             if ssd_detected:
                 draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  #clear canvas
-                display_text_ssd(draw, font, rssi, ssid, tx_rate, heading, connected=is_connected)
+                display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, connected=connected_mode)
                 display_radar_ssd(draw, sweep_angle, cadence_fill, heading=heading)
                 display.image(image)
                 display.show()
@@ -495,11 +536,11 @@ def main():
             # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
             mock_heading_tracker = (mock_heading_tracker + 2.0) % 360
 
-            # Dynamic sleep, sleep longer when WiFi is completely out of range
-            if is_connected:
-                time.sleep(0.05)  # Connected and running at high speed (10Hz)
+            # Dynamic sleep, sleep longer when WiFi out of range
+            if connected_mode:
+                time.sleep(0.05)  # Connected Mode
             elif rssi is not None:
-                time.sleep(0.01)  # Tightest loop configuration when scanning actively
+                time.sleep(0.01)  # Probe Mode
             else:
                 time.sleep(0.5)  # Out of range fallback
 
@@ -508,7 +549,7 @@ def main():
             draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)
             display.image(image)
             display.show()
-        print("\nTracking Stopped. Exiting.")
+        print("\nEnded Tracking (^c).")
 
 
 if __name__ == "__main__":

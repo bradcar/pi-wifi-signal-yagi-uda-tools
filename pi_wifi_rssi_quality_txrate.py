@@ -144,7 +144,7 @@ def rssi_quality_to_string(rssi, quality):
     return rssi_string, quality_string
 
 
-def print_with_string(quality, rssi, ssid, tx_rate):
+def print_metrics(quality, rssi, ssid, tx_rate):
     """Prints RSSI, Link Quality, and Tx Rate with text interpretation."""
     rssi_string, quality_string = rssi_quality_to_string(rssi, quality)
 
@@ -176,7 +176,7 @@ def main():
             duration = finish_time - start_time
             start_time = finish_time
 
-            print_with_string(quality, rssi, ssid, tx_rate)
+            print_metrics(quality, rssi, ssid, tx_rate)
             print(f"Updates:  {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
