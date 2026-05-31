@@ -18,6 +18,15 @@ It graphically shows the signal strength at a compass direction.
 This is also shown graphically in a small radar screen graphic.
 It gracefully handles total connection drops and resumes automatically on reconnect.
 
+1. Starts in Probe Mode
+   a. If signal ≥ RSSI_CONNECT_THRESHOLD, a short press triggers Connected Mode (nmcli up).
+2. In Connection Mode
+   a. If signal ≥ RSSI_DOWNLOAD_THRESHOLD, a short press starts download.
+   b. A long press returns to Probe Mode (nmcli down)
+
+short press >0.1 sec
+long press >1.5 sec
+
 Data is shown on  SSD1305 128x32 display and printed to std out.
 left 96px for text
  - 3 lines of text with 16 chars
@@ -87,34 +96,42 @@ CIRCLE_AREA_START_X = TEXT_WIDTH_LIMIT  # Graphic starts at 96px
 # Globals
 long_press = False
 short_press = False
+button_press_time = 0.0
+download_count = 0
 
 # Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
-button0 = Button(26, pull_up=True, bounce_time=0.05, hold_time=2.0)
+button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=1.0)
+
 
 def on_button_pressed():
-    global long_press
-    long_press = False  # Reset on down-stroke
-
-
-def on_button_held():
-    global long_press
-    long_press = True
-    print("\n* Long Press Detected (2.0s).")
+    global button_press_time
+    button_press_time = time.time()  # Capture raw baseline time on down-stroke
 
 
 def on_button_released():
-    global long_press, short_press
+    global short_press, long_press, button_press_time
 
-    if long_press:
-        return  # Do nothing if trailing a 2-second reset drop
-    short_press = True
-    print("\n* Short Press Detected <2sec.")
+    # Calculate press time
+    if button_press_time > 0.0:
+        duration = time.time() - button_press_time
+    else:
+        duration = 0.0  # Fallback safety case
 
-# Assign button states
+    # Reset press time
+    button_press_time = 0.0
+
+    if duration >= button0.hold_time:
+        long_press = True
+        print(f"\n* ====== Long Press Detected ({duration:.4f}s). Reverting to Probe Mode.")
+    else:
+        short_press = True
+        print(f"\n* ------ Short Press Detected ({duration:.4f}s).")
+
+
+# Listen to both edges to manage our independent software timer cleanly
 button0.when_pressed = on_button_pressed
-button0.when_held = on_button_held
 button0.when_released = on_button_released
-print("Button0 Listener Active (GPIO 26) for Short Clicks and long_press (>=2 sec).")
+print("Button0 Listeners Active (GPIO 26) for Press and Release Edges.")
 
 
 def scan_i2c_bus(i2c_primary, i2c_secondary):
@@ -257,7 +274,7 @@ def get_compass_8pt_string(heading: float):
     return ""
 
 
-def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, connected: bool = True):
+def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, download_count, connected: bool = True):
     left_indent = 0
     direction_str = get_compass_8pt_string(heading) if heading is not None else ""
     heading_str = f"{heading:>3.0f}°" if heading is not None else "???°"
@@ -278,16 +295,16 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, co
 
             # Notify if download is possible based on -70 dBm rule
             if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                line3 = f"{heading_str} {direction_str:<2} dload?"
+                line3 = f"{heading_str} {direction_str:<2} ...dload{download_count}?"
             else:
                 line3 = f"{heading_str} {direction_str:<2}"
         else:
             line1 = f"ssid   {ssid}"
-            line2 = f"{rssi} dbm  probe"
+            line2 = f"{rssi} dbm ...probing"
 
             # test if connection available
             if rssi >= RSSI_CONNECT_THRESHOLD:
-                line3 = f"{heading_str} {direction_str:<2} connect?"
+                line3 = f"{heading_str} {direction_str:<2} .connect?"
             else:
                 line3 = f"{heading_str} {direction_str:<2} weak signal"
 
@@ -397,7 +414,7 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
 
 
 def main():
-    global short_press, long_press
+    global short_press, long_press, download_count
 
     print("Starting Pi Zero 2 W Signal & Antenna Tracking...\n")
     probe_mode = True
@@ -428,9 +445,9 @@ def main():
 
             # On long_press revert to Probe Mode
             if long_press:
-                print("\nLong_press: revert to Probe Mode...")
                 if connected_mode:
                     try:
+                        print("\nLong_press: disconnecting")
                         # Set OS interface link to down
                         subprocess.run(["sudo", "nmcli", "connection", "down", TARGET_SSID], timeout=5)
                     except Exception as e:
@@ -440,10 +457,10 @@ def main():
                 tx_rate = None
                 quality = None
                 long_press = False
+                short_press = False
 
             if connected_mode:
                 current_ssid = get_ssid()
-
                 if current_ssid == TARGET_SSID:
                     # Connected Mode - Extract full metrics
                     rssi, quality, tx_rate = query_wifi()
@@ -451,21 +468,20 @@ def main():
 
                     # If signal above download threshold, test button state
                     if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
+                        # Cleanly captures the flag set by the trailing edge release handler
                         if short_press:
-                            print(f"\n* Button pressed  ({rssi} dBm). Downloading...")
-                            # TODO Add download code
-                            print(f"TODO Add Download code !!!")
+                            print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
+                            download_count += 1
 
-                        short_press = False
+                            # TODO Add download code
+                            print(f"TODO Add Download code !!!\n")
                 else:
                     # Connection broken. Return to Probe Mode
                     connected_mode = False
                     tx_rate = None
                     quality = None
-
             else:
                 # Probe Mode - Scan for remote target, only rssi measured
-                connected_mode = False
                 tx_rate = None
                 quality = None
 
@@ -475,8 +491,9 @@ def main():
 
                 # If signal hits the connection threshold, evaluate button input
                 if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
+                    # Cleanly captures the flag set by the trailing edge release handler
                     if short_press:
-                        print(f"\n* Button pressed  ({rssi} dBm). Connecting...")
+                        print(f"\n* Button pressed ({rssi} dBm). Connecting...")
                         try:
                             subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID], timeout=8)
                             connected_mode = True
@@ -484,7 +501,7 @@ def main():
                             print(f"Connection command failed: {e}")
                             connected_mode = False
 
-                    short_press = False
+            short_press = False
 
             heading = get_compass_heading(bno_sensor)
 
@@ -504,7 +521,7 @@ def main():
             if connected_mode:
                 print_metrics(quality, rssi, ssid, tx_rate)
                 if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                    print("-> download possible (download?)")
+                    print("-> download possible (download {download_count}).}?)")
                 else:
                     print("-> connected, but signal too weak for download")
             else:
@@ -523,8 +540,8 @@ def main():
 
             # OLED SSD Display, Left side is text stats, right side is radar graphic
             if ssd_detected:
-                draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  #clear canvas
-                display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, connected=connected_mode)
+                draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  # clear canvas
+                display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected=connected_mode)
                 display_radar_ssd(draw, sweep_angle, cadence_fill, heading=heading)
                 display.image(image)
                 display.show()
