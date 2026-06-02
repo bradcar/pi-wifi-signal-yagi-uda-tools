@@ -70,7 +70,7 @@ from adafruit_bno08x.i2c import BNO08X_I2C
 from gpiozero import Button
 
 # Network signal tracking dependencies
-from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics
+from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics, rssi_to_string
 
 # TODO test Pi Pico as Access Point
 # TARGET_SSID = "shell-fi"
@@ -85,8 +85,8 @@ RSSI_STRONG_BOUND = -45
 RSSI_WEAK_BOUND = -80
 
 SSD_WIDTH = 128
-SSD_HEIGHT = 32  # TODO uncomment this when get ssd 1305 bonnet
-#  SSD_HEIGHT = 64  # Set to 64 for SSD1309
+SSD_HEIGHT = 32
+# SSD_HEIGHT = 64  # Set to 64 for SSD1309
 TEXT_WIDTH_LIMIT = 96  # text on left 96px
 CIRCLE_AREA_START_X = TEXT_WIDTH_LIMIT  # Graphic starts at 96px
 
@@ -218,7 +218,6 @@ def init_ssd_display(i2c):
         font = ImageFont.truetype("DejaVuSansMono.ttf", 10)
     except IOError:
         font = ImageFont.load_default()  # Fallback if font isn't installed
-    # font = ImageFont.load_default()
     return display, draw, font, image
 
 
@@ -317,104 +316,90 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     Add white directional orientation lines for North, East, South, and West.
     Calculates a solid white polygon tracking signal strength vs compass directions.
     """
-    # Circle coordinates centering in the 32x32 right panel
     center_x = 112
     center_y = 15
     max_radius = 15
 
-    # Safe fallback if heading is not active yet
     if heading is None:
         heading = 0.0
 
-    # Radar graphics (white outside, black circle with black center dots
+    # Radar graphics: white background block, black circle mask
     draw.rectangle((96, 0, 127, 31), fill=1)
     draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius),
                  outline=0, fill=0)
 
-    # Draw cadence box outline and cadence indicator to visually toggle with cadence_fill flag
+    # Cadence indicator box
     draw.rectangle((97, 26, 101, 30), fill=0)
     draw.rectangle((98, 27, 100, 29), fill=int(cadence_fill))
 
-    # Draw the four cardinal compass North in white solid, other 3 in dashed lines
-    # Dynamic crosshairs rotate based on heading relative to fixed screen space
-    north_rad = math.radians(0.0 - heading - 90.0)
-    south_rad = math.radians(180.0 - heading - 90.0)
-    west_rad = math.radians(270.0 - heading - 90.0)
-    east_rad = math.radians(90.0 - heading - 90.0)
+    # Standard math puts 0° at East. To make 0° North and clockwise:
+    # Screen Angle = 90 - (angle - heading)
 
-    # Solid North Crosshair rotated with Antenna Angle
+    # Solid North Crosshair
+    north_rad = math.radians(90.0 - (0.0 - heading))
     nx = int(center_x + max_radius * math.cos(north_rad))
-    ny = int(center_y + max_radius * math.sin(north_rad))
-    draw.line((center_x, center_y, nx, ny), fill=1)  # North
+    ny = int(center_y - max_radius * math.sin(north_rad))  # Subtracted for screen-space Y
+    draw.line((center_x, center_y, nx, ny), fill=1)
 
-    # Dashed Crosshairs rotated with Antenna Angle
+    # Dashed Crosshairs (South, West, East)
+    south_rad = math.radians(90.0 - (180.0 - heading))
+    west_rad = math.radians(90.0 - (270.0 - heading))
+    east_rad = math.radians(90.0 - (90.0 - heading))
+
     for r in range(0, max_radius + 1, 2):
-        # South dashed line
-        # draw.line((center_x, center_y + max_radius, center_x, center_y), fill=1)  # South
+        # South
         sx = int(center_x + r * math.cos(south_rad))
-        sy = int(center_y + r * math.sin(south_rad))
-        draw.point((sx, sy), fill=1)  # South (from center going down)
+        sy = int(center_y - r * math.sin(south_rad))
+        draw.point((sx, sy), fill=1)
 
-        # West dashed line
-        # draw.line((center_x - max_radius, center_y, center_x, center_y), fill=1)  # West
+        # West
         wx = int(center_x + r * math.cos(west_rad))
-        wy = int(center_y + r * math.sin(west_rad))
-        draw.point((wx, wy), fill=1)  # West (from center going left)
+        wy = int(center_y - r * math.sin(west_rad))
+        draw.point((wx, wy), fill=1)
 
-        # East dashed line
-        # draw.line((center_x + max_radius, center_y, center_x, center_y), fill=1)  # East
+        # East
         ex = int(center_x + r * math.cos(east_rad))
-        ey = int(center_y + r * math.sin(east_rad))
-        draw.point((ex, ey), fill=1)  # East (from center going right)
+        ey = int(center_y - r * math.sin(east_rad))
+        draw.point((ex, ey), fill=1)
 
-    # Array for "antenna strength" polygon vertex points
+    # Antenna strength array polygon vertex points
     polygon_points = []
 
-    # Loop through all 72 (every 5 degrees) to find the "antenna strength" boundary points
+    # Loop through 360 degrees (every 5 degrees)
     for angle in range(0, 360, 5):
-
-        # ADDED: 5-degree moving window to pull the max peak strength (angle +/- 2 degrees)
         window_values = []
         for offset in range(-2, 3):
             neighbor_index = (angle + offset) % 360
             window_values.append(signal_history[neighbor_index])
 
-        # Use maximum signal strength found inside 5-degree slice
         saved_rssi = max(window_values)
 
-        # Anything lower than or equal to your tracking floor is clipped to the floor
+        # Clamp RSSI bounds safely
         if saved_rssi < RSSI_WEAK_BOUND:
             saved_rssi = RSSI_WEAK_BOUND
         elif saved_rssi > RSSI_STRONG_BOUND:
             saved_rssi = RSSI_STRONG_BOUND
 
-        # Calculate proportional line length based on clamped values
-        # If saved_rssi == RSSI_WEAK_BOUND (-80), proportion becomes exactly 0.0
-        # If saved_rssi == RSSI_STRONG_BOUND (-45), proportion becomes exactly 1.0
         proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
         line_length = max_radius * proportion
 
-        # Shift geometry relative to current compass heading so layout updates dynamically
-        angle_rad = math.radians(angle - heading - 90.0)
+        # Apply identical screen space angle mapping
+        angle_rad = math.radians(90.0 - (angle - heading))
 
-        # Compute polygon vertex coordinates
         target_x = int(center_x + line_length * math.cos(angle_rad))
-        target_y = int(center_y + line_length * math.sin(angle_rad))
+        target_y = int(center_y - line_length * math.sin(angle_rad))  # Subtracted for screen-space Y
 
         polygon_points.append((target_x, target_y))
 
-    # Draw the white Antenna strength/direction polygon over black circle
+    # Draw the white Antenna strength/direction polygon
     if len(polygon_points) >= 3:
         draw.polygon(polygon_points, fill=1, outline=1)
 
-    # Layer black crosshairs *on top* of the white strength pattern
-    # TODO decide if +/- 1px or 2px
-    draw.point((center_x, center_y - 1), fill=0)  # North micro-marker
-    draw.point((center_x, center_y + 1), fill=0)  # South micro-marker
-    draw.point((center_x - 1, center_y), fill=0)  # West micro-marker
-    draw.point((center_x + 1, center_y), fill=0)  # East micro-marker
-
-    # black center point dot over everything
+    # Center axis markers & black center doc on top of everything
+    draw.point((center_x, center_y - 1), fill=0)
+    draw.point((center_x, center_y + 1), fill=0)
+    draw.point((center_x - 1, center_y), fill=0)
+    draw.point((center_x + 1, center_y), fill=0)
     draw.point((center_x, center_y), fill=0)
 
 
@@ -470,7 +455,7 @@ def main():
 
                     # If signal above download threshold, test button state
                     if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                        # Cleanly captures the flag set by the trailing edge release handler
+                        # Fi short press download file
                         if short_press:
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
                             download_count += 1
@@ -506,6 +491,7 @@ def main():
             short_press = False
 
             heading = get_compass_heading(bno_sensor)
+            heading = 10.0
 
             # Convert current float heading to integer and save live signal strength telemetry
             if rssi is not None and heading is not None:
@@ -520,21 +506,20 @@ def main():
             if connected_mode:
                 print_metrics(quality, rssi, ssid, tx_rate)
                 if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                    print("-> download possible (download {download_count}).}?)")
+                    print(f"-> download possible (download #{download_count})?)")
                 else:
                     print("-> connected, but signal too weak for download")
             else:
                 print(f"**Probing ssid: {TARGET_SSID} un-connected")
-                if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-                    print("-> connection possible (connect?)")
+                if rssi is not None:
+                    print(f"RSSI:    {rssi:>3} dBm  {rssi_to_string(rssi)}")
+                    if rssi >= RSSI_CONNECT_THRESHOLD:
+                        print("-> connection possible (connect?)")
 
-            live_rssi_str = f"{rssi} dBm" if rssi is not None else "Out of Range"
-            heading_print_str = f"{heading:.1f}°" if heading is not None else "0.0° (No IMU)"
-            print(f"Antenna Vector Angle: {heading_print_str} --> Current RSSI: {live_rssi_str}")
             if heading is not None:
                 print(f"Compass Heading: {heading:.0f}° (Magnetic North = 0°)")
             else:
-                print("Compass Heading: n/a")
+                print("Compass Heading: ???° - no IMU")
 
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
