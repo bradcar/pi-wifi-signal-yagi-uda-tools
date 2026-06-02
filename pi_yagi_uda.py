@@ -45,7 +45,9 @@ right 32px for circle graphic
 Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
 
 Requirements:
- TODO must edit config.txt
+ TODO must edit config.txt for IMU on sencondary I2C0
+ TODO TURN OFF BLUETOOTH !!!
+ TODO test Pi Pico as Access Point - set to shell-fi
 
     # on Mac edit microSD's config.txt
     # enable second i2c port (i2c0)
@@ -71,6 +73,7 @@ from gpiozero import Button
 
 # Network signal tracking dependencies
 from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics, rssi_to_string
+from download_file import download_file
 
 # TODO test Pi Pico as Access Point
 # TARGET_SSID = "shell-fi"
@@ -243,7 +246,8 @@ def get_compass_heading(bno):
         heading_deg = math.degrees(yaw_rad)
         heading = (360.0 - heading_deg) % 360.0
         return heading
-    except Exception:
+    except ValueError as e:
+        print(f"IMU Data Error: geometric_quaternion is invalid tuple: {e}")
         return None
 
 
@@ -453,15 +457,19 @@ def main():
                     rssi, quality, tx_rate = query_wifi()
                     ssid = current_ssid
 
-                    # If signal above download threshold, test button state
+                    # Signal above download threshold, test button state
                     if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                        # Fi short press download file
+                        # Short press to download file
                         if short_press:
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
-                            download_count += 1
+                            url_string = "http://192.168.4.1/download"
+                            destination_string ="/home/pi-admin/downloads"
+                            print (f" -> from {url_string}, to destination directory {destination_string}")
+                            success, filename = download_file(url_string, destination_directory=destination_string)
+                            if success:
+                                download_count += 1
+                                print(f" -> successfully downloaded {destination_string}/{filename}")
 
-                            # TODO Add download code
-                            print(f"TODO Add Download code !!!\n")
                 else:
                     # Connection broken. Return to Probe Mode
                     connected_mode = False
@@ -510,6 +518,7 @@ def main():
                 else:
                     print("-> connected, but signal too weak for download")
             else:
+                # print metrics for Probe mode
                 print(f"**Probing ssid: {TARGET_SSID} un-connected")
                 if rssi is not None:
                     print(f"RSSI:    {rssi:>3} dBm  {rssi_to_string(rssi)}")
@@ -524,14 +533,14 @@ def main():
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-            # OLED SSD Display, Left side is text stats, right side is radar graphic
+            # OLED SSD Display, Left side is text metrics, right side is radar graphic
             if ssd_detected:
                 draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  # clear canvas
 
-                # Keep original raw heading (None -> "???°") for text layout
+                # Text Metrics
                 display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected=connected_mode)
 
-                # Fallback to 0.0 strictly for geometric rotation math if the sensor is offline
+                # rssi strength/angle "radar" graphic
                 render_heading = heading if heading is not None else 0.0
                 display_radar_ssd(draw, cadence_fill, render_heading, signal_history)
 
