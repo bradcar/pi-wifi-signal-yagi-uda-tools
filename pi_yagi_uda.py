@@ -75,7 +75,7 @@ from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi,
 # TODO REMOVE WHEN YAGI-UDA ADDED: Import the mock test environment
 from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
 
-# TODO fix after testing
+# TODO test Pi Pico as Access Point
 # TARGET_SSID = "shell-fi"
 TARGET_SSID = "ABox-PDX"
 
