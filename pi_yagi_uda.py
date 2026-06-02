@@ -295,7 +295,7 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
 
             # Notify if download is possible based on -70 dBm rule
             if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                line3 = f"{heading_str} {direction_str:<2} ...dload{download_count}?"
+                line3 = f"{heading_str} {direction_str:<2} ..dload {download_count}?"
             else:
                 line3 = f"{heading_str} {direction_str:<2}"
         else:
