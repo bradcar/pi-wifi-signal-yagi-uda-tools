@@ -113,7 +113,7 @@ def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
     return target_rssi
 
 
-def rssi_quality_to_string(rssi, quality):
+def rssi_to_string(rssi):
     """Generates text strings for signal metrics."""
     if rssi is None:
         return "0 bar", "Unstable Link"
@@ -128,7 +128,10 @@ def rssi_quality_to_string(rssi, quality):
         rssi_string = "1 bar"
     else:
         rssi_string = "0 bar"
+    return rssi_string
 
+def quality_to_string(quality):
+    """Generates text strings for signal metrics."""
     if quality is not None:
         if quality >= 60:
             quality_string = "Hi Quality"
@@ -141,12 +144,13 @@ def rssi_quality_to_string(rssi, quality):
     else:
         quality_string = "Disconnected"
 
-    return rssi_string, quality_string
+    return quality_string
 
 
 def print_metrics(quality, rssi, ssid, tx_rate):
     """Prints RSSI, Link Quality, and Tx Rate with text interpretation."""
-    rssi_string, quality_string = rssi_quality_to_string(rssi, quality)
+    rssi_string = rssi_to_string(rssi)
+    quality_string = quality_to_string(quality)
 
     print(f"WiFi Signal Monitor (Pi Zero): {ssid}")
     print(f"SSID:    {ssid}")
