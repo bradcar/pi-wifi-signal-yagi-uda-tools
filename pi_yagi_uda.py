@@ -72,9 +72,6 @@ from gpiozero import Button
 # Network signal tracking dependencies
 from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics
 
-# TODO REMOVE WHEN YAGI-UDA ADDED: Import the mock test environment
-from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
-
 # TODO test Pi Pico as Access Point
 # TARGET_SSID = "shell-fi"
 TARGET_SSID = "ABox-PDX"
@@ -314,7 +311,7 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
     draw.text((left_indent, 20), line3, font=font, fill=1)
 
 
-def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: float = 0.0):
+def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     """
     Draw a white box with a black radar circle in it.
     Add white directional orientation lines for North, East, South, and West.
@@ -375,16 +372,25 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
 
     # Loop through all 72 (every 5 degrees) to find the "antenna strength" boundary points
     for angle in range(0, 360, 5):
-        # Look up what the mock data vector has saved for this exact angle entry
-        saved_rssi = MOCK_SIGNAL_ARRAY[angle]
 
-        # Clamp rssi values (es: -45 to -80 dBm)
-        if saved_rssi > RSSI_STRONG_BOUND:
-            saved_rssi = RSSI_STRONG_BOUND
-        elif saved_rssi < RSSI_WEAK_BOUND:
+        # ADDED: 5-degree moving window to pull the max peak strength (angle +/- 2 degrees)
+        window_values = []
+        for offset in range(-2, 3):
+            neighbor_index = (angle + offset) % 360
+            window_values.append(signal_history[neighbor_index])
+
+        # Use maximum signal strength found inside 5-degree slice
+        saved_rssi = max(window_values)
+
+        # Anything lower than or equal to your tracking floor is clipped to the floor
+        if saved_rssi < RSSI_WEAK_BOUND:
             saved_rssi = RSSI_WEAK_BOUND
+        elif saved_rssi > RSSI_STRONG_BOUND:
+            saved_rssi = RSSI_STRONG_BOUND
 
-        # Calculate proportional line length based on rssi
+        # Calculate proportional line length based on clamped values
+        # If saved_rssi == RSSI_WEAK_BOUND (-80), proportion becomes exactly 0.0
+        # If saved_rssi == RSSI_STRONG_BOUND (-45), proportion becomes exactly 1.0
         proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
         line_length = max_radius * proportion
 
@@ -395,7 +401,6 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
         target_x = int(center_x + line_length * math.cos(angle_rad))
         target_y = int(center_y + line_length * math.sin(angle_rad))
 
-        # Append the calculated outer coordinate point to our vertex tracker list
         polygon_points.append((target_x, target_y))
 
     # Draw the white Antenna strength/direction polygon over black circle
@@ -427,11 +432,8 @@ def main():
     if ssd_detected:
         display, draw, font, image = init_ssd_display(i2c1)
 
-    # Initialize radar sweep tracker angle to up (0 degrees)
-    sweep_angle = 0.0
-
-    # TODO REMOVE WHEN REAL IMU ROTATING: Mock tracking variable to force screen rotation animation
-    mock_heading_tracker = 0.0
+    # signal history array tracking all 360 discrete headings
+    signal_history = [-99.0] * 360
 
     ssid, rssi, quality, tx_rate = None, None, None, None
     connected_mode = False  # Track state: False = Probing, True = Hard Connection Lock
@@ -505,13 +507,10 @@ def main():
 
             heading = get_compass_heading(bno_sensor)
 
-            # TODO REMOVE WHEN REAL IMU INSTALLED: Fallback to animated loop tracker if physical IMU returns None
-            if heading is None:
-                heading = mock_heading_tracker
-
-            # TODO: change to real data. now Pulls directly from your cardiod_test_data_generator.py MOCK_SIGNAL_ARRAY configuration
-            # Get signal strength in each direction for radar graphic
-            _, mock_rssi = measured_signal_strength(sweep_angle)
+            # Convert current float heading to integer and save live signal strength telemetry
+            if rssi is not None and heading is not None:
+                current_index = int(heading) % 360
+                signal_history[current_index] = rssi
 
             finish_time = time.time()
             duration = finish_time - start_time
@@ -529,7 +528,9 @@ def main():
                 if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
                     print("-> connection possible (connect?)")
 
-            print(f"Sweep Vector Angle: {sweep_angle}° --> Mock RSSI: {mock_rssi} dBm")
+            live_rssi_str = f"{rssi} dBm" if rssi is not None else "Out of Range"
+            heading_print_str = f"{heading:.1f}°" if heading is not None else "0.0° (No IMU)"
+            print(f"Antenna Vector Angle: {heading_print_str} --> Current RSSI: {live_rssi_str}")
             if heading is not None:
                 print(f"Compass Heading: {heading:.0f}° (Magnetic North = 0°)")
             else:
@@ -541,17 +542,16 @@ def main():
             # OLED SSD Display, Left side is text stats, right side is radar graphic
             if ssd_detected:
                 draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  # clear canvas
+
+                # Keep original raw heading (None -> "???°") for text layout
                 display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected=connected_mode)
-                display_radar_ssd(draw, sweep_angle, cadence_fill, heading=heading)
+
+                # Fallback to 0.0 strictly for geometric rotation math if the sensor is offline
+                render_heading = heading if heading is not None else 0.0
+                display_radar_ssd(draw, cadence_fill, render_heading, signal_history)
+
                 display.image(image)
                 display.show()
-
-            # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
-            # Increment the sweep angle by 5 degrees for the next pass
-            sweep_angle = (sweep_angle + 5) % 360
-
-            # TODO REMOVE WHEN REAL IMU ROTATING: Increment mockup heading loop by 2 degrees per frame to animate screen
-            mock_heading_tracker = (mock_heading_tracker + 2.0) % 360
 
             # Dynamic sleep, sleep longer when WiFi out of range
             if connected_mode:
