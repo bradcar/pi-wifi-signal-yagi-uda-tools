@@ -78,7 +78,7 @@ def query_wifi():
     return rssi, quality, tx_rate
 
 
-def probe_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
+def scan_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
     """
     High-speed, non-blocking scan replacement using 'iw dump' instead of iwlist.
     Reads the kernel's active BSS cache to avoid blocking the main loop.

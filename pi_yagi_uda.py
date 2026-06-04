@@ -8,7 +8,7 @@ if the targeted network is connected it can download the data file.
 * this is shown in the OLED SSD display as:
 * "SSID = target-net"
 
-If the targeted network is not connected, it uses a lighter weight probe which scans all available networks looking for the targeted network.
+If the targeted network is not connected, it uses a lighter weight Scan Mode which scans all available networks looking for the targeted network.
 * this is shown in the OLED SSD display as:
 * "ssid   target-net"
 When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
@@ -19,13 +19,13 @@ This is also shown graphically in a small radar screen graphic.
 It gracefully handles total connection drops and resumes automatically on reconnect.
 
 0. short press >0.1 sec
-   long press >1.0 sec
-1. Starts in Probe Mode
+   long press >0.5 sec
+1. Starts in Scan Mode
    a. If signal ≥ RSSI_CONNECT_THRESHOLD, a short press triggers Connected Mode (nmcli up).
 2. In Connection Mode
    a. If signal ≥ RSSI_DOWNLOAD_THRESHOLD, a short press starts download.
       5 second timeout if no download, display will continue to show "..dload 0?"
-   b. A long press returns to Probe Mode (nmcli down)
+   b. A long press returns to Scan Mode (nmcli down)
 
 Data is shown on  SSD1305 128x32 display and printed to std out.
 left 96px for text
@@ -47,12 +47,16 @@ Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03
 Requirements:
  TODO TURN OFF BLUETOOTH !!!
  TODO measure shell-fi created by Pi Pico as Access Point
-
+ TODO consider polygon vertex count
+    - The radar circle (radius of 15 px) has max of 84 pixels on perimeter
+    - 72 vertices every 5 degrees (360/5)
+    - 40 vertices every 9 degrees (360/9)
 """
 import math
 import time
 import subprocess
 from datetime import datetime
+from typing import Literal
 
 # Import display and magnetometer
 import adafruit_lis3mdl
@@ -65,7 +69,7 @@ from PIL import Image, ImageDraw, ImageFont
 from gpiozero import Button
 
 # Network signal tracking dependencies
-from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics, rssi_to_string
+from pi_wifi_rssi_quality_txrate import get_ssid, scan_target_ssid, query_wifi, print_metrics, rssi_to_string
 from download_file import download_file
 
 # TODO test Pi Pico as Access Point
@@ -93,7 +97,7 @@ button_press_time = 0.0
 download_count = 0
 
 # Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
-button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=1.0)
+button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=0.5)
 
 
 def on_button_pressed():
@@ -105,23 +109,22 @@ def on_button_released():
     global short_press, long_press, button_press_time
 
     # Calculate press time
+    duration = 0.0
     if button_press_time > 0.0:
         duration = time.time() - button_press_time
-    else:
-        duration = 0.0  # Fallback safety case
 
     # Reset press time
     button_press_time = 0.0
 
     if duration >= button0.hold_time:
         long_press = True
-        print(f"\n* ====== Long Press Detected ({duration:.4f}s). Reverting to Probe Mode.")
+        print(f"\n* ====== Long Press Detected ({duration:.4f}s). Reverting to Scan Mode.")
     else:
         short_press = True
         print(f"\n* ------ Short Press Detected ({duration:.4f}s).")
 
 
-# Listen to both edges to manage our independent software timer cleanly
+# Listen to both edges to measure button press duration
 button0.when_pressed = on_button_pressed
 button0.when_released = on_button_released
 print("Button0 Listeners Active (GPIO 26) for Press and Release Edges.")
@@ -148,7 +151,7 @@ def scan_i2c_bus(i2c_primary):
                     print(" -> likely LIS3MDL Magnetometer")
                     lis3mdl_detected = address
                 else:
-                    print(f" -> unknown device {hex(address)}")
+                    print(f" -> unknown device")
     except RuntimeError as e:
         print(f"I2C Hardware Error: {e}")
     print("\n")
@@ -181,13 +184,31 @@ def init_ssd_display(i2c):
 
 def init_lis3mdl(i2c):
     try:
-        # The library handles internal configuration automatically
         sensor = adafruit_lis3mdl.LIS3MDL(i2c)
         print("Successful LIS3MDL Magnetometer Init")
         return sensor
     except Exception as e:
         print(f"WARNING: LIS3MDL Init Failed: {e}")
         return None
+
+
+def change_connection(action: Literal["up", "down"]) -> bool:
+    """
+    Change connection state. Changes mode even if the hardware layer reports a temporary busy status.
+    """
+    if action not in ("up", "down"):
+        return False
+
+    timeout_duration = 8 if action == "up" else 5
+
+    # Running without check=True bypasses transient 'device busy' status 10 errors
+    subprocess.run(
+        ["sudo", "nmcli", "connection", action, TARGET_SSID],
+        timeout=timeout_duration
+    )
+
+    # Force the state machine to transition immediately, letting the next loop iteration handle recovery
+    return (action == "up")
 
 
 def get_compass_heading(sensor):
@@ -246,13 +267,13 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
     direction_str = get_compass_8pt_string(heading) if heading is not None else ""
     heading_str = f"{heading:>3.0f}°" if heading is not None else "???°"
 
-    # No target signal, target is out of range
+    # if rssi is not set, display out of range messages
     if rssi is None:
         line1 = f"target: {TARGET_SSID}"
         line2 = "out of range... "
         line3 = f"{heading_str} {direction_str:<2} scanning"
 
-    # Signal lock (Either probing OR fully connected)
+    # rssi signal, either probing or connected
     else:
         if connected:
             line1 = f"SSID = {ssid}"
@@ -275,7 +296,7 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
             else:
                 line3 = f"{heading_str} {direction_str:<2} weak signal"
 
-    # Write text to OLED buffer canvas
+    # Write text to OLED buffer
     draw.text((left_indent, 0), line1, font=font, fill=1)
     draw.text((left_indent, 10), line2, font=font, fill=1)
     draw.text((left_indent, 20), line3, font=font, fill=1)
@@ -316,7 +337,6 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     south_rad = math.radians(90.0 - (180.0 - heading))
     west_rad = math.radians(90.0 - (270.0 - heading))
     east_rad = math.radians(90.0 - (90.0 - heading))
-
     for r in range(0, max_radius + 1, 2):
         # South
         sx = int(center_x + r * math.cos(south_rad))
@@ -333,10 +353,8 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
         ey = int(center_y - r * math.sin(east_rad))
         draw.point((ex, ey), fill=1)
 
-    # Antenna strength array polygon vertex points
+    # Antenna strength polygon vertex points at 5 degrees intervals, 72 vertices
     polygon_points = []
-
-    # Loop through 360 degrees (every 5 degrees)
     for angle in range(0, 360, 5):
         window_values = []
         for offset in range(-2, 3):
@@ -377,8 +395,8 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
 def main():
     global short_press, long_press, download_count
 
-    print("Starting Pi Zero 2 W Signal & Antenna Tracking...\n")
-    probe_mode = True
+    print("Start Wi-Fi Signal & Antenna Tracking...\n")
+    scan_mode = True
     connected_mode = False
 
     i2c1, ssd_detected, lis3mdl_detected = init_i2c()
@@ -390,7 +408,7 @@ def main():
     if ssd_detected:
         display, draw, font, image = init_ssd_display(i2c1)
 
-    # signal history array tracking all 360 discrete headings
+    # signal history tracking of 360 discrete headings
     signal_history = [-99.0] * 360
 
     ssid, rssi, quality, tx_rate = None, None, None, None
@@ -403,32 +421,26 @@ def main():
             cadence_fill = not cadence_fill
             current_loop_time = time.time()
 
-            # On long_press revert to Probe Mode
+            # On long_press revert to Scan Mode
             if long_press:
+                print("\nLong_press: disconnecting")
                 if connected_mode:
-                    try:
-                        print("\nLong_press: disconnecting")
-                        # Set OS interface link to down
-                        subprocess.run(["sudo", "nmcli", "connection", "down", TARGET_SSID], timeout=5)
-                    except Exception as e:
-                        print(f"Disconnect failed: {e}")
+                    connected_mode = change_connection("down")
 
-                connected_mode = False
                 tx_rate = None
                 quality = None
                 long_press = False
                 short_press = False
 
+            # Connected Mode - measure rssi, quality, txrate
             if connected_mode:
                 current_ssid = get_ssid()
                 if current_ssid == TARGET_SSID:
-                    # Connected Mode - Extract full metrics
                     rssi, quality, tx_rate = query_wifi()
                     ssid = current_ssid
 
-                    # Signal above download threshold, test button state
+                    # Signal above download threshold, look for download request (single pulse)
                     if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                        # Short press to download file
                         if short_press:
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
                             url_string = "http://192.168.4.1/download"
@@ -440,55 +452,50 @@ def main():
                                 print(f" -> successfully downloaded {destination_string}/{filename}")
 
                 else:
-                    # Connection broken. Return to Probe Mode
+                    # Connection broken, return to Scan Mode
                     connected_mode = False
                     tx_rate = None
                     quality = None
+
+            # Scan Mode - Scan for remote target, only measure rssi
             else:
-                # Probe Mode - Scan for remote target, only rssi measured
                 tx_rate = None
                 quality = None
 
-                # scan all unconnected signals, but only return rssi for target ssid
-                rssi = probe_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
+                # Scan all unconnected signals, but only return rssi for target ssid
+                rssi = scan_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
                 ssid = TARGET_SSID if rssi is not None else None
 
-                # when signal is stronger than connection threshold, evaluate button input
+                # When signal is stronger than connection threshold, short press changes mode to connected
                 if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-                    # Short press changes the mode.
                     if short_press:
                         print(f"\n* Button pressed ({rssi} dBm). Connecting...")
-                        try:
-                            subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID], timeout=8)
-                            connected_mode = True
-                        except Exception as e:
-                            print(f"Connection command failed: {e}")
-                            connected_mode = False
+                        connected_mode = change_connection("up")
 
             short_press = False
 
             heading = get_compass_heading(lis3mdl)
             print(f"heading - after get_compass_heading: {heading}")
-            # heading = 10.0
 
-            # Convert current float heading to integer and save live signal strength telemetry
+            # Save rssi signal strength telemetry at heading index
             if rssi is not None and heading is not None:
-                current_index = int(heading) % 360
-                signal_history[current_index] = rssi
+                signal_history[int(heading) % 360] = rssi
 
             finish_time = time.time()
             duration = finish_time - start_time
             start_time = finish_time
 
-            # Print Metrics to standard Out
+            # Print metrics to standard out
             if connected_mode:
+                # Print connected mode metrics to standard out
                 print_metrics(quality, rssi, ssid, tx_rate)
                 if rssi >= RSSI_DOWNLOAD_THRESHOLD:
                     print(f"-> download possible (download #{download_count})?)")
                 else:
                     print("-> connected, but signal too weak for download")
+
             else:
-                # Print metrics for Probe mode
+                # Print Scan Mode metrics to standard out
                 print(f"**Probing ssid: {TARGET_SSID} un-connected")
                 if rssi is not None:
                     print(f"RSSI:    {rssi:>3} dBm  {rssi_to_string(rssi)}")
@@ -510,7 +517,7 @@ def main():
                 # Text Metrics
                 display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected=connected_mode)
 
-                # rssi strength/angle "radar" graphic
+                # use rssi strength and angle to render "radar" graphic
                 render_heading = heading if heading is not None else 0.0
                 display_radar_ssd(draw, cadence_fill, render_heading, signal_history)
 
@@ -521,7 +528,7 @@ def main():
             if connected_mode:
                 time.sleep(0.05)  # Connected Mode
             elif rssi is not None:
-                time.sleep(0.01)  # Probe Mode
+                time.sleep(0.01)  # Scan Mode
             else:
                 time.sleep(0.5)  # Out of range fallback
 
