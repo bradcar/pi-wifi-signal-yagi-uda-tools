@@ -11,7 +11,7 @@ if the targeted network is connected it can download the data file.
 If the targeted network is not connected, it uses a lighter weight probe which scans all available networks looking for the targeted network.
 * this is shown in the OLED SSD display as:
 * "ssid   target-net"
-When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the WiFi source.
+When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
 
 It prints the results to std out and an OLED display.
 It graphically shows the signal strength at a compass direction.
@@ -46,13 +46,7 @@ Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03
 
 Requirements:
  TODO TURN OFF BLUETOOTH !!!
- TODO test Pi Pico as Access Point - set to shell-fi
-
-    # on Mac edit microSD's config.txt
-    # enable second i2c port (i2c0)
-    # dtparam=i2c_vc=on
-    # DO NOT load overlays for detected cameras (=1 is on)
-    # camera_auto_detect=0
+ TODO measure shell-fi created by Pi Pico as Access Point
 
 """
 import math
@@ -61,8 +55,8 @@ import subprocess
 from datetime import datetime
 
 # Import display and magnetometer
-import adafruit_lis3mdl  # prototype needed: import adafruit_ssd1306
-import adafruit_ssd1305
+import adafruit_lis3mdl
+import adafruit_ssd1305  # previous prototype used: import adafruit_ssd1306
 
 import board
 import busio
@@ -438,8 +432,8 @@ def main():
                         if short_press:
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
                             url_string = "http://192.168.4.1/download"
-                            destination_string ="/home/pi-admin/downloads"
-                            print (f" -> download from {url_string} to destination directory: {destination_string}")
+                            destination_string = "/home/pi-admin/downloads"
+                            print(f" -> download from {url_string} to destination directory: {destination_string}")
                             success, filename = download_file(url_string, destination_directory=destination_string)
                             if success:
                                 download_count += 1
@@ -455,13 +449,13 @@ def main():
                 tx_rate = None
                 quality = None
 
-                # scan unconnected signals
+                # scan all unconnected signals, but only return rssi for target ssid
                 rssi = probe_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
                 ssid = TARGET_SSID if rssi is not None else None
 
-                # If signal hits the connection threshold, evaluate button input
+                # when signal is stronger than connection threshold, evaluate button input
                 if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-                    # Cleanly captures the flag set by the trailing edge release handler
+                    # Short press changes the mode.
                     if short_press:
                         print(f"\n* Button pressed ({rssi} dBm). Connecting...")
                         try:
@@ -486,7 +480,7 @@ def main():
             duration = finish_time - start_time
             start_time = finish_time
 
-            # Print Metrics to Standard Out
+            # Print Metrics to standard Out
             if connected_mode:
                 print_metrics(quality, rssi, ssid, tx_rate)
                 if rssi >= RSSI_DOWNLOAD_THRESHOLD:
@@ -494,7 +488,7 @@ def main():
                 else:
                     print("-> connected, but signal too weak for download")
             else:
-                # print metrics for Probe mode
+                # Print metrics for Probe mode
                 print(f"**Probing ssid: {TARGET_SSID} un-connected")
                 if rssi is not None:
                     print(f"RSSI:    {rssi:>3} dBm  {rssi_to_string(rssi)}")
@@ -509,7 +503,7 @@ def main():
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-            # OLED SSD Display, Left side is text metrics, right side is radar graphic
+            # Update OLED SSD Display, Left side is text metrics, right side is radar graphic
             if ssd_detected:
                 draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  # clear canvas
 
