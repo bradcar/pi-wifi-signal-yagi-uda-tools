@@ -104,6 +104,19 @@ can also run in pycharm
    ls -l /usr/sbin/iwlist
 
 
+### Turning on gadget-mode on existing Raspberry Pi headless
+
+1. Verify that you are running Raspberry Pi OS Trixie:
+cat /etc/os-release
+→ Confirm that VERSION_CODENAME=trixie.
+
+2. Install and enable gadget mode:
+   1. sudo apt update
+   2. sudo apt install rpi-usb-gadget
+   3. sudo rpi-usb-gadget on
+   4. sudo reboot
+
+
 ### PyCharm Remote Deployment Reset (running out of /tmp issue)
 
 You may run into issues with PyCharm executing your code in a randomized `/tmp/` directory instead of running natively out of your home directory on the Pi.
