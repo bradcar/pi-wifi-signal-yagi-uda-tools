@@ -8,14 +8,16 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
     """
     Downloads log file directly from the Pi Pico AP.
     Saves it using the Pico's dynamic versioned filename and validates file size.
+
+    5 second timeout
     """
     if not os.path.exists(destination_directory):
         os.makedirs(destination_directory)
 
     print(f"download_file: Download from {url_string}...")
     try:
-        # 10-second timeout if range is lost
-        with urllib.request.urlopen(url_string, timeout=10) as response:
+        # 5-second timeout if range is lost
+        with urllib.request.urlopen(url_string, timeout=5) as response:
             if response.status == 200:
 
                 # Get dynamic Content-Disposition filename
@@ -71,7 +73,7 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
                 return False, None
 
     except urllib.error.URLError as e:
-        print(f"download_file: NETWORK ERROR: Could not reach webpage to download: {e.reason}\n")
+        print(f"download_file: NETWORK ERROR: Could not reach download webpage: {e.reason}\n")
         return False, None
     except Exception as e:
         print(f"download_file: ERROR during transfer: {e}\n")

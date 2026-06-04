@@ -11,21 +11,21 @@ if the targeted network is connected it can download the data file.
 If the targeted network is not connected, it uses a lighter weight probe which scans all available networks looking for the targeted network.
 * this is shown in the OLED SSD display as:
 * "ssid   target-net"
-When connected to a Yagi-Uda Antenna and an IMU we can use this to locate the WiFi source.
+When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the WiFi source.
 
 It prints the results to std out and an OLED display.
 It graphically shows the signal strength at a compass direction.
 This is also shown graphically in a small radar screen graphic.
 It gracefully handles total connection drops and resumes automatically on reconnect.
 
+0. short press >0.1 sec
+   long press >1.0 sec
 1. Starts in Probe Mode
    a. If signal ≥ RSSI_CONNECT_THRESHOLD, a short press triggers Connected Mode (nmcli up).
 2. In Connection Mode
    a. If signal ≥ RSSI_DOWNLOAD_THRESHOLD, a short press starts download.
+      5 second timeout if no download, display will continue to show "..dload 0?"
    b. A long press returns to Probe Mode (nmcli down)
-
-short press >0.1 sec
-long press >1.5 sec
 
 Data is shown on  SSD1305 128x32 display and printed to std out.
 left 96px for text
@@ -45,7 +45,6 @@ right 32px for circle graphic
 Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
 
 Requirements:
- TODO must edit config.txt for IMU on sencondary I2C0
  TODO TURN OFF BLUETOOTH !!!
  TODO test Pi Pico as Access Point - set to shell-fi
 
@@ -61,14 +60,14 @@ import time
 import subprocess
 from datetime import datetime
 
-# Testing display had to use: import adafruit_ssd1306
+# Import display and magnetometer
+import adafruit_lis3mdl  # prototype needed: import adafruit_ssd1306
 import adafruit_ssd1305
 
 import board
 import busio
 from PIL import Image, ImageDraw, ImageFont
-from adafruit_bno08x import BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR
-from adafruit_bno08x.i2c import BNO08X_I2C
+
 from gpiozero import Button
 
 # Network signal tracking dependencies
@@ -134,9 +133,9 @@ button0.when_released = on_button_released
 print("Button0 Listeners Active (GPIO 26) for Press and Release Edges.")
 
 
-def scan_i2c_bus(i2c_primary, i2c_secondary):
+def scan_i2c_bus(i2c_primary):
     print("I2C device Scan...")
-    bno_detected = None
+    lis3mdl_detected = None
     ssd_detected = None
 
     try:
@@ -151,61 +150,23 @@ def scan_i2c_bus(i2c_primary, i2c_secondary):
                 if address == 0x3C:
                     print(" -> likely SSD1305 OLED display")
                     ssd_detected = True
-                elif address == 0x4B or address == 0x4A:
-                    print(" -> likely BNO086 IMU")
-                    bno_detected = address
+                elif address == 0x1C or address == 0x1E:
+                    print(" -> likely LIS3MDL Magnetometer")
+                    lis3mdl_detected = address
                 else:
                     print(f" -> unknown device {hex(address)}")
     except RuntimeError as e:
         print(f"I2C Hardware Error: {e}")
-
-        # Check Secondary I2C0 bus
-    if i2c_secondary is None:
-        print("\nSkipping I2C0 scan: Secondary bus not available.")
-    else:
-        devices0 = i2c_secondary.scan()
-        if not devices0:
-            print("Error: No I2C0 devices detected (secondary). Check your wiring")
-        else:
-            print(f"\nFound I2C0 (secondary) {len(devices0)} device(s):")
-            for address in devices0:
-                print(f" I2C0 Device: Hex: {hex(address)} ({address})")
-                if address == 0x3C:
-                    print(" -> likely SSD1305 OLED display")
-                    ssd_detected = True
-                elif address == 0x4B or address == 0x4A:
-                    print(" -> likely BNO086 IMU")
-                    bno_detected = address
-                else:
-                    print(f" -> unknown device {hex(address)}")
-
     print("\n")
-    return ssd_detected, bno_detected
+    return ssd_detected, lis3mdl_detected
 
 
 def init_i2c():
     # Set I2C 1M is max for SSD1305 display, i2c1 is primary on Pi Zero 2 W
-    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
-
-    # Set I2C 400K is standard mode ofr  for SSD1305 display, i2c0 is secondary on Pi Zero 2 W
-    # note: must have 4.7k to 10k ohm pullups for sda and sck on 400K
-    # SDA pin 27
-    # SCL pin 28
-    # must edit config.txt
-    # # enable second i2c port (i2c0)
-    # dtparam=i2c_vc=on
-    # # BRAD: DO NOT load overlays for detected cameras (=1 is on)
-    # camera_auto_detect=0
-    # https://www.youtube.com/watch?v=FUAiELC76aw
-    i2c0 = None
-    try:
-        i2c0 = busio.I2C(board.SCL0, board.SDA0, frequency=400000)
-    except Exception as e:
-        i2c0 = None
-        print(f"i2c0 (secondary) not available: {e}")
-
-    ssd_detected, bno_detected = scan_i2c_bus(i2c1, i2c0)
-    return i2c1, i2c0, ssd_detected, bno_detected
+    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=100000)
+    ssd_detected, lis_detected = scan_i2c_bus(i2c1)
+    print(f"{ssd_detected=} + {lis_detected=}")
+    return i2c1, ssd_detected, lis_detected
 
 
 def init_ssd_display(i2c):
@@ -224,30 +185,42 @@ def init_ssd_display(i2c):
     return display, draw, font, image
 
 
-def init_bno086(i2c, address=0x4B):
+def init_lis3mdl(i2c):
     try:
-        bno = BNO08X_I2C(i2c, address=address)
-        bno.enable_feature(BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR)
-        print(f"Successful BNO086 sensor Init {hex(address)}")
-        return bno
+        # The library handles internal configuration automatically
+        sensor = adafruit_lis3mdl.LIS3MDL(i2c)
+        print("Successful LIS3MDL Magnetometer Init")
+        return sensor
     except Exception as e:
-        print(f"WARNING: BNO086 sensor Init {hex(address)} Failed: {e}")
+        print(f"WARNING: LIS3MDL Init Failed: {e}")
         return None
 
 
-def get_compass_heading(bno):
-    if bno is None:
+def get_compass_heading(sensor):
+    """
+    get compas heading from x-y magnetometer sensor
+    todo check if upside down
+    todo calibration
+     - may need to rotate 360 to find the max and min X/Y, and subtract the midpoint offset
+     - from mag_x and mag_y before passing them to atan2.
+    """
+    if sensor is None:
         return None
     try:
-        quat_i, quat_j, quat_k, quat_real = bno.geomagnetic_quaternion
-        siny_cosp = 2.0 * (quat_real * quat_k + quat_i * quat_j)
-        cosy_cosp = 1.0 - 2.0 * (quat_j * quat_j + quat_k * quat_k)
-        yaw_rad = math.atan2(siny_cosp, cosy_cosp)
-        heading_deg = math.degrees(yaw_rad)
-        heading = (360.0 - heading_deg) % 360.0
+        mag_x, mag_y, mag_z = sensor.magnetic
+
+        if None in (mag_x, mag_y, mag_z):
+            return None
+
+        # Compute heading in radians atan2(Y, X), convert to degrees
+        heading_rad = math.atan2(mag_y, mag_x)
+        heading_deg = math.degrees(heading_rad)
+
+        # Normalize to standard 0-360° compass layout
+        heading = (heading_deg + 360.0) % 360.0
         return heading
-    except ValueError as e:
-        print(f"IMU Data Error: geometric_quaternion is invalid tuple: {e}")
+    except (ValueError, TypeError, OSError) as e:
+        print(f"Magnetometer Read Error: {e}")
         return None
 
 
@@ -414,10 +387,12 @@ def main():
     probe_mode = True
     connected_mode = False
 
-    i2c1, i2c0, ssd_detected, bno_detected = init_i2c()
-    bno_sensor = None
-    if bno_detected:
-        bno_sensor = init_bno086(i2c0, address=bno_detected)
+    i2c1, ssd_detected, lis3mdl_detected = init_i2c()
+
+    lis3mdl = None
+    if lis3mdl_detected:
+        lis3mdl = init_lis3mdl(i2c1)
+
     if ssd_detected:
         display, draw, font, image = init_ssd_display(i2c1)
 
@@ -464,7 +439,7 @@ def main():
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
                             url_string = "http://192.168.4.1/download"
                             destination_string ="/home/pi-admin/downloads"
-                            print (f" -> from {url_string}, to destination directory {destination_string}")
+                            print (f" -> download from {url_string} to destination directory: {destination_string}")
                             success, filename = download_file(url_string, destination_directory=destination_string)
                             if success:
                                 download_count += 1
@@ -498,8 +473,9 @@ def main():
 
             short_press = False
 
-            heading = get_compass_heading(bno_sensor)
-            heading = 10.0
+            heading = get_compass_heading(lis3mdl)
+            print(f"heading - after get_compass_heading: {heading}")
+            # heading = 10.0
 
             # Convert current float heading to integer and save live signal strength telemetry
             if rssi is not None and heading is not None:
@@ -528,7 +504,7 @@ def main():
             if heading is not None:
                 print(f"Compass Heading: {heading:.0f}° (Magnetic North = 0°)")
             else:
-                print("Compass Heading: ???° - no IMU")
+                print("Compass Heading: ???° - no Magnetometer")
 
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
