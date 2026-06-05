@@ -2,41 +2,46 @@
 """
 On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
 and Tx Bit Rate of the currently targeted network on interface wlan0.
-pyro
+When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
+The code handles connection drops and resumes automatically on reconnect.
 
-if the targeted network is connected it can download the data file.
-* this is shown in the OLED SSD display as:
-* "SSID = target-net"
+Scan Rates:
+ - Connected Mode, actual ~85ms 12 Hz
+ - Scan Mode,      actual ~46ms 22 Hz
+ - Out of range,   actual ~85ms 12 Hz
 
 If the targeted network is not connected, it uses a lighter weight Scan Mode which scans all available networks looking for the targeted network.
-* this is shown in the OLED SSD display as:
-* "ssid   target-net"
-When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
+ - The OLED SSD display shows:
+ - ssid <target-ssid>
+If the targeted network is connected, it can download the data file.
+ - The OLED SSD display shows:
+ - SSID = <target-ssid>
 
-It prints the results to std out and an OLED display.
-It graphically shows the signal strength at a compass direction.
-This is also shown graphically in a small radar screen graphic.
-It gracefully handles total connection drops and resumes automatically on reconnect.
+Metrics are printed to std out and show on the OLED display.
+The OLED display on the left has 96px for text:
+ - 3 lines of text with 16 chars
+ - using 3 lines of text, instead of 4 since 4 looks cramped
+On the right 32px, graphically shows the signal strength at a compass direction as a radar-style screen.
+ - 32x32 box with circle centered with a radius of 15px
 
 0. short press >0.1 sec
    long press >0.5 sec
 1. Starts in Scan Mode
-   a. If signal ≥ RSSI_CONNECT_THRESHOLD, a short press triggers Connected Mode (nmcli up).
+   a. If signal ≥ RSSI_CONNECT_THRESHOLD, a short press starts Connected Mode (nmcli up).
 2. In Connection Mode
    a. If signal ≥ RSSI_DOWNLOAD_THRESHOLD, a short press starts download.
-      5 second timeout if no download, display will continue to show "..dload 0?"
+      if no download after 5 second timeout, display will continue to show "..dload 0?"
    b. A long press returns to Scan Mode (nmcli down)
-
-Data is shown on  SSD1305 128x32 display and printed to std out.
-left 96px for text
- - 3 lines of text with 16 chars
- - using 3 lines of text, instead of 4 since 4 looks cramped
-right 32px for circle graphic
- - 32x32 box with circle centered with a radius of 15px
 
  Pi Zero 2 W must be modified to attach an external antenna like a Yagi Uda.
  directions: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
   Note: I've heard Uda was the inventor and Yagi was the promoter.
+
+Compass angles calculated with LIS3MDL sensor with hard-iron calbration.
+hard_only_calibrate_lis3mdl_test.py
+Explanation of why only hard-iron needed:
+Compass headings (atan2) computes the differences of the angles of X- and Y-values.
+The Soft-iron calibrations would make sure the vector lengths are calibrated, which doesn't affect the angle.
 
  The Pi Zero 2 W is running Debian Trixie base. 64-bit
   - with no desktop environment
@@ -44,12 +49,15 @@ right 32px for circle graphic
   - uname -a
 Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
 
+Update rates:
+Updates: 546.5 msec, 2 Hz - Out of Range
+
 Requirements:
- TODO TURN OFF BLUETOOTH !!!
+ TODO TURN OFF BLUETOOTH on the Pi Zero 2 W which is default enabled (Pi Pico is by default not enabled).
  TODO measure shell-fi created by Pi Pico as Access Point
- TODO consider polygon vertex count
+ TODO reconsider polygon vertex count
     - The radar circle (radius of 15 px) has max of 84 pixels on perimeter
-    - 72 vertices every 5 degrees (360/5)
+    - 72 vertices every 5 degrees (360/5) -- likely best for clean signals
     - 40 vertices every 9 degrees (360/9)
 """
 import math
@@ -58,7 +66,7 @@ import subprocess
 from datetime import datetime
 from typing import Literal
 
-# Import display and magnetometer
+# Display and magnetometer
 import adafruit_lis3mdl
 import adafruit_ssd1305  # previous prototype used: import adafruit_ssd1306
 
@@ -68,13 +76,29 @@ from PIL import Image, ImageDraw, ImageFont
 
 from gpiozero import Button
 
-# Network signal tracking dependencies
+# Network signal tracking
 from pi_wifi_rssi_quality_txrate import get_ssid, scan_target_ssid, query_wifi, print_metrics, rssi_to_string
 from download_file import download_file
 
 # TODO test Pi Pico as Access Point
 # TARGET_SSID = "shell-fi"
+URL_STRING = "http://192.168.4.1/download"
+DESTINATION_STRING = "/home/pi-admin/downloads"
 TARGET_SSID = "ABox-PDX"
+
+# LIS3MDL Magnetic Calibration Constants - Hard-iron only needed for compass
+# Constants created by hard_only_calibrate_lis3mdl_test.py
+# Hard-iron calibration offsets from high-speed calibration run
+CALIBRATED_MAG_MIN = [-58.7548, -38.7898, -102.2800]
+CALIBRATED_MAG_MAX = [44.9284, 63.4171, -4.4870]
+
+# Create offsets based on calibration constants - true magnetic midpoint offset for X and Y
+X_OFFSET = (CALIBRATED_MAG_MAX[0] + CALIBRATED_MAG_MIN[0]) / 2.0
+Y_OFFSET = (CALIBRATED_MAG_MAX[1] + CALIBRATED_MAG_MIN[1]) / 2.0
+
+# create scale factors to normalize the field to a 1.0 radius
+X_SCALE = (CALIBRATED_MAG_MAX[0] - CALIBRATED_MAG_MIN[0]) / 2.0
+Y_SCALE = (CALIBRATED_MAG_MAX[1] - CALIBRATED_MAG_MIN[1]) / 2.0
 
 # Network Signal Lock Thresholds
 RSSI_CONNECT_THRESHOLD = -75  # Minimum signal to allow a hardware connection
@@ -113,7 +137,7 @@ def on_button_released():
     if button_press_time > 0.0:
         duration = time.time() - button_press_time
 
-    # Reset press time
+    # Reset press time for next press
     button_press_time = 0.0
 
     if duration >= button0.hold_time:
@@ -136,7 +160,6 @@ def scan_i2c_bus(i2c_primary):
     ssd_detected = None
 
     try:
-        # Scan the two buses directly
         devices1 = i2c_primary.scan()
         if not devices1:
             print("Error: No I2C1 devices detected (primary). Check your wiring")
@@ -159,8 +182,8 @@ def scan_i2c_bus(i2c_primary):
 
 
 def init_i2c():
-    # Set I2C 1M is max for SSD1305 display, i2c1 is primary on Pi Zero 2 W
-    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=100000)
+    # Magnetometer has 400K frequency limit, SSD1305 display has 1M, i2c1 is primary on Pi Zero 2 W
+    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
     ssd_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{ssd_detected=} + {lis_detected=}")
     return i2c1, ssd_detected, lis_detected
@@ -174,11 +197,11 @@ def init_ssd_display(i2c):
 
     image = Image.new("1", (SSD_WIDTH, SSD_HEIGHT))
     draw = ImageDraw.Draw(image)
-    # Use monospace font, not variable-width default
+    # Use monospace font
     try:
         font = ImageFont.truetype("DejaVuSansMono.ttf", 10)
     except IOError:
-        font = ImageFont.load_default()  # Fallback if font isn't installed
+        font = ImageFont.load_default()  # Fallback if font isn't loaded
     return display, draw, font, image
 
 
@@ -208,16 +231,13 @@ def change_connection(action: Literal["up", "down"]) -> bool:
     )
 
     # Force the state machine to transition immediately, letting the next loop iteration handle recovery
-    return (action == "up")
+    return action == "up"
 
 
 def get_compass_heading(sensor):
     """
-    get compas heading from x-y magnetometer sensor
-    todo check if upside down
-    todo calibration
-     - may need to rotate 360 to find the max and min X/Y, and subtract the midpoint offset
-     - from mag_x and mag_y before passing them to atan2.
+    Gets a calibrated compass heading from the X-Y magnetometer axes.
+    For compass angles only need hard-iron offsets.
     """
     if sensor is None:
         return None
@@ -227,11 +247,16 @@ def get_compass_heading(sensor):
         if None in (mag_x, mag_y, mag_z):
             return None
 
-        # Compute heading in radians atan2(Y, X), convert to degrees
-        heading_rad = math.atan2(mag_y, mag_x)
+        # APPLY HARD-IRON SPATIAL CALIBRATION
+        # Shift data cluster centers to 0.0 and scale to a perfect 1.0 radius sphere
+        cal_x = (mag_x - X_OFFSET) / X_SCALE
+        cal_y = (mag_y - Y_OFFSET) / Y_SCALE
+
+        # use calibrated vectors into the arc-tangent calculator, notice only hard-iron calibration needed due to atan2
+        heading_rad = math.atan2(cal_y, cal_x)
         heading_deg = math.degrees(heading_rad)
 
-        # Normalize to standard 0-360° compass layout
+        # Normalize to 0-360°
         heading = (heading_deg + 360.0) % 360.0
         return heading
     except (ValueError, TypeError, OSError) as e:
@@ -271,9 +296,9 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
     if rssi is None:
         line1 = f"target: {TARGET_SSID}"
         line2 = "out of range... "
-        line3 = f"{heading_str} {direction_str:<2} scanning"
+        line3 = f"{heading_str} {direction_str:<2} ...Scan"
 
-    # rssi signal, either probing or connected
+    # Update metrics for Connect Mode or Scan Mode
     else:
         if connected:
             line1 = f"SSID = {ssid}"
@@ -288,7 +313,7 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
                 line3 = f"{heading_str} {direction_str:<2}"
         else:
             line1 = f"ssid   {ssid}"
-            line2 = f"{rssi} dbm ...probing"
+            line2 = f"{rssi} dbm ...Scan"
 
             # test if connection available
             if rssi >= RSSI_CONNECT_THRESHOLD:
@@ -337,7 +362,9 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     south_rad = math.radians(90.0 - (180.0 - heading))
     west_rad = math.radians(90.0 - (270.0 - heading))
     east_rad = math.radians(90.0 - (90.0 - heading))
-    for r in range(0, max_radius + 1, 2):
+
+    # dashes every 4px, which are easier to see under rotation
+    for r in range(0, max_radius + 1, 4):
         # South
         sx = int(center_x + r * math.cos(south_rad))
         sy = int(center_y - r * math.sin(south_rad))
@@ -370,7 +397,7 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
             saved_rssi = RSSI_STRONG_BOUND
 
         proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
-        line_length = max_radius * proportion
+        line_length = (max_radius -2) * proportion
 
         # Apply identical screen space angle mapping
         angle_rad = math.radians(90.0 - (angle - heading))
@@ -408,11 +435,13 @@ def main():
     if ssd_detected:
         display, draw, font, image = init_ssd_display(i2c1)
 
-    # signal history tracking of 360 discrete headings
+    # clear signal history on all 360 discrete degree headings
     signal_history = [-99.0] * 360
 
     ssid, rssi, quality, tx_rate = None, None, None, None
-    connected_mode = False  # Track state: False = Probing, True = Hard Connection Lock
+
+    # Connected Mode:  False = Scan Mode, True = Connected Mode
+    connected_mode = False
 
     try:
         start_time = time.time()
@@ -432,7 +461,10 @@ def main():
                 long_press = False
                 short_press = False
 
-            # Connected Mode - measure rssi, quality, txrate
+                # when starting scan mode, clear signal history on all 360 discrete degree headings
+                signal_history = [-99.0] * 360
+
+            # Connected Mode - measure RSSI, Quality, TxRate
             if connected_mode:
                 current_ssid = get_ssid()
                 if current_ssid == TARGET_SSID:
@@ -443,13 +475,11 @@ def main():
                     if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
                         if short_press:
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
-                            url_string = "http://192.168.4.1/download"
-                            destination_string = "/home/pi-admin/downloads"
-                            print(f" -> download from {url_string} to destination directory: {destination_string}")
-                            success, filename = download_file(url_string, destination_directory=destination_string)
+                            print(f" -> download from {URL_STRING} to destination directory: {DESTINATION_STRING}")
+                            success, filename = download_file(URL_STRING, destination_directory=DESTINATION_STRING)
                             if success:
                                 download_count += 1
-                                print(f" -> successfully downloaded {destination_string}/{filename}")
+                                print(f" -> successfully downloaded {DESTINATION_STRING}/{filename}")
 
                 else:
                     # Connection broken, return to Scan Mode
@@ -457,12 +487,12 @@ def main():
                     tx_rate = None
                     quality = None
 
-            # Scan Mode - Scan for remote target, only measure rssi
+            # Scan Mode - Scan for remote target, only measure RSSI
             else:
                 tx_rate = None
                 quality = None
 
-                # Scan all unconnected signals, but only return rssi for target ssid
+                # Scan all unconnected signals, but only return RSSI for target ssid
                 rssi = scan_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
                 ssid = TARGET_SSID if rssi is not None else None
 
@@ -472,14 +502,18 @@ def main():
                         print(f"\n* Button pressed ({rssi} dBm). Connecting...")
                         connected_mode = change_connection("up")
 
+                        # when starting connected mode, clear signal history on all 360 discrete degree headings
+                        signal_history = [-99.0] * 360
+
             short_press = False
 
+            # Save RSSI signal strength at heading index
             heading = get_compass_heading(lis3mdl)
-            print(f"heading - after get_compass_heading: {heading}")
-
-            # Save rssi signal strength telemetry at heading index
             if rssi is not None and heading is not None:
-                signal_history[int(heading) % 360] = rssi
+                # signal_history[int(heading) % 360] = rssi
+                # round to nearest 5-degree step, wrapping 360 back down to 0
+                heading = (round(heading / 5.0) * 5) % 360
+                signal_history[int(heading)] = rssi
 
             finish_time = time.time()
             duration = finish_time - start_time
@@ -487,7 +521,7 @@ def main():
 
             # Print metrics to standard out
             if connected_mode:
-                # Print connected mode metrics to standard out
+                # Print Connected Mode metrics to standard out
                 print_metrics(quality, rssi, ssid, tx_rate)
                 if rssi >= RSSI_DOWNLOAD_THRESHOLD:
                     print(f"-> download possible (download #{download_count})?)")
@@ -496,7 +530,7 @@ def main():
 
             else:
                 # Print Scan Mode metrics to standard out
-                print(f"**Probing ssid: {TARGET_SSID} un-connected")
+                print(f"**Scanning ssid: {TARGET_SSID} un-connected")
                 if rssi is not None:
                     print(f"RSSI:    {rssi:>3} dBm  {rssi_to_string(rssi)}")
                     if rssi >= RSSI_CONNECT_THRESHOLD:
@@ -517,7 +551,7 @@ def main():
                 # Text Metrics
                 display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected=connected_mode)
 
-                # use rssi strength and angle to render "radar" graphic
+                # use RSSI strength and angle to render "radar" graphic
                 render_heading = heading if heading is not None else 0.0
                 display_radar_ssd(draw, cadence_fill, render_heading, signal_history)
 
@@ -526,11 +560,11 @@ def main():
 
             # Dynamic sleep, sleep longer when WiFi out of range
             if connected_mode:
-                time.sleep(0.05)  # Connected Mode
+                time.sleep(0.02)  # Connected Mode, actual ~85ms 12 Hz
             elif rssi is not None:
-                time.sleep(0.01)  # Scan Mode
+                time.sleep(0.01)  # Scan Mode, actual ~46ms 22 Hz
             else:
-                time.sleep(0.5)  # Out of range fallback
+                time.sleep(0.04)  # Out of range fallback, actual ~85ms 12 Hz
 
     except KeyboardInterrupt:
         if ssd_detected:
