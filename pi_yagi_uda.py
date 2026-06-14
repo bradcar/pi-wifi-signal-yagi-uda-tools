@@ -242,9 +242,8 @@ def connect_ssid(ssid, password):
     sudo nmcli device wifi connect "shell-fi" password "YOUR_PASSWORD_HERE"
     sudo nmcli connection show
 
-    Disable Bluetooth:
+    # Disable Bluetooth for better Wi-Fi, since they share same antenna
     sudo nano /boot/firmware/config.txt
-    # Disable Bluetooth for optimal Wi-Fi signal tracking metrics
     dtoverlay=disable-bt
 
     # disable hardware auto-attempting to wake up disabled Bluetooth
@@ -307,9 +306,7 @@ def remove_ssid(ssid: Literal["shell-fi"]):
 
 
 def change_connection(action: Literal["up", "down"]) -> bool:
-    """
-    Change connection state. Changes mode even if the hardware layer reports a temporary busy status.
-    """
+    """ Change connection state. Changes mode even if the hardware layer reports a temporary busy status"""
     if action not in ("up", "down"):
         return False
 
