@@ -33,9 +33,11 @@ On the right 32px, graphically shows the signal strength at a compass direction 
       if no download after 5 second timeout, display will continue to show "..dload 0?"
    b. A long press returns to Scan Mode (nmcli down)
 
- Pi Zero 2 W must be modified to attach an external antenna like a Yagi Uda.
- directions: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
-  Note: I've heard Uda was the inventor and Yagi was the promoter.
+ Pi Zero 2 W must be modified to attach an external antenna like a Yagi-Uda Antenna.
+ directions:
+ https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s   (great peal trace back idea)
+ https://www.briandorey.com/post/raspberry-pi-zero-2-w-external-antenna-mod  (maybe beter on uFL soldering?)
+  Note: I've read that Uda was the inventor and Yagi was the promoter.
 
 Compass angles calculated with LIS3MDL sensor with hard-iron calbration.
 hard_only_calibrate_lis3mdl_test.py
@@ -52,14 +54,15 @@ Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03
 Update rates:
 Updates: 546.5 msec, 2 Hz - Out of Range
 
-Requirements:
- TODO TURN OFF BLUETOOTH on the Pi Zero 2 W which is default enabled (Pi Pico is by default not enabled).
- TODO measure shell-fi created by Pi Pico as Access Point
- TODO reconsider polygon vertex count
+"Radar display" Polygon vertex count
     - The radar circle (radius of 15 px) has max of 84 pixels on perimeter
     - 72 vertices every 5 degrees (360/5) -- likely best for clean signals
     - 40 vertices every 9 degrees (360/9)
+
+Requirements:
+ TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 """
+import getpass
 import math
 import time
 import subprocess
@@ -80,11 +83,21 @@ from gpiozero import Button
 from pi_wifi_rssi_quality_txrate import get_ssid, scan_target_ssid, query_wifi, print_metrics, rssi_to_string
 from download_file import download_file
 
+DEBUG = False
+
 # TODO test Pi Pico as Access Point
-# TARGET_SSID = "shell-fi"
+TARGET_SSID = "ABox-PDX"
+#TARGET_SSID = "shell-fi"
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = "/home/pi-admin/downloads"
-TARGET_SSID = "ABox-PDX"
+
+# Network Signal Lock Thresholds
+RSSI_CONNECT_THRESHOLD = -77  # Minimum signal to allow a hardware connection
+RSSI_DOWNLOAD_THRESHOLD = -74  # Minimum signal to execute data payload transfer
+
+# Radar lines Boundary
+RSSI_STRONG_BOUND = -45
+RSSI_WEAK_BOUND = -80
 
 # LIS3MDL Magnetic Calibration Constants - Hard-iron only needed for compass
 # Constants created by hard_only_calibrate_lis3mdl_test.py
@@ -100,13 +113,7 @@ Y_OFFSET = (CALIBRATED_MAG_MAX[1] + CALIBRATED_MAG_MIN[1]) / 2.0
 X_SCALE = (CALIBRATED_MAG_MAX[0] - CALIBRATED_MAG_MIN[0]) / 2.0
 Y_SCALE = (CALIBRATED_MAG_MAX[1] - CALIBRATED_MAG_MIN[1]) / 2.0
 
-# Network Signal Lock Thresholds
-RSSI_CONNECT_THRESHOLD = -75  # Minimum signal to allow a hardware connection
-RSSI_DOWNLOAD_THRESHOLD = -70  # Minimum signal to execute data payload transfer
 
-# Radar lines Boundary
-RSSI_STRONG_BOUND = -45
-RSSI_WEAK_BOUND = -80
 
 SSD_WIDTH = 128
 SSD_HEIGHT = 32
@@ -182,7 +189,7 @@ def scan_i2c_bus(i2c_primary):
 
 
 def init_i2c():
-    # Magnetometer has 400K frequency limit, SSD1305 display has 1M, i2c1 is primary on Pi Zero 2 W
+    # Magnetometer has 400K frequency limit, SSD1305 display has 1M, i2c1 is primary I2C on Pi Zero 2 W
     i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
     ssd_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{ssd_detected=} + {lis_detected=}")
@@ -208,11 +215,95 @@ def init_ssd_display(i2c):
 def init_lis3mdl(i2c):
     try:
         sensor = adafruit_lis3mdl.LIS3MDL(i2c)
-        print("Successful LIS3MDL Magnetometer Init")
+        print("Successful LIS3MDL Magnetometer Init\n")
         return sensor
     except Exception as e:
-        print(f"WARNING: LIS3MDL Init Failed: {e}")
+        print(f"WARNING: LIS3MDL Init Failed: {e}\n")
         return None
+
+
+def pico_temperature():
+    """ Reads system temperature as substitute for Pico ADC(4) """
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+            celsius = float(f.read()) / 1000.0
+        if DEBUG: print(f"Pi Zero chip temp = {celsius:.3f}C")
+        return celsius
+    except Exception:
+        return None
+
+
+def connect_ssid(ssid, password):
+    """
+    Programmatic way to connect to WiFi network.
+
+    CLI version for "shell-fi"
+    sudo nmcli device wifi connect "shell-fi"
+    sudo nmcli device wifi connect "shell-fi" password "YOUR_PASSWORD_HERE"
+    sudo nmcli connection show
+
+    Disable Bluetooth:
+    sudo nano /boot/firmware/config.txt
+    # Disable Bluetooth for optimal Wi-Fi signal tracking metrics
+    dtoverlay=disable-bt
+
+    # disable hardware auto-attempting to wake up disabled Bluetooth
+    sudo systemctl disable hciuart.service
+    sudo systemctl disable bluetooth.service
+
+    """
+    print(f"\nProvisioning NetworkManager for target: {ssid}...")
+    # Prompt at terminal for password
+    password = getpass.getpass(prompt=f"Enter WPA2 password for '{ssid}': ")
+    if password.strip() == "":
+        password = None
+
+    print(f"Flush old {ssid} configurations...")
+    subprocess.run(["sudo", "nmcli", "connection", "delete", ssid], stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL)
+
+    # Use clean explicit parameters for device activation to let nmcli autoconfigure security structures
+    cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0"]
+    if password is not None:
+        cmd.extend(["password", password])
+
+    # Catch weak-signal handshaking hangs gracefully instead of dropping execution
+    try:
+        connect_attempt = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+
+        if connect_attempt.returncode != 0:
+            print(f"ERROR: WiFi connection failed:\n{connect_attempt.stderr}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        print(f"WARNING: Connection handshake timed out after 15 seconds. Signal likely too weak.")
+        return False
+
+    # Elevate priority for network now that the profile is safely auto-generated
+    subprocess.run(["sudo", "nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "10"],
+                   check=True)
+
+    print(f"Verifying '{ssid}' on health and IP assignment...")
+    time.sleep(1.5)
+
+    # Query NetworkManager for the current state
+    status_check = subprocess.run(["nmcli", "-t", "-f", "DEVICE,STATE,CONNECTION", "device"], capture_output=True,
+                                  text=True)
+
+    if f"wlan0:connected:{ssid}" in status_check.stdout:
+        print(f" {ssid} Connection successful! Network interface is active.\n")
+        return True
+    else:
+        print("WARNING Profile created, but interface failed to verify an active state.\n")
+        return False
+
+
+def remove_ssid(ssid: Literal["shell-fi"]):
+    print(f"\nCleaning up: Removing NetworkManager profile '{ssid}'...")
+    subprocess.run([
+        "sudo", "nmcli", "connection", "delete", ssid
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(" -> \"shell-fi\" deleted successfully.")
 
 
 def change_connection(action: Literal["up", "down"]) -> bool:
@@ -223,15 +314,17 @@ def change_connection(action: Literal["up", "down"]) -> bool:
         return False
 
     timeout_duration = 8 if action == "up" else 5
-
-    # Running without check=True bypasses transient 'device busy' status 10 errors
-    subprocess.run(
-        ["sudo", "nmcli", "connection", action, TARGET_SSID],
-        timeout=timeout_duration
-    )
-
-    # Force the state machine to transition immediately, letting the next loop iteration handle recovery
-    return action == "up"
+    try:
+        # Running without check=True bypasses transient 'device busy' status 10 errors
+        subprocess.run(
+            ["sudo", "nmcli", "connection", action, TARGET_SSID],
+            timeout=timeout_duration
+        )
+        return action == "up"
+    except subprocess.TimeoutExpired:
+        # Catches the timeout safely, prints a diagnostic line, and keeps the script alive
+        print(f"ERROR: Interactive change_connection('{action}') timed out after {timeout_duration} seconds.")
+        return False
 
 
 def get_compass_heading(sensor):
@@ -295,8 +388,8 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
     # if rssi is not set, display out of range messages
     if rssi is None:
         line1 = f"target: {TARGET_SSID}"
-        line2 = "out of range... "
-        line3 = f"{heading_str} {direction_str:<2} ...Scan"
+        line2 = "out of range scan"
+        line3 = f"{heading_str} {direction_str:<2}"
 
     # Update metrics for Connect Mode or Scan Mode
     else:
@@ -319,7 +412,7 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
             if rssi >= RSSI_CONNECT_THRESHOLD:
                 line3 = f"{heading_str} {direction_str:<2} .connect?"
             else:
-                line3 = f"{heading_str} {direction_str:<2} weak signal"
+                line3 = f"{heading_str} {direction_str:<2}"
 
     # Write text to OLED buffer
     draw.text((left_indent, 0), line1, font=font, fill=1)
@@ -397,7 +490,7 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
             saved_rssi = RSSI_STRONG_BOUND
 
         proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
-        line_length = (max_radius -2) * proportion
+        line_length = (max_radius - 2) * proportion
 
         # Apply identical screen space angle mapping
         angle_rad = math.radians(90.0 - (angle - heading))
@@ -426,6 +519,10 @@ def main():
     scan_mode = True
     connected_mode = False
 
+    # If Access Point SSID, try connecting. Connected Mode:  False = Scan Mode, True = Connected Mode
+    if TARGET_SSID == "shell-fi":
+        connected_mode = connect_ssid(TARGET_SSID, None)
+
     i2c1, ssd_detected, lis3mdl_detected = init_i2c()
 
     lis3mdl = None
@@ -440,15 +537,17 @@ def main():
 
     ssid, rssi, quality, tx_rate = None, None, None, None
 
-    # Connected Mode:  False = Scan Mode, True = Connected Mode
-    connected_mode = False
-
     try:
         start_time = time.time()
         cadence_fill = False
         while True:
             cadence_fill = not cadence_fill
             current_loop_time = time.time()
+
+            # Soft throttle begins at 60°, would start fan if available
+            pi_celsius = pico_temperature()
+            if pi_celsius is not None and pi_celsius > 60.0:
+                print(f"Warning: ** High Temp on Pi Zero 2 W: {pi_celsius:.1f}°C")
 
             # On long_press revert to Scan Mode
             if long_press:
@@ -476,10 +575,18 @@ def main():
                         if short_press:
                             print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
                             print(f" -> download from {URL_STRING} to destination directory: {DESTINATION_STRING}")
+                            download_start_time = time.time()
                             success, filename = download_file(URL_STRING, destination_directory=DESTINATION_STRING)
+                            download_duration = time.time() - download_start_time
+
                             if success:
                                 download_count += 1
                                 print(f" -> successfully downloaded {DESTINATION_STRING}/{filename}")
+                                print(f" -> transfer completed in {download_duration:.2f} seconds")
+                                print(" +" * 30)
+                            else:
+                                print(f" -> download failed or dropped out after {download_duration:.2f}")
+                                print(" -" * 30)
 
                 else:
                     # Connection broken, return to Scan Mode
@@ -537,7 +644,7 @@ def main():
                         print("-> connection possible (connect?)")
 
             if heading is not None:
-                print(f"Compass Heading: {heading:.0f}° (Magnetic North = 0°)")
+                print(f"Compass Heading: {heading:.0f}° {get_compass_8pt_string(heading)}")
             else:
                 print("Compass Heading: ???° - no Magnetometer")
 
@@ -572,6 +679,11 @@ def main():
             display.image(image)
             display.show()
         print("\nEnded Tracking (^c).")
+
+    finally:
+        # remove shell-fi on normal exit, crashes, or KeyboardInterrupt
+        if TARGET_SSID == "shell-fi":
+            remove_ssid(TARGET_SSID)
 
 
 if __name__ == "__main__":
