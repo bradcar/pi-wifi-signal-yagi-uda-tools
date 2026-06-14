@@ -286,7 +286,7 @@ def connect_ssid(ssid):
     if not password:
         print(f"No password found in .env for {ssid}")
         return False
-    print(f"\nProvisioning NetworkManager for target: {ssid} using stored password...")
+    print(f"\nProvisioning NetworkManager for: {ssid} using stored password...")
 
     print(f"Flush old {ssid} configurations...")
     subprocess.run(["sudo", "nmcli", "connection", "delete", ssid], stdout=subprocess.DEVNULL,
@@ -313,7 +313,7 @@ def connect_ssid(ssid):
     subprocess.run(["sudo", "nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "10"],
                    check=True)
 
-    print(f"Verifying '{ssid}' on health and IP assignment...")
+    print(f"Verifying '{ssid}' on state and IP assignment...")
     time.sleep(1.5)
 
     # Query NetworkManager for the current state
