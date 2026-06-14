@@ -59,8 +59,11 @@ Updates: 546.5 msec, 2 Hz - Out of Range
     - 72 vertices every 5 degrees (360/5) -- likely best for clean signals
     - 40 vertices every 9 degrees (360/9)
 
-Requirements:
-pip install python-dotenv
+Requirements (beyond normal i2c):
+    sudo pip3 install adafruit-circuitpython-ssd1305 --break-system-packages
+    sudo apt-get install python3-pil
+    pip3 install adafruit-circuitpython-lis3mdl --break-system-packages
+    pip install python-dotenv --break-system-packages
 
  TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 """
