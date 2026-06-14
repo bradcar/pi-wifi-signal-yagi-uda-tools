@@ -60,13 +60,17 @@ Updates: 546.5 msec, 2 Hz - Out of Range
     - 40 vertices every 9 degrees (360/9)
 
 Requirements:
+pip install python-dotenv
+
  TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 """
 import getpass
 import math
+import os
 import time
 import subprocess
 from datetime import datetime
+from dotenv import load_dotenv
 from typing import Literal
 
 # Display and magnetometer
@@ -80,14 +84,14 @@ from PIL import Image, ImageDraw, ImageFont
 from gpiozero import Button
 
 # Network signal tracking
-from pi_wifi_rssi_quality_txrate import get_ssid, scan_target_ssid, query_wifi, print_metrics, rssi_to_string
+from pi_wifi_rssi_quality_txrate import get_ssid, scan_target_ssid, query_wifi, quality_to_string, rssi_to_string
 from download_file import download_file
 
 DEBUG = False
 
 # TODO test Pi Pico as Access Point
 TARGET_SSID = "ABox-PDX"
-#TARGET_SSID = "shell-fi"
+# TARGET_SSID = "shell-fi"
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = "/home/pi-admin/downloads"
 
@@ -112,8 +116,6 @@ Y_OFFSET = (CALIBRATED_MAG_MAX[1] + CALIBRATED_MAG_MIN[1]) / 2.0
 # create scale factors to normalize the field to a 1.0 radius
 X_SCALE = (CALIBRATED_MAG_MAX[0] - CALIBRATED_MAG_MIN[0]) / 2.0
 Y_SCALE = (CALIBRATED_MAG_MAX[1] - CALIBRATED_MAG_MIN[1]) / 2.0
-
-
 
 SSD_WIDTH = 128
 SSD_HEIGHT = 32
@@ -233,6 +235,15 @@ def pico_temperature():
         return None
 
 
+load_dotenv()
+
+
+def get_password_for_ssid(ssid):
+    # .env has password with WIFI_PASS_ followed by SSID
+    env_key = f"WIFI_PASS_{ssid}"
+    return os.getenv(env_key)
+
+
 def connect_ssid(ssid, password):
     """
     Programmatic way to connect to WiFi network.
@@ -252,10 +263,13 @@ def connect_ssid(ssid, password):
 
     """
     print(f"\nProvisioning NetworkManager for target: {ssid}...")
-    # Prompt at terminal for password
-    password = getpass.getpass(prompt=f"Enter WPA2 password for '{ssid}': ")
-    if password.strip() == "":
-        password = None
+
+    # Get password from env
+    password = get_password_for_ssid(ssid)
+    if not password:
+        print(f"No password found in .env for {ssid}")
+        return False
+    print(f"\nProvisioning NetworkManager for target: {ssid} using stored password...")
 
     print(f"Flush old {ssid} configurations...")
     subprocess.run(["sudo", "nmcli", "connection", "delete", ssid], stdout=subprocess.DEVNULL,
@@ -306,22 +320,23 @@ def remove_ssid(ssid: Literal["shell-fi"]):
 
 
 def change_connection(action: Literal["up", "down"]) -> bool:
-    """ Change connection state. Changes mode even if the hardware layer reports a temporary busy status"""
-    if action not in ("up", "down"):
+    if action == "down":
+        subprocess.run(["sudo", "nmcli", "connection", "down", TARGET_SSID],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return False
 
-    timeout_duration = 8 if action == "up" else 5
-    try:
-        # Running without check=True bypasses transient 'device busy' status 10 errors
-        subprocess.run(
-            ["sudo", "nmcli", "connection", action, TARGET_SSID],
-            timeout=timeout_duration
-        )
-        return action == "up"
-    except subprocess.TimeoutExpired:
-        # Catches the timeout safely, prints a diagnostic line, and keeps the script alive
-        print(f"ERROR: Interactive change_connection('{action}') timed out after {timeout_duration} seconds.")
-        return False
+    if action == "up":
+        # bring up the existing profile
+        result = subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID],
+                                capture_output=True, text=True)
+        if result.returncode == 0:
+            return True
+
+        # Fallback: Re-connect using the .env password
+        print(f"Profile '{TARGET_SSID}' failed. Trying to reconnect...")
+        return connect_ssid(TARGET_SSID)
+
+    return False
 
 
 def get_compass_heading(sensor):
@@ -509,6 +524,72 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     draw.point((center_x, center_y), fill=0)
 
 
+def handle_scan_mode(short_press, rssi_heading_history, target_ssid):
+    rssi = scan_target_ssid(interface="wlan0", target_ssid=target_ssid)
+    ssid = target_ssid if rssi is not None else None
+
+    if short_press and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
+        print(f"\n* Button pressed ({rssi} dBm). Connecting...")
+        if change_connection("up"):
+            rssi_heading_history[:] = [-99.0] * 360
+            return True, rssi, ssid
+    return False, rssi, ssid
+
+
+def handle_connected_mode(short_press, download_count, target_ssid, url, destination_dir):
+    """Get signal metrics, download file if sufficient strength and button pressed."""
+    current_ssid = get_ssid()
+    # If doesn't connect first time give it one more attempt, may add 0.05sec delay before 2nd attempt
+    if current_ssid != target_ssid:
+        current_ssid = get_ssid()
+        if current_ssid != target_ssid:
+            return False, None, None, None, None
+
+    rssi, quality, tx_rate = query_wifi()
+    if short_press and rssi >= RSSI_DOWNLOAD_THRESHOLD:
+        print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
+        success, filename = download_file(url, destination_directory=destination_dir)
+        if success:
+            download_count += 1
+            print(f" -> successfully downloaded {destination_dir}/{filename}")
+
+    return True, rssi, current_ssid, quality, tx_rate
+
+
+def print_and_display_metrics(ssd_detected, connected, ssid, rssi, quality, tx_rate, heading, download_count, draw,
+                              font, oled_display,
+                              img, cadence,
+                              rssi_at_heading):
+    # Console Print
+    if connected:
+        print(f"** Connected {TARGET_SSID}, RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
+        if rssi is not None:
+            quality_string = quality_to_string(quality)
+            print(f"Bars:    {rssi_to_string(rssi)}")
+            print(f"Link Q:  {f'{quality:>2}/70' if quality is not None else 'n/a'}    {quality_string}")
+            print(f"Tx Rate: {f'{tx_rate:.1f} Mb/s' if tx_rate is not None else 'n/a'}")
+        else:
+            print("Link Q:  n/a")
+            print("Tx Rate: n/a")
+
+        print("-> download possible?" if rssi >= RSSI_DOWNLOAD_THRESHOLD else "-> connected, weak signal")
+    else:
+        print(f"** Scanning {TARGET_SSID}, RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
+
+    if heading is not None:
+        print(f"Compass Heading: {heading:.0f}° {get_compass_8pt_string(heading)}")
+    else:
+        print("Compass Heading: ???° - no Magnetometer")
+
+    # OLED Display
+    if ssd_detected:
+        draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)
+        display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected)
+        display_radar_ssd(draw, cadence, heading or 0.0, rssi_at_heading)
+        oled_display.image(img)
+        oled_display.show()
+
+
 def main():
     global short_press, long_press, download_count
 
@@ -527,10 +608,10 @@ def main():
         lis3mdl = init_lis3mdl(i2c1)
 
     if ssd_detected:
-        display, draw, font, image = init_ssd_display(i2c1)
+        oled_display, draw, font, image = init_ssd_display(i2c1)
 
     # clear signal history on all 360 discrete degree headings
-    signal_history = [-99.0] * 360
+    rssi_heading_history = [-99.0] * 360
 
     ssid, rssi, quality, tx_rate = None, None, None, None
 
@@ -539,128 +620,51 @@ def main():
         cadence_fill = False
         while True:
             cadence_fill = not cadence_fill
-            current_loop_time = time.time()
+            start_loop = time.time()
 
-            # Soft throttle begins at 60°, would start fan if available
             pi_celsius = pico_temperature()
-            if pi_celsius is not None and pi_celsius > 60.0:
-                print(f"Warning: ** High Temp on Pi Zero 2 W: {pi_celsius:.1f}°C")
+            if pi_celsius and pi_celsius > 60.0:
+                print(f"Warning: ** High Temp: {pi_celsius:.1f}°C")
 
-            # On long_press revert to Scan Mode
+            # On long press revert to scanning, disconnect and reset radar history
             if long_press:
-                print("\nLong_press: disconnecting")
                 if connected_mode:
-                    connected_mode = change_connection("down")
-
-                tx_rate = None
-                quality = None
+                    change_connection("down")
+                    rssi_heading_history = [-99.0] * 360
+                connected_mode = False
                 long_press = False
-                short_press = False
 
-                # when starting scan mode, clear signal history on all 360 discrete degree headings
-                signal_history = [-99.0] * 360
-
-            # Connected Mode - measure RSSI, Quality, TxRate
+            # Logic for connected or scanning
             if connected_mode:
-                current_ssid = get_ssid()
-                if current_ssid == TARGET_SSID:
-                    rssi, quality, tx_rate = query_wifi()
-                    ssid = current_ssid
-
-                    # Signal above download threshold, look for download request (single pulse)
-                    if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                        if short_press:
-                            print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
-                            print(f" -> download from {URL_STRING} to destination directory: {DESTINATION_STRING}")
-                            download_start_time = time.time()
-                            success, filename = download_file(URL_STRING, destination_directory=DESTINATION_STRING)
-                            download_duration = time.time() - download_start_time
-
-                            if success:
-                                download_count += 1
-                                print(f" -> successfully downloaded {DESTINATION_STRING}/{filename}")
-                                print(f" -> transfer completed in {download_duration:.2f} seconds")
-                                print(" +" * 30)
-                            else:
-                                print(f" -> download failed or dropped out after {download_duration:.2f}")
-                                print(" -" * 30)
-
-                else:
-                    # Connection broken, return to Scan Mode
-                    connected_mode = False
-                    tx_rate = None
-                    quality = None
-
-            # Scan Mode - Scan for remote target, only measure RSSI
+                connected_mode, rssi, ssid, quality, tx_rate = handle_connected_mode(
+                    short_press, download_count, TARGET_SSID, URL_STRING, DESTINATION_STRING
+                )
             else:
-                tx_rate = None
-                quality = None
-
-                # Scan all unconnected signals, but only return RSSI for target ssid
-                rssi = scan_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
-                ssid = TARGET_SSID if rssi is not None else None
-
-                # When signal is stronger than connection threshold, short press changes mode to connected
-                if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-                    if short_press:
-                        print(f"\n* Button pressed ({rssi} dBm). Connecting...")
-                        connected_mode = change_connection("up")
-
-                        # when starting connected mode, clear signal history on all 360 discrete degree headings
-                        signal_history = [-99.0] * 360
+                connected_mode, rssi, ssid = handle_scan_mode(
+                    short_press, rssi_heading_history, TARGET_SSID
+                )
+                quality, tx_rate = None, None
 
             short_press = False
 
-            # Save RSSI signal strength at heading index
+            # record signal strength at heading direction
             heading = get_compass_heading(lis3mdl)
             if rssi is not None and heading is not None:
-                # signal_history[int(heading) % 360] = rssi
-                # round to nearest 5-degree step, wrapping 360 back down to 0
-                heading = (round(heading / 5.0) * 5) % 360
-                signal_history[int(heading)] = rssi
+                idx = (round(heading / 5.0) * 5) % 360
+                rssi_heading_history[int(idx)] = rssi
 
+            # print and display metrics
+            print_and_display_metrics(
+                ssd_detected, connected_mode, ssid, rssi, quality, tx_rate,
+                heading, download_count, draw, font, oled_display, image, cadence_fill, rssi_heading_history
+            )
+
+            # capture and print update frequency and period
             finish_time = time.time()
             duration = finish_time - start_time
             start_time = finish_time
-
-            # Print metrics to standard out
-            if connected_mode:
-                # Print Connected Mode metrics to standard out
-                print_metrics(quality, rssi, ssid, tx_rate)
-                if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                    print(f"-> download possible (download #{download_count})?)")
-                else:
-                    print("-> connected, but signal too weak for download")
-
-            else:
-                # Print Scan Mode metrics to standard out
-                print(f"**Scanning ssid: {TARGET_SSID} un-connected")
-                if rssi is not None:
-                    print(f"RSSI:    {rssi:>3} dBm  {rssi_to_string(rssi)}")
-                    if rssi >= RSSI_CONNECT_THRESHOLD:
-                        print("-> connection possible (connect?)")
-
-            if heading is not None:
-                print(f"Compass Heading: {heading:.0f}° {get_compass_8pt_string(heading)}")
-            else:
-                print("Compass Heading: ???° - no Magnetometer")
-
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-
-            # Update OLED SSD Display, Left side is text metrics, right side is radar graphic
-            if ssd_detected:
-                draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)  # clear canvas
-
-                # Text Metrics
-                display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected=connected_mode)
-
-                # use RSSI strength and angle to render "radar" graphic
-                render_heading = heading if heading is not None else 0.0
-                display_radar_ssd(draw, cadence_fill, render_heading, signal_history)
-
-                display.image(image)
-                display.show()
 
             # Dynamic sleep, sleep longer when WiFi out of range
             if connected_mode:
@@ -673,8 +677,8 @@ def main():
     except KeyboardInterrupt:
         if ssd_detected:
             draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)
-            display.image(image)
-            display.show()
+            oled_display.image(image)
+            oled_display.show()
         print("\nEnded Tracking (^c).")
 
     finally:

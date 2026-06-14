@@ -2,6 +2,7 @@
 .idea/
 *.iws
 *.iml
+.env
 
 # Python Virtual Environment (Local Only)
 .venv/
