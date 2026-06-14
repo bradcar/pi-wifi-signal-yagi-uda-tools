@@ -123,6 +123,23 @@ SSD_HEIGHT = 32
 TEXT_WIDTH_LIMIT = 96  # text on left 96px
 CIRCLE_AREA_START_X = TEXT_WIDTH_LIMIT  # Graphic starts at 96px
 
+
+class DisplayContext:
+    def __init__(self, draw, font, oled, image):
+        self.draw = draw
+        self.font = font
+        self.oled = oled
+        self.image = image
+
+    def update_line3(self, text):
+        """Clear only the bottom line (20px to 30px) and write new text."""
+        # 96 is your TEXT_WIDTH_LIMIT
+        self.draw.rectangle((0, 20, 95, 31), fill=0)
+        self.draw.text((0, 20), text, font=self.font, fill=1)
+        self.oled.image(self.image)
+        self.oled.show()
+
+
 # Globals
 long_press = False
 short_press = False
@@ -244,7 +261,7 @@ def get_password_for_ssid(ssid):
     return os.getenv(env_key)
 
 
-def connect_ssid(ssid, password):
+def connect_ssid(ssid):
     """
     Programmatic way to connect to WiFi network.
 
@@ -524,19 +541,20 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     draw.point((center_x, center_y), fill=0)
 
 
-def handle_scan_mode(short_press, rssi_heading_history, target_ssid):
+def handle_scan_mode(short_press, rssi_heading_history, target_ssid, oled_context: DisplayContext):
     rssi = scan_target_ssid(interface="wlan0", target_ssid=target_ssid)
     ssid = target_ssid if rssi is not None else None
 
     if short_press and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-        print(f"\n* Button pressed ({rssi} dBm). Connecting...")
+        print(f"\n* Button pressed ({rssi} dBm). Trying to connect...")
+        if oled_context: oled_context.update_line3("trying to connect...")  # Targeted OLED update
+
         if change_connection("up"):
             rssi_heading_history[:] = [-99.0] * 360
             return True, rssi, ssid
     return False, rssi, ssid
 
-
-def handle_connected_mode(short_press, download_count, target_ssid, url, destination_dir):
+def handle_connected_mode(short_press, download_count, target_ssid, url, destination_dir, oled_context: DisplayContext):
     """Get signal metrics, download file if sufficient strength and button pressed."""
     current_ssid = get_ssid()
     # If doesn't connect first time give it one more attempt, may add 0.05sec delay before 2nd attempt
@@ -547,7 +565,8 @@ def handle_connected_mode(short_press, download_count, target_ssid, url, destina
 
     rssi, quality, tx_rate = query_wifi()
     if short_press and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-        print(f"\n* Button pressed ({rssi} dBm). Downloading {download_count}...")
+        print(f"\n* Button pressed ({rssi} dBm). Trying Download...")
+        if oled_context: oled_context.update_line3("trying download...")  # Targeted update
         success, filename = download_file(url, destination_directory=destination_dir)
         if success:
             download_count += 1
@@ -558,21 +577,21 @@ def handle_connected_mode(short_press, download_count, target_ssid, url, destina
 
 def print_and_display_metrics(ssd_detected, connected, ssid, rssi, quality, tx_rate, heading, download_count, draw,
                               font, oled_display,
-                              img, cadence,
+                              image, cadence,
                               rssi_at_heading):
-    # Console Print
+    # Print to console log
     if connected:
         print(f"** Connected {TARGET_SSID}, RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
         if rssi is not None:
             quality_string = quality_to_string(quality)
-            print(f"Bars:    {rssi_to_string(rssi)}")
-            print(f"Link Q:  {f'{quality:>2}/70' if quality is not None else 'n/a'}    {quality_string}")
-            print(f"Tx Rate: {f'{tx_rate:.1f} Mb/s' if tx_rate is not None else 'n/a'}")
+            print(f"Bars:      {rssi_to_string(rssi)}")
+            print(f"Link Qual: {f'{quality:>2}/70' if quality is not None else 'n/a'}    {quality_string}")
+            print(f"Tx Rate:   {f'{tx_rate:.1f} Mb/s' if tx_rate is not None else 'n/a'}")
         else:
-            print("Link Q:  n/a")
-            print("Tx Rate: n/a")
+            print("Link Qual: n/a")
+            print("Tx Rate:   n/a")
 
-        print("-> download possible?" if rssi >= RSSI_DOWNLOAD_THRESHOLD else "-> connected, weak signal")
+        print("-> download possible, use button?" if rssi >= RSSI_DOWNLOAD_THRESHOLD else "-> connected, weak signal")
     else:
         print(f"** Scanning {TARGET_SSID}, RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
 
@@ -581,12 +600,12 @@ def print_and_display_metrics(ssd_detected, connected, ssid, rssi, quality, tx_r
     else:
         print("Compass Heading: ???° - no Magnetometer")
 
-    # OLED Display
+    # OLED Display output
     if ssd_detected:
         draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)
         display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected)
         display_radar_ssd(draw, cadence, heading or 0.0, rssi_at_heading)
-        oled_display.image(img)
+        oled_display.image(image)
         oled_display.show()
 
 
@@ -594,12 +613,6 @@ def main():
     global short_press, long_press, download_count
 
     print("Start Wi-Fi Signal & Antenna Tracking...\n")
-    scan_mode = True
-    connected_mode = False
-
-    # If Access Point SSID, try connecting. Connected Mode:  False = Scan Mode, True = Connected Mode
-    if TARGET_SSID == "shell-fi":
-        connected_mode = connect_ssid(TARGET_SSID, None)
 
     i2c1, ssd_detected, lis3mdl_detected = init_i2c()
 
@@ -607,8 +620,14 @@ def main():
     if lis3mdl_detected:
         lis3mdl = init_lis3mdl(i2c1)
 
+    # Initialize DisplayContext
+    oled_context = None
     if ssd_detected:
         oled_display, draw, font, image = init_ssd_display(i2c1)
+        oled_context = DisplayContext(draw, font, oled_display, image)
+
+    scan_mode = True
+    connected_mode = False
 
     # clear signal history on all 360 discrete degree headings
     rssi_heading_history = [-99.0] * 360
@@ -634,14 +653,20 @@ def main():
                 connected_mode = False
                 long_press = False
 
+            # Handle Auto-Connect on first pass if needed
+            if TARGET_SSID == "shell-fi" and not auto_connect_attempted:
+                if oled_context: oled_context.update_line3("connecting...")
+                connected_mode = connect_ssid(TARGET_SSID)
+                auto_connect_attempted = True
+
             # Logic for connected or scanning
             if connected_mode:
                 connected_mode, rssi, ssid, quality, tx_rate = handle_connected_mode(
-                    short_press, download_count, TARGET_SSID, URL_STRING, DESTINATION_STRING
+                    short_press, download_count, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context
                 )
             else:
                 connected_mode, rssi, ssid = handle_scan_mode(
-                    short_press, rssi_heading_history, TARGET_SSID
+                    short_press, rssi_heading_history, TARGET_SSID, oled_context
                 )
                 quality, tx_rate = None, None
 
