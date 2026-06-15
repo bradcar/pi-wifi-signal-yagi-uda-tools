@@ -39,12 +39,6 @@ On the right 32px, graphically shows the signal strength at a compass direction 
  https://www.briandorey.com/post/raspberry-pi-zero-2-w-external-antenna-mod  (maybe beter on uFL soldering?)
   Note: I've read that Uda was the inventor and Yagi was the promoter.
 
-Compass angles calculated with LIS3MDL sensor with hard-iron calbration.
-hard_only_calibrate_lis3mdl_test.py
-Explanation of why only hard-iron needed:
-Compass headings (atan2) computes the differences of the angles of X- and Y-values.
-The Soft-iron calibrations would make sure the vector lengths are calibrated, which doesn't affect the angle.
-
  The Pi Zero 2 W is running Debian Trixie base. 64-bit
   - with no desktop environment
   - 555.1 MB download, Released: 2026-04-21
@@ -60,6 +54,9 @@ Updates: 546.5 msec, 2 Hz - Out of Range
     - 40 vertices every 9 degrees (360/9)
 
 Requirements (beyond normal i2c):
+    update: lis3mdl_calibraton_parameters.py from output of hard_only_calibrate_lis3mdl_test.py
+
+    installs:
     sudo pip3 install adafruit-circuitpython-ssd1305 --break-system-packages
     sudo apt-get install python3-pil
     pip3 install adafruit-circuitpython-lis3mdl --break-system-packages
@@ -84,7 +81,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from gpiozero import Button
 
-# Network signal tracking
+from lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading
 from wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
     remove_ssid
 from download_file import download_file
@@ -104,20 +101,6 @@ RSSI_DOWNLOAD_THRESHOLD = -74  # Minimum signal to execute data payload transfer
 # Radar lines Boundary
 RSSI_STRONG_BOUND = -45
 RSSI_WEAK_BOUND = -80
-
-# LIS3MDL Magnetic Calibration Constants - Hard-iron only needed for compass
-# Constants created by hard_only_calibrate_lis3mdl_test.py
-# Hard-iron calibration offsets from high-speed calibration run
-CALIBRATED_MAG_MIN = [-58.7548, -38.7898, -102.2800]
-CALIBRATED_MAG_MAX = [44.9284, 63.4171, -4.4870]
-
-# Create offsets based on calibration constants - true magnetic midpoint offset for X and Y
-X_OFFSET = (CALIBRATED_MAG_MAX[0] + CALIBRATED_MAG_MIN[0]) / 2.0
-Y_OFFSET = (CALIBRATED_MAG_MAX[1] + CALIBRATED_MAG_MIN[1]) / 2.0
-
-# create scale factors to normalize the field to a 1.0 radius
-X_SCALE = (CALIBRATED_MAG_MAX[0] - CALIBRATED_MAG_MIN[0]) / 2.0
-Y_SCALE = (CALIBRATED_MAG_MAX[1] - CALIBRATED_MAG_MIN[1]) / 2.0
 
 SSD_WIDTH = 128
 SSD_HEIGHT = 32
@@ -233,16 +216,6 @@ def init_ssd_display(i2c):
     return display, draw, font, image
 
 
-def init_lis3mdl(i2c):
-    try:
-        sensor = adafruit_lis3mdl.LIS3MDL(i2c)
-        print("Successful LIS3MDL Magnetometer Init\n")
-        return sensor
-    except Exception as e:
-        print(f"WARNING: LIS3MDL Init Failed: {e}\n")
-        return None
-
-
 def pico_temperature():
     """ Reads system temperature as substitute for Pico ADC(4) """
     try:
@@ -252,9 +225,6 @@ def pico_temperature():
         return celsius
     except Exception:
         return None
-
-
-load_dotenv()
 
 
 def change_connection(action: Literal["up", "down"]) -> bool:
@@ -275,59 +245,6 @@ def change_connection(action: Literal["up", "down"]) -> bool:
         return connect_ssid(TARGET_SSID)
 
     return False
-
-
-def get_compass_heading(sensor):
-    """
-    Gets a calibrated compass heading from the X-Y magnetometer axes.
-    For compass angles only need hard-iron offsets.
-    """
-    if sensor is None:
-        return None
-    try:
-        mag_x, mag_y, mag_z = sensor.magnetic
-
-        if None in (mag_x, mag_y, mag_z):
-            return None
-
-        # APPLY HARD-IRON SPATIAL CALIBRATION
-        # Shift data cluster centers to 0.0 and scale to a perfect 1.0 radius sphere
-        cal_x = (mag_x - X_OFFSET) / X_SCALE
-        cal_y = (mag_y - Y_OFFSET) / Y_SCALE
-
-        # use calibrated vectors into the arc-tangent calculator, notice only hard-iron calibration needed due to atan2
-        heading_rad = math.atan2(cal_y, cal_x)
-        heading_deg = math.degrees(heading_rad)
-
-        # Normalize to 0-360°
-        heading = (heading_deg + 360.0) % 360.0
-        return heading
-    except (ValueError, TypeError, OSError) as e:
-        print(f"Magnetometer Read Error: {e}")
-        return None
-
-
-def get_compass_8pt_string(heading: float):
-    if heading is None:
-        return ""
-    heading = heading % 360.0
-    if (heading >= 337.5) or (heading < 22.5):
-        return "N"
-    elif 22.5 <= heading < 67.5:
-        return "NE"
-    elif 67.5 <= heading < 112.5:
-        return "E"
-    elif 112.5 <= heading < 157.5:
-        return "SE"
-    elif 157.5 <= heading < 202.5:
-        return "S"
-    elif 202.5 <= heading < 247.5:
-        return "SW"
-    elif 247.5 <= heading < 292.5:
-        return "W"
-    elif 292.5 <= heading < 337.5:
-        return "NW"
-    return ""
 
 
 def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, download_count, connected: bool = True):
@@ -475,10 +392,11 @@ def handle_scan_mode(short_press, rssi_heading_history, target_ssid, oled_contex
             return True, rssi, ssid
     return False, rssi, ssid
 
+
 def handle_connected_mode(short_press, download_count, target_ssid, url, destination_dir, oled_context: DisplayContext):
     """Get signal metrics, download file if sufficient strength and button pressed."""
     current_ssid = get_ssid()
-    # If doesn't connect first time give it one more attempt, may add 0.05sec delay before 2nd attempt
+    # If it doesn't connect first time give it one more attempt, may add 0.05sec delay before 2nd attempt
     if current_ssid != target_ssid:
         current_ssid = get_ssid()
         if current_ssid != target_ssid:
@@ -549,6 +467,7 @@ def main():
 
     scan_mode = True
     connected_mode = False
+    load_dotenv()
 
     # clear signal history on all 360 discrete degree headings
     rssi_heading_history = [-99.0] * 360
@@ -613,7 +532,7 @@ def main():
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-            # Dynamic sleep, sleep longer when WiFi out of range
+            # Dynamic sleep, sleep longer when Wi-Fi out of range
             if connected_mode:
                 time.sleep(0.02)  # Connected Mode, actual ~85ms 12 Hz
             elif rssi is not None:
