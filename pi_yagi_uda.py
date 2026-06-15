@@ -99,7 +99,7 @@ RSSI_CONNECT_THRESHOLD = -77  # Minimum signal to allow a hardware connection
 RSSI_DOWNLOAD_THRESHOLD = -74  # Minimum signal to execute data payload transfer
 
 # Radar lines Boundary
-RSSI_STRONG_BOUND = -45
+RSSI_STRONG_BOUND = -60
 RSSI_WEAK_BOUND = -80
 
 SSD_WIDTH = 128
@@ -302,15 +302,17 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
 
     # Radar graphics: white background block, black circle mask
     draw.rectangle((96, 0, 127, 31), fill=1)
-    draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius),
+    #draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius), outline=0, fill=0)
+    draw.ellipse((center_x - max_radius, center_y - max_radius + 1,
+                  center_x + max_radius - 1, center_y + max_radius),
                  outline=0, fill=0)
 
-    # Cadence indicator box
-    #draw.rectangle((97, 27, 100, 30), fill=0) # Outer Box
-    #draw.rectangle((98, 28, 99, 29), fill=int(cadence_fill))
-    #moved to text region
-    draw.rectangle((92, 0, 95, 3), fill=1-int(cadence_fill)) # Outer Box
-    draw.rectangle((93, 1, 94, 2), fill=int(cadence_fill))  #Inner dot
+    # Cadence indicator box in text region, for lower right x_box=97, ybox=27
+    x_box = 90
+    y_box =  0
+    dot_size = 3 # for 2px x 2px dot, add one to postion
+    draw.rectangle((x_box, y_box, x_box+dot_size+1, y_box+dot_size+1), fill=1-int(cadence_fill)) # Outer Box
+    draw.rectangle((x_box+1, y_box+1, x_box+dot_size, y_box+dot_size), fill=int(cadence_fill))  #Inner dot
 
     # Standard math puts 0° at East. To make 0° North and clockwise:
     # Screen Angle = 90 - (angle - heading)
@@ -375,20 +377,28 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
         draw.polygon(polygon_points, fill=1, outline=1)
 
     # Center axis markers & black center doc on top of everything
-    draw.point((center_x, center_y - 1), fill=0)
-    draw.point((center_x, center_y + 1), fill=0)
-    draw.point((center_x - 1, center_y), fill=0)
-    draw.point((center_x + 1, center_y), fill=0)
-    draw.point((center_x, center_y), fill=0)
+    # draw.point((center_x, center_y - 1), fill=0)
+    # draw.point((center_x, center_y + 1), fill=0)
+    # draw.point((center_x - 1, center_y), fill=0)
+    # draw.point((center_x + 1, center_y), fill=0)
+    # draw.point((center_x, center_y), fill=0)
+    draw.point((111, 14), fill=0)
+    draw.point((112, 14), fill=0)
+    draw.point((111, 15), fill=0)
+    draw.point((112, 15), fill=0)
 
 
 def handle_scan_mode(short_press, rssi_heading_history, target_ssid, oled_context: DisplayContext):
+    """ Scan for rssi metric, connect  if sufficient strength and button pressed."""
+   
+    # Only uses scan_target_ssi with target_ssid, we do NOT use this method's ability to show list of networks
     rssi = scan_target_ssid(interface="wlan0", target_ssid=target_ssid)
     ssid = target_ssid if rssi is not None else None
 
     if short_press and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
         print(f"\n* Button pressed ({rssi} dBm). Trying to connect...")
-        if oled_context: oled_context.update_line3("trying to connect...")  # Targeted OLED update
+        if oled_context:
+            oled_context.update_line3("trying to connect...")  # Targeted OLED update
 
         if change_connection("up"):
             rssi_heading_history[:] = [-99.0] * 360
@@ -436,6 +446,7 @@ def print_and_display_metrics(ssd_detected, connected, ssid, rssi, quality, tx_r
         print("-> download possible, use button?" if rssi >= RSSI_DOWNLOAD_THRESHOLD else "-> connected, weak signal")
     else:
         print(f"** Scanning {TARGET_SSID}, RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
+        print(f"Bars:      {rssi_to_string(rssi)}")
 
     if heading is not None:
         print(f"Compass Heading: {heading:.0f}° {get_compass_8pt_string(heading)}")
@@ -495,12 +506,6 @@ def main():
                     rssi_heading_history = [-99.0] * 360
                 connected_mode = False
                 long_press = False
-
-            # Handle Auto-Connect on first pass if needed
-            if TARGET_SSID == "shell-fi" and not auto_connect_attempted:
-                if oled_context: oled_context.update_line3("connecting...")
-                connected_mode = connect_ssid(TARGET_SSID)
-                auto_connect_attempted = True
 
             # Logic for connected or scanning
             if connected_mode:

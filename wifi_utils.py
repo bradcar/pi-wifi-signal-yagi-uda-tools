@@ -1,8 +1,44 @@
+# wifi_utils.py
+"""
+Requirements to avoid password:
+    sudo visudo
+    add pi-admin ALL=(ALL) NOPASSWD: /usr/sbin/iw (or just /usr/bin/iw depending on your path)
+"""
 import os
 import re
 import subprocess
 import time
 from typing import Literal
+
+
+class PiNetworkMock:
+    """Mock object mimicking CoreWLAN network objects to preserve core display loop structure"""
+
+    def __init__(self, ssid, bssid, rssi, band):
+        self._ssid = ssid
+        self._bssid = bssid
+        self._rssi = rssi
+        self._band = band
+
+    def ssid(self):
+        return self._ssid if self._ssid != ".hidden." else None
+
+    def bssid(self):
+        return self._bssid
+
+    def rssi_value(self):
+        return self._rssi
+
+    def parsed_band(self):
+        return self._band
+
+
+def init_wifi():
+    """Initialize CoreWLAN client and returns the active Wi-Fi"""
+    # For Raspberry Pi, we ensure the wlan0 interface is accessible via iwlist
+    if os.path.exists("/sys/class/net/wlan0"):
+        return "wlan0"
+    return None
 
 
 def get_ssid():
@@ -71,46 +107,97 @@ def query_wifi():
     return rssi, quality, tx_rate
 
 
-def scan_target_ssid(interface="wlan0", target_ssid="ABox-PDX"):
+def parse_band_from_cell(cell) -> str:
+    """Parses channel and frequency from text to calculate the band string"""
+    channel_match = re.search(r'Channel:(\d+)', cell)
+    channel = int(channel_match.group(1)) if channel_match else None
+
+    freq_match = re.search(r'Frequency:(\d+\.?\d*)', cell)
+    freq = float(freq_match.group(1)) if freq_match else None
+
+    if channel is None and freq:
+        if freq > 10:
+            freq = freq / 1000
+
+        if 2.4 <= freq <= 2.5:
+            channel = int((freq - 2.412) / 0.005) + 1
+        elif 5.1 <= freq <= 5.9:
+            channel = 36
+        else:
+            channel = None
+
+    if channel is None:
+        band = "Unknown"
+    elif channel <= 14:
+        band = "2.4 GHz"
+    elif channel <= 64:
+        band = "5 GHz"
+    else:
+        band = "6 GHz"
+
+    return band
+
+
+def scan_target_ssid(interface, target_ssid=None):
     """
-    High-speed, non-blocking scan replacement using 'iw dump' instead of iwlist.
-    Reads the kernel's active BSS cache to avoid blocking the main loop.
+    High-speed scan. Uses kernel cache (fastest) with fallback option
+    for forced hardware scan (moderate).
 
     Args:
         interface (str): The network interface to scan (default: "wlan0").
         target_ssid (str): The SSID to search for in the scan results.
 
+        Moderate is slower but guarantees fresh data.
+
     Returns:
         int: The signal strength (RSSI) in dBm if found, otherwise None.
     """
+    FAST_SCAN_MODE = False
     try:
-        scan = subprocess.check_output(
-            ["/usr/sbin/iw", "dev", interface, "scan", "dump"],
-            text=True,
-            stderr=subprocess.DEVNULL
-        )
-    except Exception:
+        if FAST_SCAN_MODE:
+            # FASTEST: Read the kernel's active BSS cache
+            cmd = ["sudo", "iw", "dev", interface, "scan", "dump"]
+        else:
+            # MODERATE: Force a physical radio hop
+            cmd = ["sudo", "iw", "dev", interface, "scan"]
+
+        scan = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
-    # Split Access Point blocks
-    cells = scan.split("BSS ")
-    target_rssi = None
+    # Parse 'iw' output: BSS blocks start with "BSS "
+    bss_blocks = re.split(r'\nBSS ', scan)
+    networks = []
 
-    for cell in cells[1:]:
-        # Extract SSID
-        ssid_match = re.search(r"SSID:\s*(.*)", cell)
-        if ssid_match:
-            # Strip quotes or trailing spaces
-            ssid = ssid_match.group(1).strip().strip('"')
+    for block in bss_blocks[1:]:  # Skip the first element (interface info)
+        ssid_match = re.search(r'SSID: (.*)', block)
+        ssid = ssid_match.group(1) if ssid_match else ".hidden."
 
-            if ssid == target_ssid:
-                # Extract signal strength ("signal: -65.00 dBm")
-                rssi_match = re.search(r"signal:\s*([+-]?\d+(?:\.\d+)?)", cell)
-                if rssi_match:
-                    target_rssi = int(float(rssi_match.group(1)))
-                    # loop to catch the strongest signal if there are multiple APs with same SSID
+        rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
+        rssi = int(float(rssi_match.group(1))) if rssi_match else -100
 
-    return target_rssi
+        # If found target_ssid, return immediately
+        if target_ssid and ssid == target_ssid:
+            return rssi
+
+        bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
+        bssid = bssid_match.group(1) if bssid_match else "Unknown"
+
+        band = parse_band_from_cell(block)
+        networks.append(PiNetworkMock(ssid, bssid, rssi, band))
+
+    return sorted(networks, key=lambda net: net.rssi_value(), reverse=True) if target_ssid is None else None
+
+
+def map_band_to_string(net) -> str:
+    """
+    Duck-typed for Linux mock objects to keep the display same function signature as
+    CoreWLAN Map bands using CoreWLAN's band integers
+    """
+    if hasattr(net, 'parsed_band'):
+        return net.parsed_band()
+    return "Unknown"
 
 
 def rssi_to_string(rssi):
@@ -124,7 +211,7 @@ def rssi_to_string(rssi):
             str: A string representing signal strength ("3 bars").
         """
     if rssi is None:
-        return "0 bar", "Unstable Link"
+        return "None"
 
     if rssi > -50:
         rssi_string = "4 bars"
