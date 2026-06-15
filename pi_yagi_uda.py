@@ -67,9 +67,7 @@ Requirements (beyond normal i2c):
 
  TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 """
-import getpass
 import math
-import os
 import time
 import subprocess
 from datetime import datetime
@@ -87,7 +85,8 @@ from PIL import Image, ImageDraw, ImageFont
 from gpiozero import Button
 
 # Network signal tracking
-from pi_wifi_rssi_quality_txrate import get_ssid, scan_target_ssid, query_wifi, quality_to_string, rssi_to_string
+from wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
+    remove_ssid
 from download_file import download_file
 
 DEBUG = False
@@ -256,87 +255,6 @@ def pico_temperature():
 
 
 load_dotenv()
-
-
-def get_password_for_ssid(ssid):
-    # .env has password with WIFI_PASS_ followed by SSID
-    env_key = f"WIFI_PASS_{ssid}"
-    return os.getenv(env_key)
-
-
-def connect_ssid(ssid):
-    """
-    Programmatic way to connect to WiFi network.
-
-    CLI version for "shell-fi"
-    sudo nmcli device wifi connect "shell-fi"
-    sudo nmcli device wifi connect "shell-fi" password "YOUR_PASSWORD_HERE"
-    sudo nmcli connection show
-
-    # Disable Bluetooth for better Wi-Fi, since they share same antenna
-    sudo nano /boot/firmware/config.txt
-    dtoverlay=disable-bt
-
-    # disable hardware auto-attempting to wake up disabled Bluetooth
-    sudo systemctl disable hciuart.service
-    sudo systemctl disable bluetooth.service
-
-    """
-    print(f"\nProvisioning NetworkManager for target: {ssid}...")
-
-    # Get password from env
-    password = get_password_for_ssid(ssid)
-    if not password:
-        print(f"No password found in .env for {ssid}")
-        return False
-    print(f"\nProvisioning NetworkManager for: {ssid} using stored password...")
-
-    print(f"Flush old {ssid} configurations...")
-    subprocess.run(["sudo", "nmcli", "connection", "delete", ssid], stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL)
-
-    # Use clean explicit parameters for device activation to let nmcli autoconfigure security structures
-    cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0"]
-    if password is not None:
-        cmd.extend(["password", password])
-
-    # Catch weak-signal handshaking hangs gracefully instead of dropping execution
-    try:
-        connect_attempt = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-
-        if connect_attempt.returncode != 0:
-            print(f"ERROR: WiFi connection failed:\n{connect_attempt.stderr}")
-            return False
-
-    except subprocess.TimeoutExpired:
-        print(f"WARNING: Connection handshake timed out after 15 seconds. Signal likely too weak.")
-        return False
-
-    # Elevate priority for network now that the profile is safely auto-generated
-    subprocess.run(["sudo", "nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "10"],
-                   check=True)
-
-    print(f"Verifying '{ssid}' on state and IP assignment...")
-    time.sleep(1.5)
-
-    # Query NetworkManager for the current state
-    status_check = subprocess.run(["nmcli", "-t", "-f", "DEVICE,STATE,CONNECTION", "device"], capture_output=True,
-                                  text=True)
-
-    if f"wlan0:connected:{ssid}" in status_check.stdout:
-        print(f" {ssid} Connection successful! Network interface is active.\n")
-        return True
-    else:
-        print("WARNING Profile created, but interface failed to verify an active state.\n")
-        return False
-
-
-def remove_ssid(ssid: Literal["shell-fi"]):
-    print(f"\nCleaning up: Removing NetworkManager profile '{ssid}'...")
-    subprocess.run([
-        "sudo", "nmcli", "connection", "delete", ssid
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(" -> \"shell-fi\" deleted successfully.")
 
 
 def change_connection(action: Literal["up", "down"]) -> bool:
@@ -691,6 +609,7 @@ def main():
             finish_time = time.time()
             duration = finish_time - start_time
             start_time = finish_time
+            print(f"Pi Zero 2W temp: {pi_celsius:.1f}°C")
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
