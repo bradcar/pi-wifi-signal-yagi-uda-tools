@@ -295,7 +295,7 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     """
     center_x = 112
     center_y = 15
-    max_radius = 15
+    max_radius = 16
 
     if heading is None:
         heading = 0.0
@@ -306,8 +306,11 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
                  outline=0, fill=0)
 
     # Cadence indicator box
-    draw.rectangle((97, 26, 101, 30), fill=0)
-    draw.rectangle((98, 27, 100, 29), fill=int(cadence_fill))
+    #draw.rectangle((97, 27, 100, 30), fill=0) # Outer Box
+    #draw.rectangle((98, 28, 99, 29), fill=int(cadence_fill))
+    #moved to text region
+    draw.rectangle((92, 0, 95, 3), fill=1-int(cadence_fill)) # Outer Box
+    draw.rectangle((93, 1, 94, 2), fill=int(cadence_fill))  #Inner dot
 
     # Standard math puts 0° at East. To make 0° North and clockwise:
     # Screen Angle = 90 - (angle - heading)

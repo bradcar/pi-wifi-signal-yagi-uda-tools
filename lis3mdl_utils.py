@@ -27,7 +27,7 @@ def get_compass_8pt_string(heading: float):
         heading: compass heading
 
     Returns:
-        string: 2 letter acronym for compass heading (N, NW, NE, E, SE, SW, NW, NE, SE, SW)
+        string: 2-letter acronym for compass heading (N, NW, NE, E, SE, SW, NW, NE, SE, SW)
     """
     if heading is None:
         return ""
