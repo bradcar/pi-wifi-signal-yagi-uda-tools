@@ -65,8 +65,11 @@ Requirements (beyond normal i2c):
  TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 """
 import math
+import os
 import time
+import signal
 import subprocess
+from contextlib import contextmanager
 from datetime import datetime
 from dotenv import load_dotenv
 from typing import Literal
@@ -86,6 +89,20 @@ from wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, q
     remove_ssid
 from download_file import download_file
 
+
+@contextmanager
+def timeout(seconds):
+    def signal_handler(signum, frame):
+        raise TimeoutError("Timed out!")
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
+
 DEBUG = False
 
 # TODO test Pi Pico as Access Point
@@ -99,8 +116,16 @@ RSSI_CONNECT_THRESHOLD = -77  # Minimum signal to allow a hardware connection
 RSSI_DOWNLOAD_THRESHOLD = -74  # Minimum signal to execute data payload transfer
 
 # Radar lines Boundary
-RSSI_STRONG_BOUND = -60
-RSSI_WEAK_BOUND = -80
+SCAN_RSSI_STRONG = -65
+SCAN_RSSI_WEAK = -80
+CONNECT_RSSI_STRONG = -40
+CONNECT_RSSI_WEAK = -75
+
+# TODO for future implementation if needed for performance
+RADAR_LUT = []
+for angle in range(0, 360, 5):
+    rad = math.radians(90.0 - angle)  # Rotation is handled during render
+    RADAR_LUT.append((math.cos(rad), math.sin(rad)))
 
 SSD_WIDTH = 128
 SSD_HEIGHT = 32
@@ -228,23 +253,32 @@ def pico_temperature():
 
 
 def change_connection(action: Literal["up", "down"]) -> bool:
-    if action == "down":
-        subprocess.run(["sudo", "nmcli", "connection", "down", TARGET_SSID],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return False
+    change_timeout = 5
+    try:
+        if action == "down":
+            subprocess.run(["sudo", "nmcli", "connection", "down", TARGET_SSID],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=True, timeout=change_timeout)
+            return False
 
-    if action == "up":
-        # bring up the existing profile
-        result = subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID],
-                                capture_output=True, text=True)
-        if result.returncode == 0:
-            return True
+        if action == "up":
+            # bring up the existing profile
+            result = subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID],
+                                    capture_output=True, text=True,
+                                    check=True, change_timeout=15)
+            if result.returncode == 0:
+                return True
 
-        # Fallback: Re-connect using the .env password
-        print(f"Profile '{TARGET_SSID}' failed. Trying to reconnect...")
-        return connect_ssid(TARGET_SSID)
+    except subprocess.TimeoutExpired:
+        print(f"CRITICAL: NetworkManager command timed out ({change_timeout} sec) - possible system hang.")
+    except subprocess.CalledProcessError as e:
+        print(f"CRITICAL: NetworkManager issue (nmcli): {e}")
+    except Exception as e:
+        print(f"CRITICAL: Unexpected error in change_connection: {e}")
 
-    return False
+    # Fallback: Re-connect using the .env password
+    print(f"Profile '{TARGET_SSID}' failed. Trying to reconnect...")
+    return connect_ssid(TARGET_SSID)
 
 
 def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, download_count, connected: bool = True):
@@ -287,7 +321,7 @@ def display_metrics_ssd(draw, font, rssi, ssid: str, tx_rate, heading: float, do
     draw.text((left_indent, 20), line3, font=font, fill=1)
 
 
-def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
+def display_radar_ssd(draw, cadence_fill, heading: float, signal_history, connected):
     """
     Draw a white box with a black radar circle in it.
     Add white directional orientation lines for North, East, South, and West.
@@ -297,22 +331,26 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
     center_y = 15
     max_radius = 16
 
+    # Select radar line length bounds based on mode
+    strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
+    weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
+
     if heading is None:
         heading = 0.0
 
     # Radar graphics: white background block, black circle mask
     draw.rectangle((96, 0, 127, 31), fill=1)
-    #draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius), outline=0, fill=0)
+    # draw.ellipse((center_x - max_radius, center_y - max_radius, center_x + max_radius, center_y + max_radius), outline=0, fill=0)
     draw.ellipse((center_x - max_radius, center_y - max_radius + 1,
                   center_x + max_radius - 1, center_y + max_radius),
                  outline=0, fill=0)
 
     # Cadence indicator box in text region, for lower right x_box=97, ybox=27
     x_box = 90
-    y_box =  0
-    dot_size = 3 # for 2px x 2px dot, add one to postion
-    draw.rectangle((x_box, y_box, x_box+dot_size+1, y_box+dot_size+1), fill=1-int(cadence_fill)) # Outer Box
-    draw.rectangle((x_box+1, y_box+1, x_box+dot_size, y_box+dot_size), fill=int(cadence_fill))  #Inner dot
+    y_box = 0
+    dot_size = 3  # for 2px x 2px dot, add one to position
+    draw.rectangle((x_box, y_box, x_box + dot_size + 1, y_box + dot_size + 1), fill=1 - int(cadence_fill))  # Outer Box
+    draw.rectangle((x_box + 1, y_box + 1, x_box + dot_size, y_box + dot_size), fill=int(cadence_fill))  # Inner dot
 
     # Standard math puts 0° at East. To make 0° North and clockwise:
     # Screen Angle = 90 - (angle - heading)
@@ -355,13 +393,14 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
 
         saved_rssi = max(window_values)
 
-        # Clamp RSSI bounds safely
-        if saved_rssi < RSSI_WEAK_BOUND:
-            saved_rssi = RSSI_WEAK_BOUND
-        elif saved_rssi > RSSI_STRONG_BOUND:
-            saved_rssi = RSSI_STRONG_BOUND
+        # Apply the dynamic bounds
+        if saved_rssi < weak_bound:
+            saved_rssi = weak_bound
+        elif saved_rssi > strong_bound:
+            saved_rssi = strong_bound
 
-        proportion = (saved_rssi - RSSI_WEAK_BOUND) / (RSSI_STRONG_BOUND - RSSI_WEAK_BOUND)
+        # Calculate proportion using dynamic bounds
+        proportion = (saved_rssi - weak_bound) / (strong_bound - weak_bound)
         line_length = (max_radius - 2) * proportion
 
         # Apply identical screen space angle mapping
@@ -390,9 +429,20 @@ def display_radar_ssd(draw, cadence_fill, heading: float, signal_history):
 
 def handle_scan_mode(short_press, rssi_heading_history, target_ssid, oled_context: DisplayContext):
     """ Scan for rssi metric, connect  if sufficient strength and button pressed."""
-   
+
     # Only uses scan_target_ssi with target_ssid, we do NOT use this method's ability to show list of networks
-    rssi = scan_target_ssid(interface="wlan0", target_ssid=target_ssid)
+    rssi = None
+    scan_timeout = 2
+    try:
+        with timeout(scan_timeout):  # Force 5s timeout on scan
+            rssi = scan_target_ssid(interface="wlan0", target_ssid=target_ssid)
+    except TimeoutError:
+        print(f"CRITICAL: scan_target_ssid hung for ({scan_timeout} seconds), nmcli reconnect.")
+        subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print(f"Error during scan: {e}")
+
     ssid = target_ssid if rssi is not None else None
 
     if short_press and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
@@ -457,9 +507,20 @@ def print_and_display_metrics(ssd_detected, connected, ssid, rssi, quality, tx_r
     if ssd_detected:
         draw.rectangle((0, 0, SSD_WIDTH, SSD_HEIGHT), fill=0)
         display_metrics_ssd(draw, font, rssi, ssid, tx_rate, heading, download_count, connected)
-        display_radar_ssd(draw, cadence, heading or 0.0, rssi_at_heading)
+        display_radar_ssd(draw, cadence, heading or 0.0, rssi_at_heading, connected)
         oled_display.image(image)
         oled_display.show()
+
+
+def write_history_to_csv(history):
+    log_dir = "logs_detailed_rssi_heading"
+    os.makedirs(log_dir, exist_ok=True)
+    filename = os.path.join(log_dir, f"yagi_uda_rssi_heading_{datetime.now().strftime('%Y%m%d_%H%M')}.csv")
+    with open(filename, "w") as f:
+        f.write("degree,rssi\n")
+        for i, val in enumerate(history):
+            f.write(f"{i},{val}\n")
+    print(f"-> Saved scan data to {filename}")
 
 
 def main():
@@ -490,10 +551,16 @@ def main():
 
     try:
         start_time = time.time()
+        last_csv_write = time.time()
         cadence_fill = False
         while True:
             cadence_fill = not cadence_fill
             start_loop = time.time()
+
+            # write rssi strength for entire 360 degrees, every 61 seconds
+            if start_loop - last_csv_write > 61:
+                write_history_to_csv(rssi_heading_history)
+                last_csv_write = time.time()
 
             pi_celsius = pico_temperature()
             if pi_celsius and pi_celsius > 60.0:
@@ -520,11 +587,16 @@ def main():
 
             short_press = False
 
-            # record signal strength at heading direction
-            heading = get_compass_heading(lis3mdl)
+            # record rssi at integer heading angles
+            heading = None
+            try:
+                heading = get_compass_heading(lis3mdl)
+            except Exception as e:
+                print(f"Warning: I2C failure reading Magnetometer: {e}")
             if rssi is not None and heading is not None:
-                idx = (round(heading / 5.0) * 5) % 360
-                rssi_heading_history[int(idx)] = rssi
+                # idx = (round(heading / 5.0) * 5) % 360
+                idx = int(heading) % 360
+                rssi_heading_history[idx] = rssi
 
             # print and display metrics
             print_and_display_metrics(
