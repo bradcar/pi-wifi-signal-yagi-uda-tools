@@ -202,7 +202,7 @@ def map_band_to_string(net) -> str:
 
 def rssi_to_string(rssi):
     """
-    Generates text strings from raw RSSI integer.
+    Generates text strings from RSSI value.
 
         Args:
             rssi (int): The signal strength in dBm.
@@ -224,6 +224,31 @@ def rssi_to_string(rssi):
     else:
         rssi_string = "0 bar"
     return rssi_string
+
+
+def rssi_to_bars(rssi):
+    """
+    Integer number of bars from RSSI values.
+
+        Args:
+            rssi (int): The signal strength in dBm.
+
+        Returns:
+            str: A string representing signal strength ("3 bars").
+        """
+    if rssi is None:
+        return 0
+
+    if rssi > -50:
+        return 4
+    elif rssi > -60:
+        return 3
+    elif rssi > -70:
+        return 2
+    elif rssi > -80:
+        return 1
+    else:
+        return 0
 
 
 def quality_to_string(quality):
@@ -252,7 +277,7 @@ def quality_to_string(quality):
 
 def get_password_for_ssid(ssid):
     """
-    Gets the WiFi password for a given SSID from environment variables.
+    Gets the Wi-Fi password for a given SSID from environment variables.
 
     Args:
         ssid (str): The SSID to look up in the environment.
