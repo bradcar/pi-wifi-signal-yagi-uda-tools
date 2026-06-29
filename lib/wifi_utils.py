@@ -14,11 +14,12 @@ from typing import Literal
 class PiNetworkMock:
     """Mock object mimicking CoreWLAN network objects to preserve core display loop structure"""
 
-    def __init__(self, ssid, bssid, rssi, band):
+    def __init__(self, ssid, bssid, rssi, band, channel):
         self._ssid = ssid
         self._bssid = bssid
         self._rssi = rssi
         self._band = band
+        self._channel = channel
 
     def ssid(self):
         return self._ssid if self._ssid != ".hidden." else None
@@ -31,6 +32,9 @@ class PiNetworkMock:
 
     def parsed_band(self):
         return self._band
+
+    def channel(self):
+        return self._channel
 
 
 def init_wifi():
@@ -107,22 +111,34 @@ def query_wifi():
     return rssi, quality, tx_rate
 
 
-def parse_band_from_cell(cell) -> str:
-    """Parses channel and frequency from text to calculate the band string"""
-    channel_match = re.search(r'Channel:(\d+)', cell)
+def parse_band_from_cell(cell) -> tuple:
+    """Parses channel and frequency from text to calculate the band string and explicit channel number"""
+    # capture explicit channel from text
+    channel_match = re.search(r'Channel:\s*(\d+)', cell, re.IGNORECASE)
     channel = int(channel_match.group(1)) if channel_match else None
 
-    freq_match = re.search(r'Frequency:(\d+\.?\d*)', cell)
+    # capture frequency (freq: 2412" or "freq: 5180")
+    freq_match = re.search(r'freq:\s*(\d+\.?\d*)', cell, re.IGNORECASE)
     freq = float(freq_match.group(1)) if freq_match else None
 
+    # Fallback if channel parsing fails but frequency exists
     if channel is None and freq:
-        if freq > 10:
-            freq = freq / 1000
+        if freq > 100:
+            freq = freq / 1000.0
 
-        if 2.4 <= freq <= 2.5:
-            channel = int((freq - 2.412) / 0.005) + 1
-        elif 5.1 <= freq <= 5.9:
-            channel = 36
+        if 2.400 <= freq <= 2.495:
+            if freq == 2.484:
+                channel = 14
+            else:
+                channel = int((freq - 2.412) / 0.005) + 1
+
+        elif 5.150 <= freq <= 5.895:
+            channel = int((freq - 5.000) / 0.005) / 4
+            channel = int(channel)
+
+        elif 5.925 <= freq <= 7.125:
+            channel = int((freq - 5.940) / 0.005) / 4 + 1
+            channel = int(channel)
         else:
             channel = None
 
@@ -130,12 +146,48 @@ def parse_band_from_cell(cell) -> str:
         band = "Unknown"
     elif channel <= 14:
         band = "2.4 GHz"
-    elif channel <= 64:
+    elif channel <= 177:  # Standard upper limit boundary for regional 5GHz bands
         band = "5 GHz"
     else:
         band = "6 GHz"
 
-    return band
+    return band, channel
+
+
+def channel_to_frequency(channel: int, band: str) -> int:
+    """
+    Maps a given channel number and band back to its standard MHz.
+
+    Args:
+        channel (int): The Wi-Fi channel number (ex: 1, 6, 36, 149).
+        band (str): The string descriptor of the band ("2.4 GHz", "5 GHz", "6 GHz").
+
+    Returns:
+        int: The center frequency in MHz, or None if the mapping is invalid.
+    """
+    if channel is None or not band:
+        return None
+
+    band_clean = band.replace(" ", "").lower()
+
+    # 2.4 GHz
+    if "2.4" in band_clean:
+        if channel == 14:
+            return 2484
+        if 1 <= channel <= 13:
+            return 2412 + (channel - 1) * 5
+
+    # 5 GHz Band
+    elif "5" in band_clean:
+        if 32 <= channel <= 177:
+            return 5000 + (channel * 5)
+
+    # 6 GHz Band (Wi-Fi 6E / 7)
+    elif "6" in band_clean:
+        if 1 <= channel <= 233:
+            return 5940 + (channel * 5)
+
+    return None
 
 
 def scan_target_ssid(interface, target_ssid=None):
@@ -184,8 +236,8 @@ def scan_target_ssid(interface, target_ssid=None):
         bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
         bssid = bssid_match.group(1) if bssid_match else "Unknown"
 
-        band = parse_band_from_cell(block)
-        networks.append(PiNetworkMock(ssid, bssid, rssi, band))
+        band, channel = parse_band_from_cell(block)
+        networks.append(PiNetworkMock(ssid, bssid, rssi, band, channel))
 
     return sorted(networks, key=lambda net: net.rssi_value(), reverse=True) if target_ssid is None else None
 
@@ -273,6 +325,15 @@ def quality_to_string(quality):
         quality_string = "Disconnected"
 
     return quality_string
+
+
+def frequency_to_channel(frequency):
+    """Converts MHz frequency to a standard 2.4GHz channel number."""
+    if frequency == 2484:
+        return 14
+    if 2412 <= frequency <= 2472:
+        return (frequency - 2412) // 5 + 1
+    return "???"
 
 
 def get_password_for_ssid(ssid):
