@@ -1,4 +1,4 @@
-# lcd_radar_utils.py
+# lcd_rssi_polar_utils.py
 """
 lcd Radar Utilities, to be used by pi_yagi_uda.py an di_wifi_scan_radar.py
 
@@ -9,6 +9,8 @@ Functionality
 
 import math
 from PIL import Image, ImageDraw
+
+from lib.radar_math_utils import calculate_peak_bounds
 
 # Radar lines Boundary
 SCAN_RSSI_STRONG = -30
@@ -58,27 +60,21 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     """
     Draws a heavy red vector pointer and an encompassing signal arc across matching peak boundaries.
     """
-    max_signal_radius = max_radius - 10  # Cap internal signals/arcs at 100px
-    outer_marker_radius = max_radius + 10  # Thick peak line goes outside the 110px radius (120px)
+    max_signal_radius = max_radius - 10
+    outer_marker_radius = max_radius + 10
 
-    # Helper to map RSSI to internal radial length
     def rssi_to_radius(val):
         if val < weak_bound: val = weak_bound
         if val > strong_bound: val = strong_bound
         proportion = (val - weak_bound) / (strong_bound - weak_bound)
         return max_signal_radius * proportion
 
-    # Calc Screen Standard Angles
+    # Align primary needle with the clean shared vector mean
     peak_angle_rad = math.radians(heading - peak_degree)
-
-    # Internal plot radius for the peak target
     r_peak = rssi_to_radius(peak_rssi)
 
-    # Calc peak coordinates
     x_peak = int(center_x + r_peak * math.cos(peak_angle_rad))
     y_peak = int(center_y - r_peak * math.sin(peak_angle_rad))
-
-    # Outer frame marker points (Outside 110px radius)
     x_edge = int(center_x + outer_marker_radius * math.cos(peak_angle_rad))
     y_edge = int(center_y - outer_marker_radius * math.sin(peak_angle_rad))
 
@@ -86,26 +82,31 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     x_halfway = int(center_x + halfway_radius * math.cos(peak_angle_rad))
     y_halfway = int(center_y - halfway_radius * math.sin(peak_angle_rad))
 
-    # Peak Pointer Lines, thick line on outer edge, thin line to peak value
+    # Draw pointer hardware indicators
     draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=7)
     draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="red", width=3)
 
-    # Arc at peak radius
+    # Render the boundary tracking arc using the shared helper bounds
     if peak_cluster is not None and len(peak_cluster) > 1:
-        first_deg = int(peak_cluster['degree'].iloc[0])
-        last_deg = int(peak_cluster['degree'].iloc[-1])
+        degrees = peak_cluster['degree'].to_numpy()
+
+        # Call the exact same shared logic used by the high-res engine
+        _, first_deg, last_deg = calculate_peak_bounds(degrees)
+
+        # Convert back to integers for the pixel step range
+        first_deg, last_deg = int(first_deg), int(last_deg)
+
+        if last_deg < first_deg:
+            sweep_range = list(range(first_deg, 360)) + list(range(0, last_deg + 1))
+        else:
+            sweep_range = list(range(first_deg, last_deg + 1))
 
         arc_points = []
-        # Step through matching peaks
-        for deg in range(first_deg, last_deg + 1, 1):
+        for deg in sweep_range:
             rad = math.radians(heading - deg)
             ax = int(center_x + r_peak * math.cos(rad))
             ay = int(center_y - r_peak * math.sin(rad))
             arc_points.append((ax, ay))
-
-        # Clean up step artifacts for final degree boundary
-        final_rad = math.radians(heading - last_deg)
-        arc_points.append((int(center_x + r_peak * math.cos(final_rad)), int(center_y - r_peak * math.sin(final_rad))))
 
         if len(arc_points) >= 2:
             draw.line(arc_points, fill="red", width=4)

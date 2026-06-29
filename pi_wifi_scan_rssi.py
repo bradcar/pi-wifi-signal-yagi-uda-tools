@@ -6,7 +6,7 @@ Scans repeatedly, sorted by strongest RSSI first.
 Features
     * Scans all Wi-Fi's and collects strength at direction
     * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
-    * Can Create Hi-Resolution .jpg of selected Wi-Fim every 1° plot
+    * Can Create Hi-Resolution .png of selected Wi-Fim every 1° plot
     * Outputs csv of 360° data for each Wi-Fi
     * Displays channel used by each
     *
@@ -42,7 +42,7 @@ from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
 from lib.e_ink_utils import init_e_ink_display, refresh_e_ink_display, blank_canvas_e_ink
-from lib.lcd_radar_utils import display_radar_lcd
+from lib.lcd_rssi_polar_utils import display_radar_lcd
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
@@ -130,7 +130,7 @@ def update_bssid_map(data, heading, bssid_map):
             bssid_map[bssid]["rssi_history"][random_degree] = fake_rssi
 
 
-def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40, file_name="plot.jpg"):
+def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40, file_name="plot.png"):
     rssi_list = bssid_info["rssi_history"]
     degrees = np.arange(360)
 
@@ -141,8 +141,8 @@ def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plo
 
     theta = np.deg2rad(degrees)
     subtitle = f"{bssid_info['ssid']}"
-    lcd_jpg_generate = True
-    return plot_rssi_polar(df, rssi_list, theta, heading, subtitle, lcd_jpg_generate, file_name=file_name)
+    lcd_png_generate = True
+    return plot_rssi_polar(df, rssi_list, theta, heading, subtitle, lcd_png_generate, file_name=file_name)
 
 
 def console_print(data, heading):
@@ -267,7 +267,6 @@ def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
         num_bars = rssi_to_bars(rssi)
         bar_string = ("*" * num_bars).ljust(4)
         bssid = net.bssid() or "Unknown"
-
         truncated_ssid = ssid[:ssid_trim_length] + "." if len(ssid) > ssid_trim_length else ssid
 
         if not (BLOCK_0_BAR and rssi <= -80) and not (BLOCK_NON_2_4_G and band != "2.4 GHz"):
@@ -328,7 +327,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     while not select:
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
 
-        # sliding window start
+        # sliding window start, and show title
         if idx_pick > MAX_VISIBLE_ROWS:
             start_idx = idx_pick - MAX_VISIBLE_ROWS
         else:
@@ -340,7 +339,6 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
 
         # show visible rows
         visible_chunk = filtered_networks[start_idx:start_idx + MAX_VISIBLE_ROWS]
-
         for local_i, net_dict in enumerate(visible_chunk):
             current_abs_idx = start_idx + local_i + 1
             ssid = net_dict["ssid"]
@@ -373,8 +371,8 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
         time.sleep(0.1)
 
 
-def create_radar_jpg_csv_save(bssid, info, heading, plot_dir, timestamp):
-    """ create polar plot for BSSID, then saves jpg and CSV """
+def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
+    """ create polar plot for BSSID, then saves png and CSV """
     # safe SSID and BSSID strings for files
     processed_ssid = info["ssid"].replace(" ", "_")
     safe_ssid = "".join([c for c in processed_ssid if c.isalnum() or c in ("-", "_")]).strip()
@@ -385,7 +383,7 @@ def create_radar_jpg_csv_save(bssid, info, heading, plot_dir, timestamp):
     print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}")
 
     csv_file = plot_dir / f"{safe_ssid}_{safe_bssid}-{timestamp}.csv"
-    jpg_file = plot_dir / f"{safe_ssid}_{safe_bssid}-{timestamp}.jpg"
+    png_file = plot_dir / f"{safe_ssid}_{safe_bssid}-{timestamp}.png"
 
     # Normalize history data array (convert None values to -99.0)
     cleaned_history = [v if v is not None else -99.0 for v in info["rssi_history"]]
@@ -400,9 +398,9 @@ def create_radar_jpg_csv_save(bssid, info, heading, plot_dir, timestamp):
     print(f"Saved csv: {csv_file}")
 
     start_time = time.time()
-    polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(jpg_file))
+    polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
-    print(f"Plot file written: {jpg_file}")
+    print(f"Plot file written: {png_file}")
 
     return polar_plot_image
 
@@ -530,7 +528,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
             else:
                 bssid_info = {"ssid": ssid, "rssi_history": signal_history}
 
-            hi_rez_image = create_radar_jpg_csv_save(target_bssid, bssid_info, heading + 90, plot_dir, timestamp)
+            hi_rez_image = create_radar_png_csv_save(target_bssid, bssid_info, heading + 90, plot_dir, timestamp)
 
             if hi_rez_image:
                 print("LCD Display 2 shows auto-scaled high-resolution plot...")
@@ -666,7 +664,7 @@ def main():
             # BSSID plotted on if RSSI > -99
             exit_heading = 0
             if any(val > -99.0 for val in info["rssi_history"]):
-                _ = create_radar_jpg_csv_save(bssid, info, exit_heading, plot_dir, timestamp)
+                _ = create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp)
         print("Clean Exit.")
 
 

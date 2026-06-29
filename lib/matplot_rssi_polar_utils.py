@@ -7,8 +7,8 @@ Magnetic North is 0° degrees, East is 90° degrees.
 
 Features:
 - Runs on MacOS or Pi Zero 2 W
-- lcd_jpg_generate flag - if True creates small 240px x 240px jpg for direct display on small color LCD
-- Dark Mode created for testing and possible use for lcd jpg's.
+- lcd_png_generate flag - if True creates small 240px x 240px png for direct display on small color LCD
+- Dark Mode created for testing and possible use for lcd png's.
 - Detects peak RSSI, or mid of plateau of peaks
 - Autoscales so the peak is 85% of the polar plot limit.
 - Indicates peak with red line from plot boundary to peak, outside of boundary peaks RSSI printed.
@@ -37,10 +37,10 @@ import io  # ADD THIS FOR IN-MEMORY BUFFERS
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
-from datetime import datetime
-from pathlib import Path
 from PIL import Image  # ADD THIS TO RETURN A PIL IMAGE
+from numpy import dtype, ndarray
+
+from lib.radar_math_utils import calculate_peak_bounds
 
 # dBm bounds for clamping values and gridlines
 RSSI_MAX_PLOT_CONSTANT = -20
@@ -58,22 +58,34 @@ def rssi_peak(valid_data) -> tuple[float, float, Any, Any, Any]:
     peak_cluster = valid_data[valid_data['rssi'] == max_rssi]
     peak_rssi = float(max_rssi)
 
-    first_deg = float(peak_cluster['degree'].iloc[0])
-    last_deg = float(peak_cluster['degree'].iloc[-1])
-    peak_degree = float(peak_cluster['degree'].mean())
+    # Extract matching degrees as a numpy array
+    degrees = peak_cluster['degree'].to_numpy()
 
-    diff = (last_deg - first_deg) % 360
-    if diff > 180:
-        arc_degrees = np.linspace(last_deg, first_deg + 360, num=100) % 360
+    arc_radians, arc_radii, peak_degree = peaks_arc_calc(degrees, peak_rssi)
+    return arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi
+
+
+def peaks_arc_calc(degrees, peak_rssi: float):
+    """
+    Determine the arc boundary of all peak cluster points with vector mean.
+    Look for the largest angular gap between adjacent peaks.
+    """
+    # Call the shared math helper
+    mean_peak_degree, first_deg, last_deg = calculate_peak_bounds(degrees)
+
+    # Generate plotting coordinates along the true shortest arc
+    if last_deg < first_deg:
+        arc_degrees = np.linspace(first_deg, last_deg + 360, num=100) % 360
     else:
         arc_degrees = np.linspace(first_deg, last_deg, num=100)
 
     arc_radians = np.deg2rad(arc_degrees)
     arc_radii = np.full_like(arc_radians, peak_rssi)
-    return arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi
+
+    return arc_radians, arc_radii, mean_peak_degree
 
 
-def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_name="plot.jpg"):
+def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
     # Detect all peaks at same RSSI
     valid_data = df[df['rssi'] > -98]
     if valid_data.empty:
@@ -85,7 +97,7 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
     print(f"Peak detected: {peak_rssi:.0f} dBm @ {peak_degree:.0f}° degrees")
 
     dark_mode = False
-    if not lcd_jpg_generate:
+    if not lcd_png_generate:
         fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
     else:
         dark_mode = True
@@ -114,7 +126,7 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
     thetaticks = np.arange(0, 360, 15)
     ax.set_thetagrids(thetaticks, labels=[f"{x}°" for x in thetaticks])
 
-    if not lcd_jpg_generate:
+    if not lcd_png_generate:
         font_adjust = 0
     else:
         font_adjust = 2
@@ -130,7 +142,7 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
     yticks = np.arange(Y_TICK_MIN, Y_TICK_MAX, 10)
     ax.set_yticks(yticks)
     ax.set_yticklabels([f"{y}" for y in yticks])
-    if not lcd_jpg_generate:
+    if not lcd_png_generate:
         ax.tick_params(axis='y', labelsize=10, labelcolor='blue')
     else:
         ax.tick_params(axis='y', labelsize=9, labelcolor=y_label_color)
@@ -140,11 +152,11 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
 
     if peak_rssi != -99:
         rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * 1.2
-        print(f"Plot boundaries: {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
+        print(f"Autoscaled Plot boundaries: {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
 
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
-    if not lcd_jpg_generate:
+    if not lcd_png_generate:
         ax.plot(theta, rssi, color='green', linewidth=2.0)
     else:
         ax.plot(theta, rssi, color='green', linewidth=0.7)
@@ -152,7 +164,7 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
 
     red_peak_text = f"(Peak: {peak_rssi:.0f}dBm @ {peak_degree:.0f}°)"
 
-    if not lcd_jpg_generate:
+    if not lcd_png_generate:
         fig.text(0.32, 0.95, "RSSI Strength", ha='center', fontsize=12, fontweight='bold')
         fig.text(0.45, 0.95, red_peak_text, ha='left', fontsize=12, fontweight='bold', color='red')
         fig.text(0.05, 0.03, f"{subtitle}", ha='left', fontsize=8)
@@ -174,7 +186,7 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
     if len(peak_cluster) > 1:
         ax.plot(arc_radians, arc_radii, color='red', linewidth=1, linestyle='-')
 
-    if not lcd_jpg_generate:
+    if not lcd_png_generate:
         peak_string = f"{peak_rssi:.0f} dBm"
         peak_offset = 20
     else:
@@ -194,17 +206,17 @@ def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_jpg_generate, file_n
 
     plt.grid(True, linestyle='--', color=grid_color, alpha=0.6)
 
-    if not lcd_jpg_generate:
-        plt.savefig(file_name, format='jpg', dpi=300, bbox_inches='tight')
+    if not lcd_png_generate:
+        plt.savefig(file_name, format='png', dpi=300, bbox_inches='tight')
         buf = io.BytesIO()
-        plt.savefig(buf, format='jpeg', dpi=300, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
     else:
         ax.set_position([0.14, 0.1, 0.72, 0.75])
-        plt.savefig(file_name, format='jpg', dpi=LCD_DPI)
+        plt.savefig(file_name, format='png', dpi=LCD_DPI)
 
         # Put image in memory
         buf = io.BytesIO()
-        plt.savefig(buf, format='jpeg', dpi=LCD_DPI)
+        plt.savefig(buf, format='png', dpi=LCD_DPI)
 
     # reset image buffer, return PIL Image
     buf.seek(0)

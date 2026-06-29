@@ -38,7 +38,7 @@ import spidev as SPI
 import sys
 from PIL import Image, ImageDraw, ImageFont
 
-from lib.lcd_radar_utils import display_radar_splash_lcd
+from lib.lcd_rssi_polar_utils import display_radar_splash_lcd
 
 sys.path.append("..")
 from vendor.waveshare_lcd import LCD_0inch96
