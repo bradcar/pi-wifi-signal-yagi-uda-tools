@@ -1,4 +1,7 @@
 # pi_zero_utils.py
+"""
+General purpose Pi Zero functions
+"""
 
 def pico_temperature():
     """ Reads system temperature as substitute for Pico ADC(4) """

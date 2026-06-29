@@ -11,9 +11,9 @@ import math
 from PIL import Image, ImageDraw
 
 # Radar lines Boundary
-SCAN_RSSI_STRONG = -40
+SCAN_RSSI_STRONG = -30
 SCAN_RSSI_WEAK = -80
-CONNECT_RSSI_STRONG = -40
+CONNECT_RSSI_STRONG = -30
 CONNECT_RSSI_WEAK = -75
 
 

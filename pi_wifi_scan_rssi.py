@@ -22,13 +22,13 @@ Usage:
   can also run in PyCharm
 
 TODO:
+    * check to see if matplot_rssi_polar_utils and lcd_radar_utils have the same correct code for finding peak arc
+
 """
-import math
 import random
-import signal
 import subprocess
 import time
-from contextlib import contextmanager
+
 from datetime import datetime
 from pathlib import Path
 
@@ -42,17 +42,18 @@ from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
 from lib.e_ink_utils import init_e_ink_display, refresh_e_ink_display, blank_canvas_e_ink
-from lib.lcd_radar_utils import display_radar_lcd, display_radar_splash_lcd
+from lib.lcd_radar_utils import display_radar_lcd
+from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
 from lib.pi_zero_utils import pico_temperature
-from lib.plot_rssi_polar_utils import plot_rssi_polar, rssi_peak
+from lib.matplot_rssi_polar_utils import plot_rssi_polar, rssi_peak
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
-    channel_to_frequency
+    channel_to_frequency, trigger_background_scan, timeout
 
 DEBUG = False
 BLOCK_0_BAR = True
-BLOCK_NON_2_4_G = True  # Can never be False for Pi Zero 2 W which only supports 2.4 GHz
+BLOCK_NON_2_4_G = True  # Pi Zero 2 W shows only 2.4 GHz
 
 button1_pressed = False
 button2_pressed = False
@@ -75,22 +76,8 @@ button2.when_pressed = button2_callback
 print("Button 1 & 2 Listeners Active (GPIO 25 & 26) for Press")
 
 
-@contextmanager
-def timeout(seconds):
-    def signal_handler(signum, frame):
-        raise TimeoutError("Wi-Fi scan timed out!")
-
-    signal.signal(signal.SIGALRM, signal_handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-
-
 def init_i2c() -> tuple[bool, I2C, bool]:
     # Initialize Display and Magnetometer
-    # WARNING: Can't set frequencety on Pi Zero
     i2c1 = busio.I2C(board.SCL, board.SDA)
     devices1 = i2c1.scan()
 
@@ -98,18 +85,6 @@ def init_i2c() -> tuple[bool, I2C, bool]:
     lis3mdl_detected = (0x1C in devices1) or (0x1E in devices1)
     print(f"{oled_detected=}, {lis3mdl_detected=}")
     return i2c1, lis3mdl_detected, oled_detected
-
-
-def perform_wifi_scan(interface, target_ssid=None):
-    """scan and returns the raw data or None."""
-    try:
-        with timeout(3):
-            return scan_target_ssid(interface, target_ssid)
-    except TimeoutError:
-        print("Hardware hang detected. Resetting interface...")
-        subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return None
 
 
 def update_bssid_map(data, heading, bssid_map):
@@ -133,7 +108,7 @@ def update_bssid_map(data, heading, bssid_map):
                 "rssi_history": [-99.0] * 360
             }
         else:
-            # Overwrite if have SSID name and was placeholder
+            # Overwrite placehold with SSID name
             current_stored = bssid_map[bssid]["ssid"]
             if current_stored in hidden_placeholders and ssid not in hidden_placeholders:
                 bssid_map[bssid]["ssid"] = ssid
@@ -147,7 +122,7 @@ def update_bssid_map(data, heading, bssid_map):
             # TODO REMOVE For testing: Make Random index of no magnetometer
             random_degree = random.randint(0, 300)
             fake_rssi = rssi
-            # signals outside of 20° (150-170°), degrade signal by -15
+            # signals out of 20° (150-170°), reduce signal by -15 dBm
             if not (random_degree > 150 and random_degree < 170):
                 fake_rssi -= 15
             if fake_rssi < -99:
@@ -171,7 +146,7 @@ def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plo
 
 
 def console_print(data, heading):
-    """Prints the scan results to the terminal."""
+    """ Prints the scan results to the terminal """
     print(f"{'SSID':<23} {'Band':<7}  {'BSSID':<17}  {'Chan'}   {'RSSI':<8} {'Bars'}")
     print("-" * 74)
 
@@ -222,7 +197,7 @@ def oled_print(draw, font, image, oled_display, data, heading):
 
 
 def e_ink_print(draw, font, image, epd_display, data, heading):
-    """print for E-ink display"""
+    """ Print for E-ink display """
     blank_canvas_e_ink(draw)
 
     if heading is not None:
@@ -250,11 +225,10 @@ def e_ink_print(draw, font, image, epd_display, data, heading):
 
 
 def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
-    """print for LCD display."""
+    """ Print for LCD display """
 
-    # Screen 0: Connection & Downloads
+    # Screen 0: Interactive option to Plot RSSI?
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-
     lcd.print_270(text="Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="green")
     lcd.print_270(text="RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="green")
     disp_0.ShowImage(image0)
@@ -265,18 +239,15 @@ def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
         lcd.print_270(text=f"{heading:.0f}°", pos=(132, 0), image=image1, font=lcd.font0_28pt, color="yellow")
     else:
         lcd.print_270(text=f"? °", pos=(132, 0), image=image1, font=lcd.font0_28pt, color="yellow")
-
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
                   color="yellow")
     disp_1.ShowImage(image1)
 
     image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
-
     if heading is not None:
         lcd.print_270(text=f"dir: {heading:.0f}°", pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
     else:
         lcd.print_270(text=f"no compass", pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(240, 200), image=image2, font=lcd.font0_20pt,
                   color="yellow")
 
@@ -326,14 +297,13 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
                   color="yellow")
     disp_1.ShowImage(image1)
 
-    # show networks with RSSI dat
+    # filter out networks with no RSSI data
     filtered_networks = []
     for bssid, info in (bssid_map or {}).items():
-        # Only show BSSID if some RSSI above -99
         valid_signals = [v for v in info["rssi_history"] if v > -99.0]
         rssi = max(valid_signals) if valid_signals else -99.0
 
-        # Note: Since the Pi Zero 2 W only has a 2.4 GHz radio, we bypass band blocking checks here
+        # Note: Pi Zero 2 W only has a 2.4GHz, we bypass band blocking checks here
         if BLOCK_0_BAR and rssi <= -80:
             continue
 
@@ -344,7 +314,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     total_entries = len(filtered_networks)
 
     if total_entries == 0:
-        # no Wi-Fi signal warning
+        # No Wi-Fi signal warning
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
         lcd.print_270(text="No Wi-Fi Signals", pos=(120, 20), image=image2, font=lcd.font0_20pt, color="red")
         disp_2.ShowImage(image2)
@@ -403,12 +373,6 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
         time.sleep(0.1)
 
 
-def trigger_background_scan(interface):
-    """Triggers an unmanaged background scan to populate the cache."""
-    subprocess.run(["sudo", "iw", "dev", interface, "scan"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
 def create_radar_jpg_csv_save(bssid, info, heading, plot_dir, timestamp):
     """ create polar plot for BSSID, then saves jpg and CSV """
     # safe SSID and BSSID strings for files
@@ -461,8 +425,8 @@ def extract_radar_metrics(signal_history):
     return peak_rssi, peak_degree, peak_cluster, True
 
 
-def render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
-                    has_valid_history):
+def render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
+                        has_valid_history):
     """
     Pure rendering function: Draws the UI layers onto screens 0, 1, and 2.
     """
@@ -475,7 +439,7 @@ def render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, 
     peak_deg = peak_degree if has_valid_history else None
     peak_clust = peak_cluster if has_valid_history else None
 
-    # Draw primary graphics and conditionally handle internal vector arc calculations safely
+    # Screen 2: Draw graph of data
     display_radar_lcd(
         disp2_draw,
         cadence_fill=None,
@@ -488,14 +452,12 @@ def render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, 
     )
 
     # Annotate Graph Text
-    lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-
-    # Black-out patches for clear text overlays over the radar edge lines
+    # Screen 2: Black-out patch on Radar for Peak RSSI and Peak degree, SSID
     disp2_draw.rectangle([209, 0, 240, 55], fill="black")
     lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="red")
-
     disp2_draw.rectangle([212, 180, 240, 240], fill="black")
     lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="red")
+    lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
     disp_2.ShowImage(image2)
 
     # Screen 0: Interactive options display
@@ -509,13 +471,11 @@ def render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, 
     # Screen 1: Compass, Peak RSSI metrics, and clock
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     lcd.print_270(text="Peak:", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
-
     rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
     lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
-
     degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
     lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
-
+    lcd.print_270(text=f"#peak = {len(peak_clust)}", pos=(25, 0), image=image1, font=lcd.font0_16pt, color="red")
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
                   color="yellow")
     disp_1.ShowImage(image1)
@@ -530,21 +490,22 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
     button1_pressed = False
     button2_pressed = False
 
-    if target_bssid in bssid_map:
-        signal_history = bssid_map[target_bssid]["rssi_history"]
-        ssid = bssid_map[target_bssid]["ssid"]
-    else:
-        signal_history = [-99.0] * 360
-        ssid = menu_ssid if menu_ssid else "<hidden>"
+    if target_bssid not in bssid_map:
+        print(f"ERROR: Selected BSSID {target_bssid} ({menu_ssid}) dropped out of map before plotting!")
+        return
 
-    if ssid in {"<hidden>", "Unknown", "", None}:
-        ssid = "Unknown SSID"
+    signal_history = bssid_map[target_bssid]["rssi_history"]
+    ssid = bssid_map[target_bssid]["ssid"]
+
+    if ssid in {"", None}:
+        print(f"ERROR: '{ssid}' for Selected BSSID {target_bssid}!")
+        return
 
     peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
-    render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
-                    has_valid_history)
+    render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
+                        has_valid_history)
 
-    # Interactive options loop
+    # Loop to showing polar plot or hi-resolution polar plot, button2 exits for return to scan
     while True:
         time.sleep(0.1)
 
@@ -552,7 +513,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
             button1_pressed = False
             print("Creating Hi Resolution auto-scaled plot with matplotlib...")
 
-            # Screen 0: Show that Hi-Resolution plotting is in process
+            # Screen 0: Show that Hi-Resolution plot creation is in process
             image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
             lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
             lcd.print_270(text="...wait-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
@@ -577,7 +538,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
                 lcd_image = lcd_image.rotate(270)
                 disp_2.ShowImage(lcd_image)
 
-                # After hi-resolution plot, give option to return to scanning
+                # After hi-resolution plot, give the option to return to scanning
                 image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
                 lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
                 lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
@@ -620,14 +581,7 @@ def main():
     lcd_detected = False
     if not (oled_detected or e_ink_detected):
         lcd_detected = True
-        disp_0, _ = lcd.init_lcd_display(0)
-        disp_1, _ = lcd.init_lcd_display(1)
-        disp_2, _ = lcd.init_lcd_display(2)
-        startup_0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-        startup_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-        disp_0.ShowImage(startup_0)
-        disp_1.ShowImage(startup_1)
-        display_radar_splash_lcd(disp_2)
+        disp_0, disp_1, disp_2 = create_lcd_display_canvases()
 
     lis3mdl = None
     if lis3mdl_detected:
@@ -684,8 +638,7 @@ def main():
                 print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Wi-Fis above -80 dBm (>1-bar)")
                 print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, Update every {duration:.2f} secs")
                 print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C")
-                print(f"{'Blocked <1-bar & Pi Zero (only 2.4GHz)' if BLOCK_0_BAR else 'Pi Zero (only 2.4GHz)'}")
-                print()
+                print(f"{'Blocked <1-bar & Pi Zero (only 2.4GHz)' if BLOCK_0_BAR else 'Pi Zero (only 2.4GHz)'}\n")
             else:
                 time.sleep(0.1)
 
@@ -694,7 +647,6 @@ def main():
                 if lcd_detected:
                     # Select which SSID to plot
                     target_bssid, menu_ssid = lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map)
-
                     if target_bssid:
                         print(f"Starting Radar Plot Mode for: {target_bssid}")
                         plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, heading)

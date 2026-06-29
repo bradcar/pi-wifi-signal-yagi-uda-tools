@@ -32,9 +32,13 @@ Add LCD st7789 to user code:
     global button1_pressed, button2_pressed
 
 """
+from typing import Any
+
 import spidev as SPI
 import sys
 from PIL import Image, ImageDraw, ImageFont
+
+from lib.lcd_radar_utils import display_radar_splash_lcd
 
 sys.path.append("..")
 from vendor.waveshare_lcd import LCD_0inch96
@@ -55,6 +59,7 @@ font0_33pt = base_font00.font_variant(size= 33)
 font0_28pt = base_font00.font_variant(size= 28)
 font0_24pt = base_font00.font_variant(size= 24)
 font0_20pt = base_font00.font_variant(size= 20)
+font0_16pt = base_font00.font_variant(size= 16)
 font0_13pt = base_font00.font_variant(size= 13)
 
 def init_lcd_display(index: int):
@@ -87,6 +92,18 @@ def init_lcd_display(index: int):
     display.bl_DutyCycle(100)
     image = Image.new("RGB", (display.width, display.height), "BLACK")
     return display, image
+
+
+def create_lcd_display_canvases():
+    disp_0, _ = init_lcd_display(0)
+    disp_1, _ = init_lcd_display(1)
+    disp_2, _ = init_lcd_display(2)
+    startup_0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+    startup_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
+    disp_0.ShowImage(startup_0)
+    disp_1.ShowImage(startup_1)
+    display_radar_splash_lcd(disp_2)
+    return disp_0, disp_1, disp_2
 
 
 def print_270(text: str, pos: tuple, image, font, color):

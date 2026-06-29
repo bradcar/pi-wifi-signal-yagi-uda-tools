@@ -6,8 +6,10 @@ Requirements to avoid password:
 """
 import os
 import re
+import signal
 import subprocess
 import time
+from contextlib import contextmanager
 from typing import Literal
 
 
@@ -35,6 +37,19 @@ class PiNetworkMock:
 
     def channel(self):
         return self._channel
+
+
+@contextmanager
+def timeout(seconds):
+    def signal_handler(signum, frame):
+        raise TimeoutError("Wi-Fi scan timed out!")
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
 
 
 def init_wifi():
@@ -434,3 +449,21 @@ def remove_ssid(ssid: Literal["shell-fi"]):
         "sudo", "nmcli", "connection", "delete", ssid
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(" -> \"shell-fi\" deleted successfully.")
+
+
+def perform_wifi_scan(interface, target_ssid=None):
+    """scan and returns the raw data or None."""
+    try:
+        with timeout(3):
+            return scan_target_ssid(interface, target_ssid)
+    except TimeoutError:
+        print("Hardware hang detected. Resetting interface...")
+        subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return None
+
+
+def trigger_background_scan(interface):
+    """Triggers an unmanaged background scan to populate the cache."""
+    subprocess.run(["sudo", "iw", "dev", interface, "scan"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
