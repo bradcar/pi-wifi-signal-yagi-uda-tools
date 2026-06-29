@@ -1,9 +1,18 @@
 # pi-wifi-scan_rssi.py
 """
-s and only measures RSSI on available 2.4GHz WiFi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
+Pi hardware only measures RSSI on 2.4GHz WiFi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
 Scans repeatedly, sorted by strongest RSSI first.
 
-Quality or Tx bitrates on unconnected networks. For connected network use:pi_wifi_rssi_quality_txrate.py
+Features
+    * Scans all Wi-Fi's and collects strength at direction
+    * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
+    * Can Create Hi-Resolution .jpg of selected Wi-Fim every 1° plot
+    * Outputs csv of 360° data for each Wi-Fi
+    * Displays channel used by each
+    *
+
+No Quality nor Tx bitrates on unconnected networks.
+For connected network use: pi_wifi_rssi_quality_txrate.py
 
 NOTES:
   1) Python MUST be enabled in System Settings > Privacy & Security> Location Services.
@@ -13,8 +22,6 @@ Usage:
   can also run in PyCharm
 
 TODO:
-* Todo make radial plot bounds consistent, also should they be parameters or constants
-* todo red lines in draw_arc don't seem to go from peak to peak
 """
 import math
 import random
@@ -82,7 +89,8 @@ def timeout(seconds):
 
 
 def init_i2c() -> tuple[bool, I2C, bool]:
-    # Initialize Display and Magnetometer, WARNING CANT SET FREQUENCY ON PI ZERO !!!
+    # Initialize Display and Magnetometer
+    # WARNING: Can't set frequencety on Pi Zero
     i2c1 = busio.I2C(board.SCL, board.SDA)
     devices1 = i2c1.scan()
 
@@ -93,7 +101,7 @@ def init_i2c() -> tuple[bool, I2C, bool]:
 
 
 def perform_wifi_scan(interface, target_ssid=None):
-    """Executes the scan and returns the raw data or None."""
+    """scan and returns the raw data or None."""
     try:
         with timeout(3):
             return scan_target_ssid(interface, target_ssid)
@@ -111,7 +119,7 @@ def update_bssid_map(data, heading, bssid_map):
     """
     heading = int(heading % 360) if heading is not None else None
 
-    # Set of temporary placeholder strings to match against
+    # Wi-Fi partial state placeholder strings
     hidden_placeholders = {"<hidden>", "Unknown", "", None}
 
     for net in data:
@@ -125,12 +133,12 @@ def update_bssid_map(data, heading, bssid_map):
                 "rssi_history": [-99.0] * 360
             }
         else:
-            # Overwrite current stored SSID if placeholder AND the incoming is found SSID
+            # Overwrite if have SSID name and was placeholder
             current_stored = bssid_map[bssid]["ssid"]
             if current_stored in hidden_placeholders and ssid not in hidden_placeholders:
                 bssid_map[bssid]["ssid"] = ssid
 
-        # TODO REMOVE WHEN MAGNETOMETER IS ISTALLED
+        # TODO REMOVE WHEN MAGNETOMETER IS INSTALLED
         heading = None
 
         if heading is not None:
@@ -139,7 +147,7 @@ def update_bssid_map(data, heading, bssid_map):
             # TODO REMOVE For testing: Make Random index of no magnetometer
             random_degree = random.randint(0, 300)
             fake_rssi = rssi
-            # outside of 20° peak (150-170°), degrade signal by -15
+            # signals outside of 20° (150-170°), degrade signal by -15
             if not (random_degree > 150 and random_degree < 170):
                 fake_rssi -= 15
             if fake_rssi < -99:
@@ -147,7 +155,7 @@ def update_bssid_map(data, heading, bssid_map):
             bssid_map[bssid]["rssi_history"][random_degree] = fake_rssi
 
 
-def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-100, rssi_max_plot=-30, file_name="plot.jpg"):
+def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40, file_name="plot.jpg"):
     rssi_list = bssid_info["rssi_history"]
     degrees = np.arange(360)
 
@@ -229,7 +237,6 @@ def e_ink_print(draw, font, image, epd_display, data, heading):
         ssid = (net.ssid() or "<hidden>")[:11]
         rssi = net.rssi_value()
         num_bars = rssi_to_bars(rssi)
-        num_bars = 4
         bar_string = ("*" * num_bars).ljust(4)
         bssid = net.bssid() or "Unknown"
 
@@ -243,16 +250,16 @@ def e_ink_print(draw, font, image, epd_display, data, heading):
 
 
 def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
-    """print for lcd display."""
+    """print for LCD display."""
 
-    # SCREEN 0: Connection & Downloads
+    # Screen 0: Connection & Downloads
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
 
     lcd.print_270(text="Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="green")
     lcd.print_270(text="RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="green")
     disp_0.ShowImage(image0)
 
-    # SCREEN 1 Signal Metrics & Mode Status
+    # Screen 1: Current Heading & time
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     if heading is not None:
         lcd.print_270(text=f"{heading:.0f}°", pos=(132, 0), image=image1, font=lcd.font0_28pt, color="yellow")
@@ -307,13 +314,13 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     """choose SSID with scrolling window and automatic wrap-around using persistent map data"""
     global button1_pressed, button2_pressed
 
-    # SCREEN 0: Show "Next" and "Select" options aligned with buttons
+    # Screen 0: Show "Next" and "Select" options aligned with buttons
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
     lcd.print_270(text="Next", pos=(127, 0), image=image0, font=lcd.font0_28pt, color="green")
     lcd.print_270(text="Select", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     disp_0.ShowImage(image0)
 
-    # SCREEN 1: Time
+    # Screen 1: Time
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
                   color="yellow")
@@ -336,8 +343,8 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     filtered_networks.sort(key=lambda x: x["rssi"], reverse=True)
     total_entries = len(filtered_networks)
 
-    # no Wi-Fi signal warning
     if total_entries == 0:
+        # no Wi-Fi signal warning
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
         lcd.print_270(text="No Wi-Fi Signals", pos=(120, 20), image=image2, font=lcd.font0_20pt, color="red")
         disp_2.ShowImage(image2)
@@ -346,7 +353,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
 
     select = False
     idx_pick = 1
-    MAX_VISIBLE_ROWS = 9
+    MAX_VISIBLE_ROWS = 8
 
     while not select:
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
@@ -369,7 +376,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
             ssid = net_dict["ssid"]
             rssi = net_dict["rssi"]
 
-            # Yellow highlight for current row
+            # Selected row shown in yellow highlight
             pick_color = "yellow" if idx_pick == current_abs_idx else "white"
             lcd.print_270(text=f"{current_abs_idx:>2}", pos=(y, 2), image=image2, font=lcd.font0_24pt, color=pick_color)
             lcd.print_270(text=f"{ssid} ({rssi})", pos=(y, 2 * 14), image=image2, font=lcd.font0_24pt, color=pick_color)
@@ -436,13 +443,93 @@ def create_radar_jpg_csv_save(bssid, info, heading, plot_dir, timestamp):
     return polar_plot_image
 
 
+def extract_radar_metrics(signal_history):
+    """
+    Pure data function: Parses 360-degree signal history to locate peak clusters.
+    Returns: (peak_rssi, peak_degree, peak_cluster_df, valid_history_not_empty)
+    """
+    df_history = pd.DataFrame({
+        'degree': range(360),
+        'rssi': signal_history
+    })
+    valid_history = df_history[df_history['rssi'] > -98]
+
+    if valid_history.empty:
+        return -99.0, 0.0, None, False
+
+    arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
+    return peak_rssi, peak_degree, peak_cluster, True
+
+
+def render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
+                    has_valid_history):
+    """
+    Pure rendering function: Draws the UI layers onto screens 0, 1, and 2.
+    """
+    # Screen 2: Radar graph & annotations
+    image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
+    disp2_draw = ImageDraw.Draw(image2)
+
+    # Unpack calculations directly through the consolidated utility pipeline
+    peak_rssi = peak_rssi if has_valid_history else None
+    peak_deg = peak_degree if has_valid_history else None
+    peak_clust = peak_cluster if has_valid_history else None
+
+    # Draw primary graphics and conditionally handle internal vector arc calculations safely
+    display_radar_lcd(
+        disp2_draw,
+        cadence_fill=None,
+        heading=heading,
+        signal_history=signal_history,
+        connected=True,
+        peak_degree=peak_deg,
+        peak_rssi=peak_rssi,
+        peak_cluster=peak_clust
+    )
+
+    # Annotate Graph Text
+    lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
+
+    # Black-out patches for clear text overlays over the radar edge lines
+    disp2_draw.rectangle([209, 0, 240, 55], fill="black")
+    lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="red")
+
+    disp2_draw.rectangle([212, 180, 240, 240], fill="black")
+    lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="red")
+    disp_2.ShowImage(image2)
+
+    # Screen 0: Interactive options display
+    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+    lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+    lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+    lcd.print_270(text=" ~20s !", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+    lcd.print_270(text="  wait!", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+    disp_0.ShowImage(image0)
+
+    # Screen 1: Compass, Peak RSSI metrics, and clock
+    image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
+    lcd.print_270(text="Peak:", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
+
+    rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
+    lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
+
+    degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
+    lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
+
+    lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
+                  color="yellow")
+    disp_1.ShowImage(image1)
+
+
 def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, heading):
     """
-    Plot radar display for BSSID from bssid_map. Annotate radar with peak RSSI, peak(s) mean angle, and SSID.
-    button2 is used to revert to scan.
+    Handles button inputs, triggers background high-res rendering,and returns back to the scanning.
     """
     global button1_pressed, button2_pressed
-    
+
+    button1_pressed = False
+    button2_pressed = False
+
     if target_bssid in bssid_map:
         signal_history = bssid_map[target_bssid]["rssi_history"]
         ssid = bssid_map[target_bssid]["ssid"]
@@ -453,102 +540,44 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
     if ssid in {"<hidden>", "Unknown", "", None}:
         ssid = "Unknown SSID"
 
-    image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
-    disp2_draw = ImageDraw.Draw(image2)
+    peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
+    render_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
+                    has_valid_history)
 
-    display_radar_lcd(
-        disp2_draw,
-        cadence_fill=None,
-        heading=heading,
-        signal_history=signal_history,
-        connected=True
-    )
-
-    # Initialize variables to avoid unbound errors in text drawing if history is empty
-    peak_rssi = -99.0
-    peak_degree = 0.0
-
-    # Find peak RSSI, use DF
-    df_history = pd.DataFrame({
-        'degree': range(360),
-        'rssi': signal_history
-    })
-    valid_history = df_history[df_history['rssi'] > -98]
-
-    if not valid_history.empty:
-        # Get peak
-        arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
-        print(f"Peak RSSI: {peak_rssi:.1f} at Peak Degree: {peak_degree:.1f}°")
-
-        # Draw arc between peaks
-        draw_peak_arc(disp2_draw, heading, peak_degree, peak_rssi, peak_cluster, is_connected=True)
-
-    # Annotate graph: SSID, peak RSSI, and peak(s) mean angle
-    lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-
-    # black-out rectangle and print peak RSSI
-    disp2_draw.rectangle([209, 0, 240, 55], fill="black")
-    lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="red")
-
-    # black-out rectangle and print peak degree
-    disp2_draw.rectangle([212, 180, 240, 240], fill="black")
-    lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="red")
-    disp_2.ShowImage(image2)
-
-    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text=" ~20s !", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text="  wait!", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    disp_0.ShowImage(image0)
-
-    image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    lcd.print_270(text="Peak:", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
-    if peak_rssi is not None:
-        lcd.print_270(text=f"{peak_rssi:.0f}", pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
-    else:
-        lcd.print_270(text=f"no dBm", pos=(84, 2), image=image1, font=lcd.font0_20pt, color="red")
-
-    if peak_degree is not None:
-        lcd.print_270(text=f"{peak_degree:.0f}°", pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
-    else:
-        lcd.print_270(text=f"? °", pos=(48, 30), image=image1, font=lcd.font0_34pt, color="red")
-    lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
-                  color="yellow")
-    disp_1.ShowImage(image1)
-
-    # show radar until button 2 pressed for return to "Scan?"
+    # Interactive options loop
     while True:
-        time.sleep(.1)
+        time.sleep(0.1)
+
         if button1_pressed:
             button1_pressed = False
-            print("Creating Hi Resolution plot with matplotlib...")
+            print("Creating Hi Resolution auto-scaled plot with matplotlib...")
+
+            # Screen 0: Show that Hi-Resolution plotting is in process
             image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
             lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
             lcd.print_270(text="...wait-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
             lcd.print_270(text="ing", pos=(10, 22), image=image0, font=lcd.font0_24pt, color="yellow")
             disp_0.ShowImage(image0)
 
-            # ensure plot directory
             plot_dir = Path("logs_polar_plots")
             plot_dir.mkdir(exist_ok=True)
             timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
 
-            # Rotate heading by 90° for hi-resolution plot
+            # Get BSSID data
             if target_bssid in bssid_map:
-                hi_rez_image = create_radar_jpg_csv_save(target_bssid, bssid_map[target_bssid], heading + 90, plot_dir,
-                                                         timestamp)
+                bssid_info = bssid_map[target_bssid]
             else:
-                fallback_info = {"ssid": ssid, "rssi_history": signal_history}
-                hi_rez_image = create_radar_jpg_csv_save(target_bssid, fallback_info, heading + 90 , plot_dir,
-                                                         timestamp)
+                bssid_info = {"ssid": ssid, "rssi_history": signal_history}
+
+            hi_rez_image = create_radar_jpg_csv_save(target_bssid, bssid_info, heading + 90, plot_dir, timestamp)
 
             if hi_rez_image:
-                print("LCD Display 2 shows high-resolution plot...")
+                print("LCD Display 2 shows auto-scaled high-resolution plot...")
                 lcd_image = hi_rez_image.convert("RGB").resize((disp_2.width, disp_2.height))
                 lcd_image = lcd_image.rotate(270)
                 disp_2.ShowImage(lcd_image)
 
+                # After hi-resolution plot, give option to return to scanning
                 image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
                 lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
                 lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
@@ -560,74 +589,8 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
 
         if button2_pressed:
             button2_pressed = False
+            print("Returning to live Wi-Fi scanning...")
             break
-
-
-def draw_peak_arc(disp2_draw, heading, peak_degree, peak_rssi, peak_cluster,
-                  is_connected):
-    center_x = 120
-    center_y = 120
-
-    radar_edge_radius = 110
-    max_signal_radius = 100  # Cap internal signals/arcs at 100px
-    outer_marker_radius = 120  # Thick peak line goes outside the 110px radius
-
-    # Match the background clamping bounds
-    strong_bound = -20 if is_connected else -20
-    weak_bound = -75 if is_connected else -80
-
-    # Helper to map RSSI to internal radial length (capped at 100px instead of 105px)
-    def rssi_to_radius(val):
-        if val < weak_bound: val = weak_bound
-        if val > strong_bound: val = strong_bound
-        proportion = (val - weak_bound) / (strong_bound - weak_bound)
-        return max_signal_radius * proportion
-
-    # Calc Screen Standard Angles
-    peak_angle_rad = math.radians(heading - peak_degree)
-
-    # Internal plot radius for the peak target (Capped at 100px)
-    r_peak = rssi_to_radius(peak_rssi)
-
-    # Calc peak coordinates
-    x_peak = int(center_x + r_peak * math.cos(peak_angle_rad))
-    y_peak = int(center_y - r_peak * math.sin(peak_angle_rad))
-
-    # Outer frame marker points (Outside 110px radius)
-    x_edge = int(center_x + outer_marker_radius * math.cos(peak_angle_rad))
-    y_edge = int(center_y - outer_marker_radius * math.sin(peak_angle_rad))
-
-    halfway_radius = (outer_marker_radius + r_peak) / 2
-    x_halfway = int(center_x + halfway_radius * math.cos(peak_angle_rad))
-    y_halfway = int(center_y - halfway_radius * math.sin(peak_angle_rad))
-
-    # Peak Pointer Lines, thick line on outer edge, thin line to peak value
-    if peak_rssi < strong_bound:
-        disp2_draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=7)
-        disp2_draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="red", width=3)
-    else:
-        disp2_draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=7)
-        disp2_draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="red", width=3)
-
-    # Arc at peak radius, max 100px
-    if len(peak_cluster) > 1:
-        first_deg = int(peak_cluster['degree'].iloc[0])
-        last_deg = int(peak_cluster['degree'].iloc[-1])
-
-        arc_points = []
-        # Step through matching peaks
-        for deg in range(first_deg, last_deg + 1, 5):
-            rad = math.radians(heading - deg)
-            ax = int(center_x + r_peak * math.cos(rad))
-            ay = int(center_y - r_peak * math.sin(rad))
-            arc_points.append((ax, ay))
-
-        # Clean up step artifacts for final degree boundary
-        final_rad = math.radians(heading - last_deg)
-        arc_points.append((int(center_x + r_peak * math.cos(final_rad)), int(center_y - r_peak * math.sin(final_rad))))
-
-        if len(arc_points) >= 2:
-            disp2_draw.line(arc_points, fill="red", width=4)
 
 
 def main():
