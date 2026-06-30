@@ -451,6 +451,15 @@ def perform_wifi_scan(interface, target_ssid=None):
 
 
 def trigger_background_scan(interface):
-    """Triggers an unmanaged background scan to populate the cache."""
-    subprocess.run(["sudo", "iw", "dev", interface, "scan"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Triggers an unmanaged background scan to populate the cache with a strict safety timeout."""
+    try:
+        # Wrap the blocking system call in a 4-second timeout guard
+        with timeout(4, "Pre-warm scan timed out!"):
+            subprocess.run(["sudo", "iw", "dev", interface, "scan"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except TimeoutError:
+        print("Hardware hang during pre-warm. Power-cycling interface profiles...")
+        # Cycle the driver interface clean
+        subprocess.run(["sudo", "nmcli", "device", "disconnect", interface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.5)
+        subprocess.run(["sudo", "nmcli", "device", "connect", interface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
