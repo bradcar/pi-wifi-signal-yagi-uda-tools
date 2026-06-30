@@ -481,7 +481,9 @@ def render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_histo
     lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
     degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
     lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
-    lcd.print_270(text=f"#peak = {len(peak_clust)}", pos=(25, 0), image=image1, font=lcd.font0_16pt, color="red")
+    peak_count = len(peak_cluster) if peak_cluster is not None else 0
+    peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
+    lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
                   color="yellow")
     disp_1.ShowImage(image1)
@@ -523,7 +525,8 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
     degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
     lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
     peak_count = len(peak_cluster) if peak_cluster is not None else 0
-    lcd.print_270(text=f"#peak = {peak_count}", pos=(25, 0), image=image1, font=lcd.font0_16pt, color="red")
+    peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
+    lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
     disp_1.ShowImage(image1)
 
     while True:
