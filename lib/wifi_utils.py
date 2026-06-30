@@ -458,8 +458,7 @@ def trigger_background_scan(interface):
             subprocess.run(["sudo", "iw", "dev", interface, "scan"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except TimeoutError:
-        print("Hardware hang during pre-warm. Power-cycling interface profiles...")
-        # Cycle the driver interface clean
+        print("Wi-Fi Hardware hang during pre-warm. Power-cycle Wi-Fi...")
         subprocess.run(["sudo", "nmcli", "device", "disconnect", interface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
         subprocess.run(["sudo", "nmcli", "device", "connect", interface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
