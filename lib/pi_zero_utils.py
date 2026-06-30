@@ -2,6 +2,9 @@
 """
 General purpose Pi Zero functions
 """
+import signal
+from contextlib import contextmanager
+
 
 def pico_temperature():
     """ Reads system temperature as substitute for Pico ADC(4) """
@@ -11,3 +14,16 @@ def pico_temperature():
         return celsius
     except Exception:
         return None
+
+
+@contextmanager
+def timeout(seconds, error_message="Timed out"):
+    def signal_handler(signum, frame):
+        raise TimeoutError(f"{error_message}")
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)

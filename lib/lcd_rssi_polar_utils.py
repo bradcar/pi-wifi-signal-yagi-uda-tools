@@ -2,10 +2,14 @@
 """
 lcd Radar Utilities, to be used by pi_yagi_uda.py an di_wifi_scan_radar.py
 
+
+
 Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
     * Indicator update cadence if showing continuous updates, not shown for single render
 """
+
+import time
 
 import math
 from PIL import Image, ImageDraw
@@ -165,6 +169,12 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     Add white directional orientation lines for North, East, South, and West.
     Calculates a solid white polygon tracking signal strength vs compass directions.
     Tailored for 240px x 240px RGB LCD panel configurations.
+
+    Time:
+    * indicator  6ms
+    * polygon   17ms
+    * arc        0.7ms
+
     """
     center_x = 120
     center_y = 120
@@ -191,6 +201,5 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     if peak_rssi is not None and peak_degree is not None:
         draw_peak_arc(draw, heading, center_x, center_y, max_radius,
                       strong_bound, weak_bound, peak_degree, peak_rssi, peak_cluster)
-
     # Center axis core marker
     draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="black")

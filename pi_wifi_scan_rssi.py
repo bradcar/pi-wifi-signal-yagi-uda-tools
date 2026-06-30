@@ -6,12 +6,12 @@ Scans repeatedly, sorted by strongest RSSI first.
 Features
     * Scans all Wi-Fi's and collects strength at direction
     * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
-    * Can Create Hi-Resolution .png of selected Wi-Fim every 1° plot
+    * Can Create Hi-Resolution .png of selected Wi-Fis every 1° plot
     * Outputs csv of 360° data for each Wi-Fi
     * Displays channel used by each
     *
 
-No Quality nor Tx bitrates on unconnected networks.
+Unfortunately, No Quality nor Tx bitrates on unconnected networks.
 For connected network use: pi_wifi_rssi_quality_txrate.py
 
 NOTES:
@@ -46,10 +46,10 @@ from lib.lcd_rssi_polar_utils import display_radar_lcd
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
-from lib.pi_zero_utils import pico_temperature
+from lib.pi_zero_utils import pico_temperature, timeout
 from lib.matplot_rssi_polar_utils import plot_rssi_polar, rssi_peak
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
-    channel_to_frequency, trigger_background_scan, timeout
+    channel_to_frequency, trigger_background_scan
 
 DEBUG = False
 BLOCK_0_BAR = True
@@ -108,7 +108,7 @@ def update_bssid_map(data, heading, bssid_map):
                 "rssi_history": [-99.0] * 360
             }
         else:
-            # Overwrite placehold with SSID name
+            # Overwrite placeholder when get SSID name
             current_stored = bssid_map[bssid]["ssid"]
             if current_stored in hidden_placeholders and ssid not in hidden_placeholders:
                 bssid_map[bssid]["ssid"] = ssid
@@ -462,8 +462,8 @@ def render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_histo
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
     lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text=" ~20s !", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text="  wait!", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+    lcd.print_270(text=" is 20s", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+    lcd.print_270(text=" wait !", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     disp_0.ShowImage(image0)
 
     # Screen 1: Compass, Peak RSSI metrics, and clock
@@ -479,9 +479,15 @@ def render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_histo
     disp_1.ShowImage(image1)
 
 
-def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, heading):
+def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl):
     """
-    Handles button inputs, triggers background high-res rendering,and returns back to the scanning.
+    Plot specific BSSID and RSSI map buttons change choice of low-rez plot (which re-orientates
+    with compass), static hi-rez plots and return to scanning.
+
+    Pi Zero W
+    Lo-Rez plots every  0.29 sec (60 Mhz SPI)
+    Lo-Rez plots every  0.4 sec (10 Mhz SPI)
+    Hi-Rez plots every 20.0 sec
     """
     global button1_pressed, button2_pressed
 
@@ -499,57 +505,85 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, h
         print(f"ERROR: '{ssid}' for Selected BSSID {target_bssid}!")
         return
 
+    # Snapshot metrics for radar plots
     peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
-    render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
-                        has_valid_history)
 
-    # Loop to showing polar plot or hi-resolution polar plot, button2 exits for return to scan
+    # Tracks id matplotlib plot, which does not re-orientate with compass
+    hi_rez_active = False
+
+    #todo remove i to simulate moving compass
+    i = 1
+
     while True:
-        time.sleep(0.1)
+        # Lo-Rez RADAR plot
+        start_time = time.time()
+        if not hi_rez_active:
+            # todo remove i to simulate moving compass
+            i += 1
+            #heading = get_compass_heading(lis3mdl)
+            heading = 37
+            heading = heading + i
+            render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree,
+                                peak_cluster, has_valid_history)
 
+        # Button 1: Hi-Rez
         if button1_pressed:
             button1_pressed = False
-            print("Creating Hi Resolution auto-scaled plot with matplotlib...")
 
-            # Screen 0: Show that Hi-Resolution plot creation is in process
-            image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-            lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-            lcd.print_270(text="...wait-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-            lcd.print_270(text="ing", pos=(10, 22), image=image0, font=lcd.font0_24pt, color="yellow")
-            disp_0.ShowImage(image0)
-
-            plot_dir = Path("logs_polar_plots")
-            plot_dir.mkdir(exist_ok=True)
-            timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
-
-            # Get BSSID data
-            if target_bssid in bssid_map:
-                bssid_info = bssid_map[target_bssid]
+            if hi_rez_active:
+                print("Resume low-resolution plotting...")
+                hi_rez_active = False
             else:
-                bssid_info = {"ssid": ssid, "rssi_history": signal_history}
+                # if in low-rez, create matplotlib plot this takes ~20sec
+                print("Creating Hi Resolution auto-scaled plot with matplotlib...")
+                hi_rez_active = True
 
-            hi_rez_image = create_radar_png_csv_save(target_bssid, bssid_info, heading + 90, plot_dir, timestamp)
-
-            if hi_rez_image:
-                print("LCD Display 2 shows auto-scaled high-resolution plot...")
-                lcd_image = hi_rez_image.convert("RGB").resize((disp_2.width, disp_2.height))
-                lcd_image = lcd_image.rotate(270)
-                disp_2.ShowImage(lcd_image)
-
-                # After hi-resolution plot, give the option to return to scanning
+                # Screen 0: Show that Hi-Resolution plot creation is in process
                 image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-                lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
                 lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                lcd.print_270(text=" show-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                lcd.print_270(text=" ing", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+                lcd.print_270(text="...wait-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+                lcd.print_270(text="ing", pos=(10, 22), image=image0, font=lcd.font0_24pt, color="yellow")
                 disp_0.ShowImage(image0)
-            else:
-                print("Error: Plot generation invalid image buffer reference.")
 
+                plot_dir = Path("logs_polar_plots")
+                plot_dir.mkdir(exist_ok=True)
+                timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
+
+                if target_bssid in bssid_map:
+                    bssid_info = bssid_map[target_bssid]
+                else:
+                    bssid_info = {"ssid": ssid, "rssi_history": signal_history}
+
+                # Matplotlib radar plot takes ~ 20 seconds
+                hi_rez_image = create_radar_png_csv_save(target_bssid, bssid_info, heading + 90, plot_dir, timestamp)
+
+                if hi_rez_image:
+                    print("LCD Display 2 shows auto-scaled high-resolution plot...")
+                    lcd_image = hi_rez_image.convert("RGB").resize((disp_2.width, disp_2.height))
+                    lcd_image = lcd_image.rotate(270)
+                    disp_2.ShowImage(lcd_image)
+
+                    # Update Screen 0: provide option to Scan or Back to Lo-Rez plot
+                    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+                    lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+                    lcd.print_270(text="Back", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+                    lcd.print_270(text="to Lo-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+                    lcd.print_270(text="Rez?", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
+                    disp_0.ShowImage(image0)
+                else:
+                    print("Error: Plot generation invalid image buffer reference.")
+                    hi_rez_active = False
+
+        # Button 2: return to scanning
         if button2_pressed:
             button2_pressed = False
-            print("Returning to live Wi-Fi scanning...")
+            print("Returning to Wi-Fi scanning...")
             break
+
+        if hi_rez_active:
+            time.sleep(0.1)
+        print (f"Loop time = {(time.time() - start_time):.3f} sec")
+
 
 
 def main():
@@ -598,7 +632,7 @@ def main():
             pi_celsius = pico_temperature()
             wifi_data = None
             try:
-                with timeout(3):
+                with timeout(3, "Wi-Fi scan timed out!"):
                     wifi_data = scan_target_ssid(wifi_interface)
             except TimeoutError:
                 print("Wi-Fi hang detected. Reset interface...")
@@ -647,7 +681,7 @@ def main():
                     target_bssid, menu_ssid = lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map)
                     if target_bssid:
                         print(f"Starting Radar Plot Mode for: {target_bssid}")
-                        plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, heading)
+                        plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl)
 
 
     except KeyboardInterrupt:

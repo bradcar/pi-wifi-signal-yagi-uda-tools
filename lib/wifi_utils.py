@@ -6,11 +6,11 @@ Requirements to avoid password:
 """
 import os
 import re
-import signal
 import subprocess
 import time
-from contextlib import contextmanager
 from typing import Literal
+
+from lib.pi_zero_utils import timeout
 
 
 class PiNetworkMock:
@@ -37,19 +37,6 @@ class PiNetworkMock:
 
     def channel(self):
         return self._channel
-
-
-@contextmanager
-def timeout(seconds):
-    def signal_handler(signum, frame):
-        raise TimeoutError("Wi-Fi scan timed out!")
-
-    signal.signal(signal.SIGALRM, signal_handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
 
 
 def init_wifi():
@@ -454,7 +441,7 @@ def remove_ssid(ssid: Literal["shell-fi"]):
 def perform_wifi_scan(interface, target_ssid=None):
     """scan and returns the raw data or None."""
     try:
-        with timeout(3):
+        with timeout(3, "Wi-Fi scan timed out!"):
             return scan_target_ssid(interface, target_ssid)
     except TimeoutError:
         print("Hardware hang detected. Resetting interface...")

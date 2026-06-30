@@ -78,12 +78,12 @@ def init_lcd_display(index: int):
     # Initialize the correct display class
     if cfg["type"] == "0inch96":
         display = LCD_0inch96.LCD_0inch96(
-            spi=spi_device, spi_freq=10000000,
+            spi=spi_device, spi_freq=60000000,
             rst=cfg["rst"], dc=cfg["dc"], bl=cfg["bl"]
         )
     else:
         display = LCD_1inch3.LCD_1inch3(
-            spi=spi_device, spi_freq=10000000,
+            spi=spi_device, spi_freq=60000000,
             rst=cfg["rst"], dc=cfg["dc"], bl=cfg["bl"]
         )
 
