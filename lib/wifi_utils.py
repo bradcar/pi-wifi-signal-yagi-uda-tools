@@ -451,7 +451,7 @@ def perform_wifi_scan(interface, target_ssid=None):
 
 
 def trigger_background_scan(interface):
-    """Triggers an unmanaged background scan to populate the cache with a strict safety timeout."""
+    """Trigger background scan with timeout."""
     try:
         # Wrap the blocking system call in a 4-second timeout guard
         with timeout(4, "Pre-warm scan timed out!"):
