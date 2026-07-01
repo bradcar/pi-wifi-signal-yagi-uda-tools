@@ -1,6 +1,7 @@
 # radar_math_utils.py
 import numpy as np
 
+
 def calculate_peak_bounds(degrees) -> tuple[float, float, float]:
     """
     Calculates the indestructible circular vector mean and the true

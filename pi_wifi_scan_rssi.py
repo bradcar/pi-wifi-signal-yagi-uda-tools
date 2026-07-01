@@ -50,12 +50,12 @@ from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
 from lib.e_ink_utils import init_e_ink_display, refresh_e_ink_display, blank_canvas_e_ink
-from lib.lcd_rssi_polar_utils import display_radar_lcd
+from lib.lcd_rssi_polar_utils import display_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
 from lib.pi_zero_utils import pico_temperature, timeout
-from lib.matplot_rssi_polar_utils import plot_rssi_polar, rssi_peak
+from lib.matplot_rssi_polar_utils import plot_rssi_polar
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
     channel_to_frequency, trigger_background_scan
 
@@ -411,24 +411,6 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
     print(f"Plot file written: {png_file}")
 
     return polar_plot_image
-
-
-def extract_radar_metrics(signal_history):
-    """
-    Pure data function: Parses 360-degree signal history to locate peak clusters.
-    Returns: (peak_rssi, peak_degree, peak_cluster_df, valid_history_not_empty)
-    """
-    df_history = pd.DataFrame({
-        'degree': range(360),
-        'rssi': signal_history
-    })
-    valid_history = df_history[df_history['rssi'] > -98]
-
-    if valid_history.empty:
-        return -99.0, 0.0, None, False
-
-    arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
-    return peak_rssi, peak_degree, peak_cluster, True
 
 
 def render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,

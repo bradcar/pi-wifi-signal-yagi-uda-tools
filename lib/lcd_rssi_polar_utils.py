@@ -12,8 +12,11 @@ Functionality
 import time
 
 import math
+
+import pandas as pd
 from PIL import Image, ImageDraw
 
+from lib.matplot_rssi_polar_utils import rssi_peak
 from lib.radar_math_utils import calculate_peak_bounds
 
 # Radar lines Boundary
@@ -203,3 +206,21 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
                       strong_bound, weak_bound, peak_degree, peak_rssi, peak_cluster)
     # Center axis core marker
     draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="black")
+
+
+def extract_radar_metrics(signal_history):
+    """
+    Pure data function: Parses 360-degree signal history to locate peak clusters.
+    Returns: (peak_rssi, peak_degree, peak_cluster_df, valid_history_not_empty)
+    """
+    df_history = pd.DataFrame({
+        'degree': range(360),
+        'rssi': signal_history
+    })
+    valid_history = df_history[df_history['rssi'] > -98]
+
+    if valid_history.empty:
+        return -99.0, 0.0, None, False
+
+    arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
+    return peak_rssi, peak_degree, peak_cluster, True
