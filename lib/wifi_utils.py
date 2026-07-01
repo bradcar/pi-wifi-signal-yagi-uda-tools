@@ -1,5 +1,13 @@
 # wifi_utils.py
 """
+Collection of utility functions for working with Pi Zero WiFi networks.
+
+Features
+    * if set up flag constant USE_PROC_NET_WIRELESS, will use fast low-level direct reads,
+      this is speed improvement over sudo nmcli method
+    * new RSSI value is returned only if at least one of rssi, quality, or missed beacons has changed,
+      this more often then not prevents returning stale values.
+
 Requirements to avoid password:
     sudo visudo
     add pi-admin ALL=(ALL) NOPASSWD: /usr/sbin/iw (or just /usr/bin/iw depending on your path)
@@ -11,6 +19,15 @@ import time
 from typing import Literal
 
 from lib.pi_zero_utils import timeout
+
+# if want fast scanning with cached data for full sudo nmcli mode
+SCAN_CACHES_FAST_MODE = False
+
+# Set to False to fall back to slow iw methods
+USE_PROC_NET_WIRELESS = True
+
+# Tracks (Link Quality, RSSI, Missed Beacons) to filter out results with no state change
+_last_wireless_fingerprint = None
 
 
 class PiNetworkMock:
@@ -68,13 +85,25 @@ def get_ssid():
 
 def query_wifi():
     """
-    Queries RSSI, Link Quality, and current Tx Bit Rate dynamically.
-    Execution time is kept low to ensure dense logging updates.
+    Queries RSSI, Link Quality, and current Tx Bit Rate dynamically. Tx Bit Rate is only return in slow version.
+
+    nmcli is slow (~600ms)
+    If USE_PROC_NET_WIRELESS is set uses fast (22ms) /proc/net/wireless reads
 
     :Returns:
         tuple: (rssi [int], quality [int], tx_rate [float]) or
                (None, None, None) if the interface cannot be queried.
     """
+    # Direct read kernel metrics optimization, but can't get value of TX rate for this fast method, returns tx_rate=None
+    if USE_PROC_NET_WIRELESS:
+        rssi, quality, is_new = query_wifi_proc_net_wireless_fast()
+        # Return RSSI only if and other metrics updated
+        if rssi is not None:
+            return rssi, quality, None
+        else:
+            # If data is stale, return placeholders
+            return None, None, None
+
     rssi = None
     quality = None
     tx_rate = None
@@ -85,16 +114,20 @@ def query_wifi():
             lines = f.readlines()
             for line in lines:
                 if "wlan0" in line:
-                    parts = line.split()
-                    quality = int(parts[2].replace('.', ''))
-                    rssi = int(parts[3].replace('.', ''))
+                    clean_line = line.replace("wlan0:", "").strip()
+                    parts = clean_line.split()
+                    quality = int(parts[1].replace('.', ''))
+                    rssi = int(parts[2].replace('.', ''))
 
                     if rssi > 0:
                         rssi = rssi - 256
+                    elif rssi == 0:
+                        rssi = None
+
     except Exception:
         return None, None, None
 
-    # Get Tx Rate as a raw float/int numerical value
+    # Get Tx Rate, note this is only return with slow sudo nmcli method
     try:
         out = subprocess.check_output(["/sbin/iwconfig", "wlan0"], text=True, stderr=subprocess.DEVNULL)
         for line in out.splitlines():
@@ -102,7 +135,6 @@ def query_wifi():
                 parts = line.split("Bit Rate=")
                 if len(parts) > 1:
                     raw_rate_str = parts[1].split("   ")[0].strip()
-                    # regex match to isolate only numbers/decimals
                     match = re.findall(r"[+-]?\d*(?:\.\d+)?", raw_rate_str)
                     if match and match[0] != "":
                         tx_rate = float(match[0])
@@ -111,6 +143,51 @@ def query_wifi():
         pass
 
     return rssi, quality, tx_rate
+
+
+
+def query_wifi_proc_net_wireless_fast():
+    """
+    Direct memory-mapped read of /proc/net/wireless with data change detection.
+    Bypasses nmcli subprocess overhead entirely to maximize tracking speeds.
+
+    Data change detected by fingerprint of combined quality, rssi, and missed_beacons metrics
+
+    Returns:
+        tuple: (rssi [int], quality [int], is_new_data [bool]) or (None, None, False)
+    """
+    global _last_wireless_fingerprint
+
+    try:
+        with open("/proc/net/wireless", "r") as f:
+            lines = f.readlines()
+
+        for line in lines:
+            if "wlan0" in line:
+                clean_line = line.replace("wlan0:", "").strip()
+                parts = clean_line.split()
+                quality = int(parts[1].replace('.', ''))
+                rssi = int(parts[2].replace('.', ''))
+                missed_beacons = int(parts[7])
+
+                # handle 8-bit unsigned conversion (RSSI−256)
+                if rssi > 0:
+                    rssi = rssi - 256
+                elif rssi == 0:
+                    rssi = None
+
+                current_fingerprint = (quality, rssi, missed_beacons)
+
+                if current_fingerprint == _last_wireless_fingerprint:
+                    return rssi, quality, False
+
+                _last_wireless_fingerprint = current_fingerprint
+                return rssi, quality, True
+
+    except Exception:
+        pass
+
+    return None, None, False
 
 
 def parse_band_from_cell(cell) -> tuple:
@@ -192,28 +269,35 @@ def channel_to_frequency(channel: int, band: str) -> int:
     return None
 
 
-def scan_target_ssid(interface, target_ssid=None):
+def scan_target_ssid(interface, target_ssid=None, channel: int = None):
     """
     High-speed scan. Uses kernel cache (fastest) with fallback option
     for forced hardware scan (moderate).
 
+    TODO: only works for 2.4GHz in this implementation.
+
     Args:
         interface (str): The network interface to scan (default: "wlan0").
         target_ssid (str): The SSID to search for in the scan results.
+        channel (int): The Wi-Fi channel number (ex: 1, 6, 11),
 
         Moderate is slower but guarantees fresh data.
 
     Returns:
         int: The signal strength (RSSI) in dBm if found, otherwise None.
     """
-    FAST_SCAN_MODE = False
+
     try:
-        if FAST_SCAN_MODE:
-            # FASTEST: Read the kernel's active BSS cache
+        if SCAN_CACHES_FAST_MODE:
             cmd = ["sudo", "iw", "dev", interface, "scan", "dump"]
         else:
-            # MODERATE: Force a physical radio hop
             cmd = ["sudo", "iw", "dev", interface, "scan"]
+
+        # Append channel frequency scoping if running physical scans to speed up turnaround times
+        if channel is not None and not SCAN_CACHES_FAST_MODE:
+            freq_mhz = channel_to_frequency(channel, "2.4 GHz")
+            if freq_mhz:
+                cmd.extend(["freq", str(freq_mhz)])
 
         scan = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
 
@@ -438,11 +522,20 @@ def remove_ssid(ssid: Literal["shell-fi"]):
     print(" -> \"shell-fi\" deleted successfully.")
 
 
-def perform_wifi_scan(interface, target_ssid=None):
-    """scan and returns the raw data or None."""
+def perform_wifi_scan(interface, target_ssid=None, channel: int = None):
+    """
+    scan and returns the raw data or None.
+
+        TODO: only works for 2.4GHz in this implementation.
+    Args:
+        interface (str): The network interface to scan (default: "wlan0").
+        target_ssid (str): The SSID to search for in the scan results.
+        channel (int): The Wi-Fi channel number (ex: 1, 6, 11),
+
+    """
     try:
         with timeout(3, "Wi-Fi scan timed out!"):
-            return scan_target_ssid(interface, target_ssid)
+            return scan_target_ssid(interface, target_ssid, channel=channel)
     except TimeoutError:
         print("Hardware hang detected. Resetting interface...")
         subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
