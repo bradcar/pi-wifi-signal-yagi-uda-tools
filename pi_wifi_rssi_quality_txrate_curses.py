@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 
 from pi_wifi_rssi_quality_txrate import rssi_quality_to_string
-from wifi_utils import get_ssid, query_wifi
+from lib.wifi_utils import get_ssid, query_wifi
 
 
 def main_window(stdscr):

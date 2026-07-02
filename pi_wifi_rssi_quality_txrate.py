@@ -13,7 +13,7 @@ Usage:
 import time
 from datetime import datetime
 
-from wifi_utils import get_ssid, query_wifi, rssi_to_string, quality_to_string
+from lib.wifi_utils import get_ssid, query_wifi, rssi_to_string, quality_to_string
 
 
 def print_metrics(quality, rssi, ssid, tx_rate):
