@@ -118,7 +118,6 @@ TARGET_SSID = "ABox-PDX"
 TARGET_CHANNEL = 11  # Set to None, if not target channel
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = "/home/pi-admin/downloads"
-
 LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
 
 try_connect = False
@@ -333,58 +332,39 @@ def display_radar_oled(draw, cadence_fill, heading: float, signal_history, conne
     center_y = 15
     max_radius = 16
 
-    # Select radar line length bounds based on mode
     strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
     weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
 
     if heading is None:
         heading = 0.0
 
-    # Radar graphics: white background block, black circle mask
+    # Radar graphics layout
     draw.rectangle((96, 0, 127, 31), fill=1)
     draw.ellipse((center_x - max_radius, center_y - max_radius + 1,
                   center_x + max_radius - 1, center_y + max_radius),
                  outline=0, fill=0)
 
-    # Cadence indicator box in text region, for lower right x_box=97, ybox=27
-    x_box = 90
-    y_box = 0
-    dot_size = 3  # for 2px x 2px dot, add one to position
-    draw.rectangle((x_box, y_box, x_box + dot_size + 1, y_box + dot_size + 1), fill=1 - int(cadence_fill))  # Outer Box
-    draw.rectangle((x_box + 1, y_box + 1, x_box + dot_size, y_box + dot_size), fill=int(cadence_fill))  # Inner dot
-
-    # Standard math puts 0° at East. To make 0° North and clockwise:
-    # Screen Angle = 90 - (angle - heading)
+    # Cadence indicator block
+    x_box, y_box, dot_size = 90, 0, 3
+    draw.rectangle((x_box, y_box, x_box + dot_size + 1, y_box + dot_size + 1), fill=1 - int(cadence_fill))
+    draw.rectangle((x_box + 1, y_box + 1, x_box + dot_size, y_box + dot_size), fill=int(cadence_fill))
 
     # Solid North Crosshair
-    north_rad = math.radians(90.0 - (0.0 - heading))
+    north_rad = math.radians(heading - 0.0)
     nx = int(center_x + max_radius * math.cos(north_rad))
-    ny = int(center_y - max_radius * math.sin(north_rad))  # Subtracted for screen-space Y
+    ny = int(center_y - max_radius * math.sin(north_rad))
     draw.line((center_x, center_y, nx, ny), fill=1)
 
     # Dashed Crosshairs (South, West, East)
-    south_rad = math.radians(90.0 - (180.0 - heading))
-    west_rad = math.radians(90.0 - (270.0 - heading))
-    east_rad = math.radians(90.0 - (90.0 - heading))
-
-    # dashes every 4px, which are easier to see under rotation
+    south_rad = math.radians(heading - 180.0)
+    west_rad = math.radians(heading - 270.0)
+    east_rad = math.radians(heading - 90.0)
     for r in range(0, max_radius + 1, 4):
-        # South
-        sx = int(center_x + r * math.cos(south_rad))
-        sy = int(center_y - r * math.sin(south_rad))
-        draw.point((sx, sy), fill=1)
+        draw.point((int(center_x + r * math.cos(south_rad)), int(center_y - r * math.sin(south_rad))), fill=1)
+        draw.point((int(center_x + r * math.cos(west_rad)), int(center_y - r * math.sin(west_rad))), fill=1)
+        draw.point((int(center_x + r * math.cos(east_rad)), int(center_y - r * math.sin(east_rad))), fill=1)
 
-        # West
-        wx = int(center_x + r * math.cos(west_rad))
-        wy = int(center_y - r * math.sin(west_rad))
-        draw.point((wx, wy), fill=1)
-
-        # East
-        ex = int(center_x + r * math.cos(east_rad))
-        ey = int(center_y - r * math.sin(east_rad))
-        draw.point((ex, ey), fill=1)
-
-    # Antenna strength polygon vertex points at 5 degrees intervals, 72 vertices
+    # Antenna strength polygon vertices (72 vertices)
     polygon_points = []
     for angle in range(0, 360, 5):
         window_values = []
@@ -394,34 +374,23 @@ def display_radar_oled(draw, cadence_fill, heading: float, signal_history, conne
 
         saved_rssi = max(window_values)
 
-        # Apply the dynamic bounds
         if saved_rssi < weak_bound:
             saved_rssi = weak_bound
         elif saved_rssi > strong_bound:
             saved_rssi = strong_bound
 
-        # Calculate proportion using dynamic bounds
         proportion = (saved_rssi - weak_bound) / (strong_bound - weak_bound)
         line_length = (max_radius - 2) * proportion
 
-        # Apply identical screen space angle mapping
-        angle_rad = math.radians(90.0 - (angle - heading))
-
+        angle_rad = math.radians(heading - angle)
         target_x = int(center_x + line_length * math.cos(angle_rad))
-        target_y = int(center_y - line_length * math.sin(angle_rad))  # Subtracted for screen-space Y
-
+        target_y = int(center_y - line_length * math.sin(angle_rad))
         polygon_points.append((target_x, target_y))
 
-    # Draw the white Antenna strength/direction polygon
     if len(polygon_points) >= 3:
         draw.polygon(polygon_points, fill=1, outline=1)
 
-    # Center axis markers & black center doc on top of everything
-    # draw.point((center_x, center_y - 1), fill=0)
-    # draw.point((center_x, center_y + 1), fill=0)
-    # draw.point((center_x - 1, center_y), fill=0)
-    # draw.point((center_x + 1, center_y), fill=0)
-    # draw.point((center_x, center_y), fill=0)
+    # Center axis marker dots
     draw.point((111, 14), fill=0)
     draw.point((112, 14), fill=0)
     draw.point((111, 15), fill=0)
@@ -564,7 +533,8 @@ def print_metrics(connected, ssid, rssi, quality, tx_rate, heading, download_cou
     Console print metrics
     """
     if connected:
-        print(f"** Connected {TARGET_SSID} (channel = {TARGET_CHANNEL}) RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
+        print(
+            f"** Connected {TARGET_SSID} (channel = {TARGET_CHANNEL}) RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
         if rssi is not None:
             quality_string = quality_to_string(quality)
             print(f"Bars:      {rssi_to_string(rssi)}")
@@ -581,7 +551,8 @@ def print_metrics(connected, ssid, rssi, quality, tx_rate, heading, download_cou
             print("-> connected, but signal is lost")
 
     else:
-        print(f"** Scanning {TARGET_SSID} (channel={TARGET_CHANNEL}) RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
+        print(
+            f"** Scanning {TARGET_SSID} (channel={TARGET_CHANNEL}) RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
         print(f"Bars:      {rssi_to_string(rssi)}")
 
     if heading is not None:
