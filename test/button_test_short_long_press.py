@@ -7,20 +7,20 @@ from gpiozero import Button
 button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=1.0)
 
 # Global tracking flags
-long_press = False
-short_press = False
-button_press_time = 0.0  # Tracks the precise unix epoch down-stroke timestamp
+button0_long_press = False
+button0_short_press = False
+button0_press_time = 0.0  # Tracks the precise unix epoch down-stroke timestamp
 
 # INTERRUPT BACKGROUND HANDLERS
 def on_button_pressed():
     """Fires instantly on the falling edge when the button is pushed down."""
-    global button_press_time
+    global button0_press_time
     button_press_time = time.time()  # Capture baseline system time
 
 
 def on_button_released():
     """Fires on the rising edge when the finger leaves the button."""
-    global short_press, long_press, button_press_time
+    global button0_short_press, button0_long_press, button0_press_time
 
     # Compute duration of button press
     if button_press_time > 0.0:
@@ -47,7 +47,7 @@ button0.when_released = on_button_released
 
 # MAIN APPLICATION LOOP
 def main():
-    global short_press, long_press
+    global button0_short_press, button0_long_press
 
     print("      GPIO 26 Standalone Button Press Test Loop         ")
     print("========================================================")
