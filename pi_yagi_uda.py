@@ -87,10 +87,8 @@ Requirements (beyond normal i2c):
 """
 import math
 import os
-import signal
 import subprocess
 import time
-from contextlib import contextmanager
 from datetime import datetime
 from typing import Literal
 
@@ -101,7 +99,6 @@ from dotenv import load_dotenv
 from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
-from assets.test_data.mock_rssi_heading_history import mock_rssi_heading_history
 from lib.download_file import download_file
 from lib.lcd_rssi_polar_utils import display_radar_lcd, display_radar_splash_lcd, CONNECT_RSSI_STRONG, \
     CONNECT_RSSI_WEAK, SCAN_RSSI_STRONG, SCAN_RSSI_WEAK, extract_radar_metrics
@@ -112,14 +109,13 @@ from lib.pi_zero_utils import pico_temperature, timeout
 from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
     remove_ssid
 
-
 DEBUG = False
 USE_MONO_TYPE = False
 
 # TODO test Pi Pico as Access Point
 TARGET_SSID = "ABox-PDX"
 # TARGET_SSID = "shell-fi"
-TARGET_CHANNEL = 11  # Define as None, if don't want target channel
+TARGET_CHANNEL = 11  # Set to None, if not target channel
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = "/home/pi-admin/downloads"
 
@@ -747,14 +743,6 @@ def main():
             print(f"Pi Zero 2W temp: {pi_celsius:.1f}°C")
             print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-
-            # # Dynamic sleep, sleep longer when Wi-Fi out of range
-            # if connected_mode:
-            #     time.sleep(0.02)  # Connected Mode, actual ~85ms 12 Hz
-            # elif rssi is not None:
-            #     time.sleep(0.01)  # Scan Mode, actual ~46ms 22 Hz
-            # else:
-            #     time.sleep(0.04)  # Out of range fallback, actual ~85ms 12 Hz
 
     except KeyboardInterrupt:
         print("\nEnded Tracking (^c).")

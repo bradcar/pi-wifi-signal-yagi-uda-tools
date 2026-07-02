@@ -30,7 +30,6 @@ Usage:
   can also run in PyCharm
 
 TODO:
-    * check to see if matplot_rssi_polar_utils and lcd_radar_utils have the same correct code for finding peak arc
 
 """
 import random
@@ -43,7 +42,6 @@ from pathlib import Path
 import board
 import busio
 import numpy as np
-import pandas as pd
 from PIL import Image, ImageDraw
 from busio import I2C
 from gpiozero import Button
@@ -139,18 +137,13 @@ def update_bssid_map(data, heading, bssid_map):
 
 
 def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40, file_name="plot.png"):
-    rssi_list = bssid_info["rssi_history"]
+    rssi_array = np.array(bssid_info["rssi_history"])
     degrees = np.arange(360)
-
-    df = pd.DataFrame({
-        'degree': degrees,
-        'rssi': rssi_list
-    })
 
     theta = np.deg2rad(degrees)
     subtitle = f"{bssid_info['ssid']}"
     lcd_png_generate = True
-    return plot_rssi_polar(df, rssi_list, theta, heading, subtitle, lcd_png_generate, file_name=file_name)
+    return plot_rssi_polar(degrees, rssi_array, theta, heading, subtitle, lcd_png_generate, file_name=file_name)
 
 
 def console_print(data, heading):
@@ -398,13 +391,11 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
     info["rssi_history"] = cleaned_history
 
     # Save CSV
-    df_to_save = pd.DataFrame({
-        'degree': range(360),
-        'rssi': cleaned_history
-    })
-    df_to_save.to_csv(csv_file, index=False)
+    csv_data = np.column_stack((np.arange(360), cleaned_history))
+    np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
     print(f"Saved csv: {csv_file}")
 
+    # Create pngs
     start_time = time.time()
     polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
@@ -650,8 +641,21 @@ def main():
         oled_display.show()
 
     try:
+
+        duration = 0.0
+        temp_duration = 0.0
+        start_time = time.time()
+        pi_celsius = pico_temperature() or 0.0
+
         while True:
-            pi_celsius = pico_temperature()
+            temp_duration += duration
+            if temp_duration > 60.0:
+                print(f"Updated Temperature (sys call) after): {temp_duration:.1f} sec")
+                pi_celsius = pico_temperature()
+                temp_duration = 0.0
+                if pi_celsius and pi_celsius > 60.0:
+                    print(f"Warning: ** High Temp: {pi_celsius:.1f}°C")
+
             wifi_data = None
             try:
                 with timeout(3, "Wi-Fi scan timed out!"):
@@ -660,7 +664,7 @@ def main():
                 print("Wi-Fi hang detected. Reset interface...")
                 subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(1)
+                time.sleep(0.5)
                 continue
 
             success = bool(wifi_data)
@@ -680,7 +684,6 @@ def main():
                 if lcd_detected:
                     lcd_print(lcd, disp_0, disp_1, disp_2, wifi_data, heading)
 
-            if success:
                 duration = time.time() - last_update
                 last_update = time.time()
 
@@ -690,11 +693,10 @@ def main():
                 )
 
                 print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Wi-Fis above -80 dBm (>1-bar)")
-                print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, Update every {duration:.2f} secs")
+                print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"  Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
                 print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C")
                 print(f"{'Blocked <1-bar & Pi Zero (only 2.4GHz)' if BLOCK_0_BAR else 'Pi Zero (only 2.4GHz)'}\n")
-            else:
-                time.sleep(0.1)
 
             if button2_pressed:
                 button2_pressed = False

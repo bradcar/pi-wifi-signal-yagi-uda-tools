@@ -14,7 +14,7 @@ Features:
 - Indicates peak with red line from plot boundary to peak, outside of boundary peaks RSSI printed.
 
 Dependencies:
-    pandas, matplotlib, numpy
+    matplotlib, numpy
 
 Expected CSV Input Format:
     The input file must include headers matching 'degree' and 'rssi'.
@@ -34,11 +34,9 @@ Usage:
 from typing import Any
 import io  # ADD THIS FOR IN-MEMORY BUFFERS
 
-import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image  # ADD THIS TO RETURN A PIL IMAGE
-from numpy import dtype, ndarray
 
 from lib.radar_math_utils import calculate_peak_bounds
 
@@ -54,12 +52,15 @@ LCD_INCHES = LCD_PIXELS / LCD_DPI
 
 
 def rssi_peak(valid_data) -> tuple[float, float, Any, Any, Any]:
-    max_rssi = valid_data['rssi'].max()
-    peak_cluster = valid_data[valid_data['rssi'] == max_rssi]
+    """valid_data is a a 2D numpy array. Column 0: degree, Column 1: rssi"""
+    max_rssi = valid_data[:, 1].max()
+
+    # Filter rows where rssi matches the maximum value
+    peak_cluster = valid_data[valid_data[:, 1] == max_rssi]
     peak_rssi = float(max_rssi)
 
-    # Extract matching degrees as a numpy array
-    degrees = peak_cluster['degree'].to_numpy()
+    # Extract matching degrees straight from column 0
+    degrees = peak_cluster[:, 0]
 
     arc_radians, arc_radii, peak_degree = peaks_arc_calc(degrees, peak_rssi)
     return arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi
@@ -85,12 +86,18 @@ def peaks_arc_calc(degrees, peak_rssi: float):
     return arc_radians, arc_radii, mean_peak_degree
 
 
-def plot_rssi_polar(df, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
-    # Detect all peaks at same RSSI
-    valid_data = df[df['rssi'] > -98]
-    if valid_data.empty:
+
+def plot_rssi_polar(degrees, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
+    # Create a 2D array matrix: Column 0 = degree, Column 1 = rssi
+    history_array = np.column_stack((degrees, rssi))
+
+    # Fast mask filtering using native NumPy expressions
+    valid_data = history_array[history_array[:, 1] > -98]
+
+    if len(valid_data) == 0:
         peak_rssi = -99.0
         peak_degree = 0
+        peak_cluster = np.array([])
     else:
         arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_data)
 

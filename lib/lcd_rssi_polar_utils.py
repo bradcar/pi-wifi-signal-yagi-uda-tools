@@ -9,12 +9,10 @@ Functionality
     * Indicator update cadence if showing continuous updates, not shown for single render
 """
 
-import time
-
 import math
 
-import pandas as pd
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image
 
 from lib.matplot_rssi_polar_utils import rssi_peak
 from lib.radar_math_utils import calculate_peak_bounds
@@ -94,8 +92,9 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="red", width=3)
 
     # Render the boundary tracking arc using the shared helper bounds
-    if peak_cluster is not None and len(peak_cluster) > 1:
-        degrees = peak_cluster['degree'].to_numpy()
+    if peak_cluster is not None and isinstance(peak_cluster, np.ndarray) and len(peak_cluster) > 1:
+        # Access Column 0 directly for degrees since peak_cluster is a 2D NumPy array
+        degrees = peak_cluster[:, 0]
 
         # Call the exact same shared logic used by the high-res engine
         _, first_deg, last_deg = calculate_peak_bounds(degrees)
@@ -210,17 +209,18 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
 
 def extract_radar_metrics(signal_history):
     """
-    Pure data function: Parses 360-degree signal history to locate peak clusters.
-    Returns: (peak_rssi, peak_degree, peak_cluster_df, valid_history_not_empty)
+    Parses 360-degree signal history to locate peak clusters.
+    Returns: (peak_rssi, peak_degree, peak_cluster_array, valid_history_not_empty)
     """
-    df_history = pd.DataFrame({
-        'degree': range(360),
-        'rssi': signal_history
-    })
-    valid_history = df_history[df_history['rssi'] > -98]
+    # Create a 2D NumPy array: column 0 is degrees, column 1 is rssi
+    history_array = np.column_stack((np.arange(360), signal_history))
 
-    if valid_history.empty:
+    # Filter rows directly based on the RSSI column condition
+    valid_history = history_array[history_array[:, 1] > -98]
+
+    if len(valid_history) == 0:
         return -99.0, 0.0, None, False
 
+    # Pass the filtered NumPy matrix down to your peak locator
     arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
     return peak_rssi, peak_degree, peak_cluster, True
