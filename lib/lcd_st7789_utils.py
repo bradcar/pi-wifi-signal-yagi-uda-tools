@@ -2,6 +2,10 @@
 General Utils for Waveshare multi-display LCD setups (ST7789 Drivers)
 Handles initialization, drawing parameters, and full RGB color rendering.
 
+Left Display:   160px x  80px (12,800 px)
+Center display: 240px x 240px (57,600 px)
+Right display:  160px x  80px (12,800 px)
+
 Add LCD st7789 to user code:
 1) Imports
     import lib.lcd_st7789_utils as lcd

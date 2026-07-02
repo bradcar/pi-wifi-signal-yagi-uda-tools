@@ -168,11 +168,14 @@ download_count = 0
 
 # Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
 button1 = Button(25, pull_up=True, bounce_time=0.1)
-# TODO if lCD fix these definitions
-button0 = Button(14, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo CHANGED FOR LCDm was 26, 14 safe?
-# button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo CHANGED FOR LCDm was 26, 14 safe?
-button2 = Button(26, pull_up=True, bounce_time=0.1)  # TODO CHANGE THIS TO 26 with LCD
-# button2 = Button(14, pull_up=True, bounce_time=0.1)  # TODO CHANGE THIS TO 26 with LCD
+# Button Definitions for OLED Display
+# TODO TOGGLE FOR OLED
+# button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo OLED currently solder to 26
+# button2 = Button(6, pull_up=True, bounce_time=0.1)  # # todo OLED currently solder to 26
+# Button Definitions for LCD Display
+# TODO TOGGLE FOR LCD
+button0 = Button(6, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo resolder OLED to gpio6 p31
+button2 = Button(26, pull_up=True, bounce_time=0.1)  # todo resolder OLED to gpio6 p31
 
 
 def on_button0_pressed():
