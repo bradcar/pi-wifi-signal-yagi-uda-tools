@@ -29,7 +29,7 @@ Scan Rates:
  - Scan Mode,      actual ~461 ms  3 Hz
  - Out of range,   actual ~ ?? ms ?? Hz
  - temperature read every 60 sec since this is system call
- TODO do not clear whole OLED screen, but black out values to be updated
+ TODO consider do not clear whole OLED screen, but black out values to be updated
 
 If the targeted network is not connected, it uses a lighter weight Scan Mode which scans all available networks looking for the targeted network.
  - The OLED SSD display shows:
@@ -87,6 +87,7 @@ Requirements (beyond normal i2c):
 """
 import math
 import os
+import random
 import subprocess
 import time
 from datetime import datetime
@@ -391,10 +392,10 @@ def display_radar_oled(draw, cadence_fill, heading: float, signal_history, conne
         draw.polygon(polygon_points, fill=1, outline=1)
 
     # Center axis marker dots
-    draw.point((111, 14), fill=0)
-    draw.point((112, 14), fill=0)
-    draw.point((111, 15), fill=0)
-    draw.point((112, 15), fill=0)
+    draw.point((center_x - 1, center_y - 1), fill=0)
+    draw.point((center_x, center_y - 1), fill=0)
+    draw.point((center_x - 1, center_y), fill=0)
+    draw.point((center_x, center_y), fill=0)
 
 
 def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, heading: float, download_count,
@@ -628,6 +629,7 @@ def main():
         start_time = time.time()
         last_csv_write = time.time()
         pi_celsius = pico_temperature() or 0.0
+        heading = get_compass_heading(lis3mdl)
 
         loop_counter = 0
         while True:
@@ -656,9 +658,6 @@ def main():
                 connected_mode = False
                 button0_long_press = False
 
-            # Record RSSI at integer heading angles
-            heading = get_compass_heading(lis3mdl)
-
             # Logic for connected or scanning
             if connected_mode:
                 connected_mode, rssi, ssid, quality, tx_rate, download_count = handle_connected_mode(
@@ -666,17 +665,38 @@ def main():
                     lcd, disp_0,
                     disp_1)
             else:
+                quality, tx_rate = None, None
                 connected_mode, rssi, ssid = handle_scan_mode(rssi_heading_history, heading, TARGET_SSID,
                                                               TARGET_CHANNEL, oled_context,
                                                               lcd, disp_0, disp_1)
-                quality, tx_rate = None, None
+
+            # Record RSSI at integer heading angles
+            heading = get_compass_heading(lis3mdl)
 
             if rssi:
                 if heading:
-                    idx = int(heading) % 360
-                    rssi_heading_history[idx] = rssi
+                    clean_heading = int(heading) % 360
+                    rssi_heading_history[clean_heading] = rssi
+                # # show circular rssi if no heading known
                 # else:
                 #     rssi_heading_history[:] = [rssi] * 360
+                else:
+                    # TODO REMOVE this testing-only ELSE CLAUSE: which make Random index if no magnetometer
+                    random_degree = random.randint(0, 359)
+                    fake_rssi = rssi
+                    # signals out of 20° (10-30°), reduce signal by -15 dBm
+                    if not (random_degree > 10 and random_degree < 30):
+                        fake_rssi -= 20
+                        if fake_rssi < -99:
+                            fake_rssi = -99
+                    if (random_degree < 300 and random_degree > 100):
+                        fake_rssi -= 15
+                        if fake_rssi < -99:
+                            fake_rssi = -99
+                    if (random_degree > 170 and random_degree < 210):
+                        fake_rssi = -99
+
+                    rssi_heading_history[random_degree] = fake_rssi
 
             # Print and display metrics
             print_metrics(connected_mode, ssid, rssi, quality, tx_rate, heading, download_count)
@@ -693,7 +713,6 @@ def main():
                 display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid, tx_rate, heading, download_count, connected_mode)
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
-                # display_radar_lcd(disp2_draw, cadence_fill, heading, rssi_heading_history, connected_mode)
                 peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(rssi_heading_history)
                 display_radar_lcd(
                     disp2_draw,
