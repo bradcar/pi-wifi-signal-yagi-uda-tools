@@ -102,7 +102,7 @@ from gpiozero import Button
 import lib.lcd_st7789_utils as lcd
 from lib.download_file import download_file
 from lib.lcd_rssi_polar_utils import display_radar_lcd, display_radar_splash_lcd, CONNECT_RSSI_STRONG, \
-    CONNECT_RSSI_WEAK, SCAN_RSSI_STRONG, SCAN_RSSI_WEAK, extract_radar_metrics
+    CONNECT_RSSI_WEAK, SCAN_RSSI_STRONG, SCAN_RSSI_WEAK, extract_radar_metrics, arrow_annotation
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
@@ -114,9 +114,12 @@ DEBUG = False
 USE_MONO_TYPE = False
 
 # TODO test Pi Pico as Access Point
-TARGET_SSID = "ABox-PDX"
+TARGET_SSID = "Luxul_XWO-BAP1"
+TARGET_SSID = "PCInn_LX"
+# TARGET_SSID = "ABox-PDX"
 # TARGET_SSID = "shell-fi"
 TARGET_CHANNEL = 11  # Set to None, if not target channel
+TARGET_CHANNEL = 6
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = "/home/pi-admin/downloads"
 LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
@@ -125,8 +128,8 @@ try_connect = False
 try_download = False
 
 # Network Signal Lock Thresholds
-RSSI_CONNECT_THRESHOLD = -77  # Minimum signal to allow a hardware connection
-RSSI_DOWNLOAD_THRESHOLD = -74  # Minimum signal to execute data payload transfer
+RSSI_CONNECT_THRESHOLD = -80  # Minimum signal to allow a hardware connection
+RSSI_DOWNLOAD_THRESHOLD = -75  # Minimum signal to execute data payload transfer
 
 # TODO for future implementation if needed for performance
 RADAR_LUT = []
@@ -248,7 +251,8 @@ def scan_i2c_bus(i2c_primary):
 
 def init_i2c():
     # Magnetometer has 400K frequency limit, SSD1305 display has 1M, i2c1 is primary I2C on Pi Zero 2 W
-    i2c1 = busio.I2C(board.SCL, board.SDA, frequency=400000)
+    # Can't set frequency in Python
+    i2c1 = busio.I2C(board.SCL, board.SDA)
     oled_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{oled_detected=} + {lis_detected=}")
     return i2c1, oled_detected, lis_detected
@@ -264,12 +268,8 @@ def change_connection(action: Literal["up", "down"]) -> bool:
             return False
 
         if action == "up":
-            # bring up the existing profile
-            result = subprocess.run(["sudo", "nmcli", "connection", "up", TARGET_SSID],
-                                    capture_output=True, text=True,
-                                    check=True, timeout=15)
-            if result.returncode == 0:
-                return True
+            # Call your robust sequential connection architecture directly
+            return connect_ssid(TARGET_SSID)
 
     except subprocess.TimeoutExpired:
         print(f"CRITICAL: NetworkManager command timed out ({change_timeout} sec) - possible system hang.")
@@ -398,9 +398,9 @@ def display_radar_oled(draw, cadence_fill, heading: float, signal_history, conne
     draw.point((center_x, center_y), fill=0)
 
 
-def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, heading: float, download_count,
-                        connected: bool = True, try_connect: bool = False, try_download: bool = False):
-    # SCREEN 0: Connection & Downloads
+def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, compass_heading: float, peak_degree,
+                        download_count, connected: bool = True, try_connect: bool = False, try_download: bool = False):
+    # Screen 0: Connection & Downloads
     disp0_image = Image.new("RGB", (disp_0.width, disp_0.height), "black")
 
     if try_connect:
@@ -416,7 +416,7 @@ def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, heading: 
         lcd.print_270(text="Trying", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
         lcd.print_270(text="File dl", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt,
                       color="blue")
-    elif connected and rssi >= RSSI_DOWNLOAD_THRESHOLD:
+    elif connected and rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
         lcd.print_270(text="down", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
         lcd.print_270(text="load?", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
     if download_count > 0:
@@ -424,19 +424,26 @@ def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, heading: 
                       color="blue")
     disp_0.ShowImage(disp0_image)
 
-    # SCREEN 1 Signal Metrics & Mode Status
+    # Screen 1 Signal Metrics & Mode Status
     disp1_image = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    lcd.print_270(text="RSSI:", pos=(132, 0), image=disp1_image, font=lcd.font0_34pt, color="red")
+    disp1_draw = ImageDraw.Draw(disp1_image)
+    lcd.print_270(text="RSSI:", pos=(132, 0), image=disp1_image, font=lcd.font0_34pt, color="yellow")
     if rssi is not None:
-        lcd.print_270(text=f"{rssi}", pos=(84, 2), image=disp1_image, font=lcd.font0_50pt, color="red")
+        lcd.print_270(text=f"{rssi}", pos=(84, 2), image=disp1_image, font=lcd.font0_50pt, color="yellow")
     else:
-        lcd.print_270(text=f"no dBm", pos=(84, 2), image=disp1_image, font=lcd.font0_20pt, color="red")
+        lcd.print_270(text=f"no dBm", pos=(84, 2), image=disp1_image, font=lcd.font0_20pt, color="yellow")
 
-    if heading is not None:
-        lcd.print_270(text=f"{heading}°", pos=(48, 8), image=disp1_image, font=lcd.font0_34pt,
-                      color="red")
+    if compass_heading is not None:
+        indent = 3 - (1 if compass_heading < 10 else (2 if compass_heading < 100 else 3))
+        lcd.print_270(text=f"{compass_heading:.0f}°", pos=(49, 8 + (9 * indent)), image=disp1_image,
+                      font=lcd.font0_34pt,
+                      color="yellow")
+
+        # Arrows to indicate rotation direction between current heading the the peak rssi
+        arrow_annotation(disp1_draw, compass_heading, peak_degree, left_arrow_position=(41, 0),
+                         right_arrow_position=(41, 80 - 17))
     else:
-        lcd.print_270(text=f"? °", pos=(48, 30), image=disp1_image, font=lcd.font0_34pt, color="red")
+        lcd.print_270(text=f"? °", pos=(48, 30), image=disp1_image, font=lcd.font0_34pt, color="yellow")
 
     if connected:
         lcd.print_270(text="Wi-Fi", pos=(11, 1), image=disp1_image, font=lcd.font0_33pt, color="green")
@@ -458,7 +465,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
 
     # Flush all button inputs instantly to clear background states
     button0_short_press = False
-    button1_pressed = False
+    button2_pressed = False
 
     rssi = None
     scan_timeout = 3
@@ -480,9 +487,10 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
             if oled_context:
                 oled_context.update_line3_oled("trying to connect...")
             if lcd and disp0 and disp1:
-                display_metrics_lcd(lcd, disp0, disp1, rssi, ssid, None, heading, download_count,
-                                    connected=False, try_connect=True, try_download=False)
+                display_metrics_lcd(lcd, disp0, disp1, rssi, ssid, None, heading, None, download_count, connected=False,
+                                    try_connect=True, try_download=False)
             if change_connection("up"):
+                time.sleep(1.5)
                 rssi_heading_history[:] = [-99.0] * 360
                 return True, rssi, ssid
         else:
@@ -499,15 +507,17 @@ def handle_connected_mode(download_count, heading, target_ssid, url, destination
     # Only short press (Button 0) or Button 1 can trigger a download
     download_triggered = button0_short_press or button1_pressed
 
-    # Flush all button inputs instantly for the next async frame pass
+    # Flush all button inputs instantly for the next async frame pass1_
     button0_short_press = False
     button1_pressed = False
 
     rssi, quality, tx_rate = query_wifi()
     if rssi is None:
         current_ssid = get_ssid()
-        if current_ssid != target_ssid:
-            return False, None, None, None, None
+        # Allow "wlan0 essid unknown" to pass through without dropping to prevent post-connect drops
+        if current_ssid != target_ssid and current_ssid != "wlan0 essid unknown":
+            return False, None, None, None, None, download_count
+        current_ssid = target_ssid
     else:
         current_ssid = target_ssid
 
@@ -517,7 +527,7 @@ def handle_connected_mode(download_count, heading, target_ssid, url, destination
             if oled_context:
                 oled_context.update_line3_oled("trying download...")
             if lcd and disp0 and disp1:
-                display_metrics_lcd(lcd, disp0, disp1, rssi, target_ssid, None, heading, download_count,
+                display_metrics_lcd(lcd, disp0, disp1, rssi, target_ssid, None, heading, None, download_count,
                                     connected=True, try_connect=False, try_download=True)
             success, filename = download_file(url, destination_directory=destination_dir)
             if success:
@@ -601,7 +611,7 @@ def main():
 
     # Initialize 3 LCD displays, splash radiant ether image
     if lcd_detected:
-        disp_0, disp_1, disp_2 = create_lcd_display_canvases()
+        disp_0, disp_1, disp_2 = create_lcd_display_canvases(splash_file_name="radiant-ether-098.jpg")
 
     LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
 
@@ -685,7 +695,7 @@ def main():
                     random_degree = random.randint(0, 359)
                     fake_rssi = rssi
                     # signals out of 20° (10-30°), reduce signal by -15 dBm
-                    if not (random_degree > 10 and random_degree < 30):
+                    if not (random_degree > 19 and random_degree < 45):
                         fake_rssi -= 20
                         if fake_rssi < -99:
                             fake_rssi = -99
@@ -693,10 +703,12 @@ def main():
                         fake_rssi -= 15
                         if fake_rssi < -99:
                             fake_rssi = -99
-                    if (random_degree > 170 and random_degree < 210):
+                    if (random_degree > 175 and random_degree < 225):
                         fake_rssi = -99
 
                     rssi_heading_history[random_degree] = fake_rssi
+                    heading = random_degree
+                    #heading = 0
 
             # Print and display metrics
             print_metrics(connected_mode, ssid, rssi, quality, tx_rate, heading, download_count)
@@ -710,10 +722,12 @@ def main():
                 oled_display.show()
 
             if lcd_detected:
-                display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid, tx_rate, heading, download_count, connected_mode)
+                peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(rssi_heading_history)
+                display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid, tx_rate, heading, peak_degree, download_count,
+                                    connected_mode)
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
-                peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(rssi_heading_history)
+
                 display_radar_lcd(
                     disp2_draw,
                     cadence_fill=cadence_fill,
@@ -724,6 +738,18 @@ def main():
                     peak_rssi=peak_rssi,
                     peak_cluster=peak_cluster
                 )
+                if heading is None:
+                    heading = 0
+                # annotate radar with actual compass heading
+                disp2_draw.rectangle([212, 91, 240, 154], fill="black")
+                indent = 3 - (1 if heading < 10 else (2 if heading < 100 else 3))
+                lcd.print_270(text=f"{heading:.0f}°", pos=(214, 92 + (indent * 10)), image=disp2_image,
+                              font=lcd.font0_28pt, color="yellow")
+
+                # Arrows to indicate rotation direction between current heading the the peak rssi
+                arrow_annotation(disp2_draw, heading, peak_degree, left_arrow_position=(224, 91 - 20 - 17),
+                                 right_arrow_position=(224, 154 + 20))
+
                 disp_2.ShowImage(disp2_image)
 
             # Print update frequency and period
@@ -747,7 +773,7 @@ def main():
             disp_0.ShowImage(black_0)
             black_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
             disp_1.ShowImage(black_1)
-            display_radar_splash_lcd(disp_2)
+            display_radar_splash_lcd(disp_2, splash_image_file="radiant-ether-098.jpg")
             disp_0.module_exit()
             disp_1.module_exit()
             disp_2.module_exit()
