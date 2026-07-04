@@ -24,7 +24,7 @@ from lib.pi_zero_utils import timeout
 SCAN_CACHES_FAST_MODE = False
 
 # Set to False to fall back to slow iw methods
-USE_PROC_NET_WIRELESS = True
+USE_PROC_NET_WIRELESS = False
 
 # Tracks (Link Quality, RSSI, Missed Beacons) to filter out results with no state change
 _last_wireless_fingerprint = None
@@ -66,84 +66,71 @@ def init_wifi():
 
 def get_ssid():
     """
-    get ESSID string from iwconfig
+    get ESSID string from fast iw link states
     Returns:
-        str: ESSID string, or "uknown"
+        str: ESSID string, or "wlan0 essid unknown"
     """
     try:
-        # query iwconfig to get the ESSID string
-        out = subprocess.check_output(["/sbin/iwconfig", "wlan0"], text=True, stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(["iw", "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
         for line in out.splitlines():
-            if "ESSID" in line:
-                return line.split('"')[1].strip()
+            if "SSID:" in line:
+                return line.split("SSID:")[1].strip()
     except Exception:
         pass
 
-    # Final default so avoid empty 'None' type
     return "wlan0 essid unknown"
 
 
 def query_wifi():
     """
-    Queries RSSI, Link Quality, and current Tx Bit Rate dynamically. Tx Bit Rate is only return in slow version.
+    Queries actual connection RSSI dynamically using modern 'iw' link states.
+    Falls back to kernel /proc/net/wireless if iw reports an incomplete state.
 
-    nmcli is slow (~600ms)
-    If USE_PROC_NET_WIRELESS is set uses fast (22ms) /proc/net/wireless reads
-
-    :Returns:
-        tuple: (rssi [int], quality [int], tx_rate [float]) or
-               (None, None, None) if the interface cannot be queried.
+    Returns:
+        tuple: (rssi [int], quality [int], tx_rate [float]) or (None, None, None)
     """
-    # Direct read kernel metrics optimization, but can't get value of TX rate for this fast method, returns tx_rate=None
-    if USE_PROC_NET_WIRELESS:
-        rssi, quality, is_new = query_wifi_proc_net_wireless_fast()
-        # Return RSSI only if and other metrics updated
-        if rssi is not None:
-            return rssi, quality, None
-        else:
-            # If data is stale, return placeholders
-            return None, None, None
-
     rssi = None
-    quality = None
     tx_rate = None
 
-    # Get RSSI and Link Quality from the Linux Kernel network stats
     try:
-        with open("/proc/net/wireless", "r") as f:
-            lines = f.readlines()
-            for line in lines:
-                if "wlan0" in line:
-                    clean_line = line.replace("wlan0:", "").strip()
-                    parts = clean_line.split()
-                    quality = int(parts[1].replace('.', ''))
-                    rssi = int(parts[2].replace('.', ''))
+        # Step 1: Attempt the standard modern link state query
+        out = subprocess.check_output(["iw", "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
 
-                    if rssi > 0:
-                        rssi = rssi - 256
-                    elif rssi == 0:
-                        rssi = None
-
-    except Exception:
-        return None, None, None
-
-    # Get Tx Rate, note this is only return with slow sudo nmcli method
-    try:
-        out = subprocess.check_output(["/sbin/iwconfig", "wlan0"], text=True, stderr=subprocess.DEVNULL)
         for line in out.splitlines():
-            if "Bit Rate" in line:
-                parts = line.split("Bit Rate=")
-                if len(parts) > 1:
-                    raw_rate_str = parts[1].split("   ")[0].strip()
-                    match = re.findall(r"[+-]?\d*(?:\.\d+)?", raw_rate_str)
-                    if match and match[0] != "":
-                        tx_rate = float(match[0])
-                    break
+            if "signal:" in line:
+                match = re.search(r'signal:\s*([-0-9.]+)\s*dBm', line)
+                if match:
+                    rssi = int(float(match.group(1)))
+            elif "tx bitrate:" in line:
+                match = re.search(r'tx bitrate:\s*([0-9.]+)', line)
+                if match:
+                    tx_rate = float(match.group(1))
+
     except Exception:
         pass
 
-    return rssi, quality, tx_rate
+    # Step 2: Fallback to kernel space if iw failed to capture the RSSI value
+    if rssi is None:
+        try:
+            with open("/proc/net/wireless", "r") as f:
+                for line in f:
+                    if "wlan0" in line:
+                        parts = line.replace("wlan0:", "").strip().split()
+                        # Raw text parsing for level/RSSI column
+                        raw_rssi = int(parts[2].replace('.', ''))
+                        if raw_rssi > 0:
+                            rssi = raw_rssi - 256
+                        elif raw_rssi < 0:
+                            rssi = raw_rssi
+        except Exception:
+            pass
 
+    # Step 3: Compute quality metric if we successfully obtained an RSSI value
+    if rssi is not None:
+        quality = max(0, min(100, int(2 * (rssi + 100))))
+        return rssi, quality, tx_rate
+
+    return None, None, None
 
 
 def query_wifi_proc_net_wireless_fast():
@@ -304,19 +291,21 @@ def scan_target_ssid(interface, target_ssid=None, channel: int = None):
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
-    # Parse 'iw' output: BSS blocks start with "BSS "
+    # Parse 'iw' output cleanly regardless of leading newlines
+    if scan.startswith("BSS "):
+        scan = "\n" + scan
     bss_blocks = re.split(r'\nBSS ', scan)
     networks = []
 
-    for block in bss_blocks[1:]:  # Skip the first element (interface info)
+    for block in bss_blocks[1:]:
         ssid_match = re.search(r'SSID: (.*)', block)
-        ssid = ssid_match.group(1) if ssid_match else ".hidden."
+        ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
 
         rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
         rssi = int(float(rssi_match.group(1))) if rssi_match else -100
 
         # If found target_ssid, return immediately
-        if target_ssid and ssid == target_ssid:
+        if target_ssid and (target_ssid in ssid):
             return rssi
 
         bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
@@ -324,6 +313,10 @@ def scan_target_ssid(interface, target_ssid=None, channel: int = None):
 
         band, channel = parse_band_from_cell(block)
         networks.append(PiNetworkMock(ssid, bssid, rssi, band, channel))
+
+    print(f"[DEBUG PARSER] Checking SSID: {target_ssid} on channel: {channel}")
+    if target_ssid is not None:
+        return None
 
     return sorted(networks, key=lambda net: net.rssi_value(), reverse=True) if target_ssid is None else None
 
@@ -472,10 +465,17 @@ def connect_ssid(ssid):
     subprocess.run(["sudo", "nmcli", "connection", "delete", ssid], stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL)
 
-    # Use clean explicit parameters for device activation to let nmcli autoconfigure security structures
-    cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0"]
+    # Use explicit, step-by-step connection commands to avoid Trixie property errors
+    subprocess.run(
+        ["sudo", "nmcli", "connection", "add", "type", "wifi", "con-name", ssid, "ifname", "wlan0", "ssid", ssid],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["sudo", "nmcli", "connection", "modify", ssid, "wifi-sec.key-mgmt", "wpa-psk"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if password is not None:
-        cmd.extend(["password", password])
+        subprocess.run(["sudo", "nmcli", "connection", "modify", ssid, "wifi-sec.psk", password],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    cmd = ["sudo", "nmcli", "connection", "up", ssid]
 
     # Catch weak-signal handshaking hangs gracefully instead of dropping execution
     try:
@@ -552,6 +552,8 @@ def trigger_background_scan(interface):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except TimeoutError:
         print("Wi-Fi Hardware hang during pre-warm. Power-cycle Wi-Fi...")
-        subprocess.run(["sudo", "nmcli", "device", "disconnect", interface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["sudo", "nmcli", "device", "disconnect", interface], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
         time.sleep(0.5)
-        subprocess.run(["sudo", "nmcli", "device", "connect", interface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["sudo", "nmcli", "device", "connect", interface], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
