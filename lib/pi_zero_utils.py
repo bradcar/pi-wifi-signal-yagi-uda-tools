@@ -6,14 +6,14 @@ import signal
 from contextlib import contextmanager
 
 
-def pico_temperature():
-    """ Reads system temperature as substitute for Pico ADC(4) """
+def pico_temperature() -> float:
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            celsius = float(f.read()) / 1000.0
-        return celsius
-    except Exception:
-        return None
+            # Read millicelsius string ("43500")
+            raw_temp = f.read().strip()
+            return float(raw_temp) / 1000.0
+    except (FileNotFoundError, ValueError, IOError):
+        return 0.0
 
 
 @contextmanager

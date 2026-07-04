@@ -36,7 +36,6 @@ Add LCD st7789 to user code:
     global button1_pressed, button2_pressed
 
 """
-from typing import Any
 
 import spidev as SPI
 import sys
@@ -65,6 +64,9 @@ font0_24pt = base_font00.font_variant(size= 24)
 font0_20pt = base_font00.font_variant(size= 20)
 font0_16pt = base_font00.font_variant(size= 16)
 font0_13pt = base_font00.font_variant(size= 13)
+
+
+
 
 def init_lcd_display(index: int):
     """
@@ -98,7 +100,7 @@ def init_lcd_display(index: int):
     return display, image
 
 
-def create_lcd_display_canvases():
+def create_lcd_display_canvases(splash_file_name):
     disp_0, _ = init_lcd_display(0)
     disp_1, _ = init_lcd_display(1)
     disp_2, _ = init_lcd_display(2)
@@ -106,8 +108,15 @@ def create_lcd_display_canvases():
     startup_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     disp_0.ShowImage(startup_0)
     disp_1.ShowImage(startup_1)
-    display_radar_splash_lcd(disp_2)
+    display_radar_splash_lcd(disp_2, splash_image_file=splash_file_name)
     return disp_0, disp_1, disp_2
+
+
+def clear_canvas(image):
+    """Resets memory layout image context matrix cleanly to true black."""
+    draw = ImageDraw.Draw(image)
+    # FIX: Fills the RGB background back to absolute black
+    draw.rectangle((0, 0, image.width, image.height), fill="BLACK")
 
 
 def print_270(text: str, pos: tuple, image, font, color):
@@ -186,10 +195,3 @@ def refresh_lcd_display(display, image):
     Flushes the RGB image array out across the SPI hardware bus directly.
     """
     display.ShowImage(image)
-
-
-def clear_canvas(image):
-    """Resets memory layout image context matrix cleanly to true black."""
-    draw = ImageDraw.Draw(image)
-    # FIX: Fills the RGB background back to absolute black
-    draw.rectangle((0, 0, image.width, image.height), fill="BLACK")

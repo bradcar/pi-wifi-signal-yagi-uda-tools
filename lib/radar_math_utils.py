@@ -36,3 +36,20 @@ def calculate_peak_bounds(degrees) -> tuple[float, float, float]:
             last_deg = float(sorted_deg[max_gap_idx])
 
     return mean_peak_degree, first_deg, last_deg
+
+
+def rotation_to_align_peak(compass, peak_rssi_angle):
+    cw_flag = False
+    ccw_flag = False
+    if compass is not None and peak_rssi_angle is not None:
+        diff = peak_rssi_angle - compass
+        shortest_angle = (diff + 180) % 360 - 180
+        if shortest_angle < 0:
+            cw_flag = True
+        elif shortest_angle > 0:
+            ccw_flag = True
+        else:
+            pass
+        return cw_flag, ccw_flag, shortest_angle
+    else:
+        return cw_flag, ccw_flag, 0

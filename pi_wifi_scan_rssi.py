@@ -492,7 +492,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
 
     # Screen 1 - Metrics: Peak RSSI & Peak degree
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    lcd.print_270(text="Peak:", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
+    lcd.print_270(text="Peak", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
     rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
     lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
     degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
@@ -626,7 +626,7 @@ def main():
     lcd_detected = False
     if not (oled_detected or e_ink_detected):
         lcd_detected = True
-        disp_0, disp_1, disp_2 = create_lcd_display_canvases()
+        disp_0, disp_1, disp_2 = create_lcd_display_canvases("radiant-ether-913.jpg")
 
     lis3mdl = None
     if lis3mdl_detected:

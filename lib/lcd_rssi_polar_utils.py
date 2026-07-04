@@ -10,18 +10,39 @@ Functionality
 """
 
 import math
+from typing import Literal
 
 import numpy as np
 from PIL import Image
+from PIL.ImageDraw import ImageDraw
 
 from lib.matplot_rssi_polar_utils import rssi_peak
-from lib.radar_math_utils import calculate_peak_bounds
+from lib.radar_math_utils import calculate_peak_bounds, rotation_to_align_peak
 
 # Radar lines Boundary
 SCAN_RSSI_STRONG = -30
 SCAN_RSSI_WEAK = -80
 CONNECT_RSSI_STRONG = -30
 CONNECT_RSSI_WEAK = -75
+
+# 17x17 Arrow (0 to 16 pixel boundaries)
+ARROW_LEFT = ((8, 1), (1, 8), (5, 8), (5, 15), (11, 15), (11, 8), (15, 8))
+ARROW_RIGHT = ((8, 15), (1, 8), (5, 8), (5, 1), (11, 1), (11, 8), (15, 8))  # Arrow right
+ARROW_UP = ((15, 8), (8, 1), (8, 5), (1, 5), (1, 11), (8, 11), (8, 15))  # arrow up
+ARROW_DOWN = ((1, 8), (8, 1), (8, 5), (15, 5), (15, 11), (8, 11), (8, 15))  # arrow down
+
+SKINNY_ARROW_LEFT = ((8, 0), (2, 6), (7, 6), (7, 16), (9, 16), (9, 6), (14, 6))
+SKINNY_ARROW_RIGHT = ((8, 16), (2, 10), (7, 10), (7, 0), (9, 0), (9, 10), (14, 10))
+SKINNY_ARROW_UP = ((16, 8), (10, 2), (10, 7), (0, 7), (0, 9), (10, 9), (10, 14))
+SKINNY_ARROW_DOWN = ((0, 8), (6, 2), (6, 7), (16, 7), (16, 9), (6, 9), (6, 14))
+
+# Arrow direction mapping
+DIRECTION_MAP = {
+    "up": SKINNY_ARROW_UP,
+    "down": SKINNY_ARROW_DOWN,
+    "right": SKINNY_ARROW_RIGHT,
+    "left": SKINNY_ARROW_LEFT
+}
 
 
 def draw_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int, strong_bound: int,
@@ -154,14 +175,24 @@ def draw_crosshairs(draw, heading: float, center_x: int, center_y: int, max_radi
         draw.ellipse((ex - 1, ey - 1, ex + 1, ey + 1), fill="white")
 
 
-def display_radar_splash_lcd(disp_2):
-    """ Splash art jpg on display 2"""
+def display_radar_splash_lcd(disp_2, splash_image_file=None):
+    """ Splash art jpg on display 2
+
+     radiant-ether-098.jpg
+     radiant-ether-368.jpg
+     radiant-ether-913.jpg
+
+    Args:
+        splash_image_file:
+    """
+    if splash_image_file is None:
+        splash_image_file = "radiant-ether-098.jpg"
     try:
-        radar_image = Image.open("assets/images/radiant-ether-098.jpg")
+        radar_image = Image.open(f"assets/images/{splash_image_file}")
         rotated_radar = radar_image.rotate(270)
         disp_2.ShowImage(rotated_radar)
     except IOError:
-        print("Wallpaper 'radiant-ether-098.jpg' not found at project root. Skipping center lcd")
+        print(f"Wallpaper '{splash_image_file}' not found at project root. Skipping center lcd")
 
 
 def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
@@ -204,7 +235,7 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
         draw_peak_arc(draw, heading, center_x, center_y, max_radius,
                       strong_bound, weak_bound, peak_degree, peak_rssi, peak_cluster)
     # Center axis core marker
-    draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="black")
+    draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="blue")
 
 
 def extract_radar_metrics(signal_history):
@@ -224,3 +255,39 @@ def extract_radar_metrics(signal_history):
     # Pass the filtered NumPy matrix down to your peak locator
     arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
     return peak_rssi, peak_degree, peak_cluster, True
+
+
+def arrow_annotation(disp1_draw: ImageDraw, compass_heading, peak_degree,
+                     left_arrow_position, right_arrow_position):
+    """Draw arrows to show shortest rotation to peak"""
+    cw_flag, ccw_flag, shortest_angle = rotation_to_align_peak(compass_heading, peak_degree)
+    if shortest_angle != 0:
+        #print(f"Rotate {shortest_angle}° {'clockwise to right' if cw_flag else 'counter-clockwise to left'}")
+        if cw_flag:
+            draw_directional_arrow(disp1_draw, "left", left_arrow_position, fill_color="red")
+        if ccw_flag:
+            draw_directional_arrow(disp1_draw, "right", right_arrow_position, fill_color="red")
+
+
+def draw_directional_arrow(draw, direction: str, pos: tuple, fill_color="white"):
+    """
+    Draws a 17x17 pixel arrow with 1px boundary
+
+    :param draw: PIL ImageDraw object.
+    :param direction: "up", "down", "left", or "right"
+    :param x_pos: Leftmost X-coordinate for arrow
+    :param y_pos: Topmost Y-coordinate for arrow
+    :param fill_color: Arrow Color string or pixel value.
+    """
+    direction_select = direction.lower()
+    if direction_select not in DIRECTION_MAP:
+        raise ValueError("Direction must be 'up', 'down', 'left', or 'right'")
+
+    arrow_points = DIRECTION_MAP[direction_select]
+
+    x_pos, y_pos = pos
+    # Batch translate the local coordinates to the global screen target coordinates
+    global_points = [(x + x_pos, y + y_pos) for (x, y) in arrow_points]
+
+    # Draw the solid polygon geometry
+    draw.polygon(global_points, fill=fill_color)
