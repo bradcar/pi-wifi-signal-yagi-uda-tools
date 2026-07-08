@@ -38,7 +38,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image  # ADD THIS TO RETURN A PIL IMAGE
 
-from lib.radar_math_utils import calculate_peak_bounds
+from lib.polar_math_utils import calculate_peak_bounds
 
 # dBm bounds for clamping values and gridlines
 RSSI_MAX_PLOT_CONSTANT = -20
