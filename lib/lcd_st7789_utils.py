@@ -41,8 +41,6 @@ import spidev as SPI
 import sys
 from PIL import Image, ImageDraw, ImageFont
 
-from lib.lcd_rssi_polar_utils import display_radar_splash_lcd
-
 sys.path.append("..")
 from vendor.waveshare_lcd import LCD_0inch96
 from vendor.waveshare_lcd import LCD_1inch3
@@ -56,16 +54,33 @@ LCD_CONFIGS = {
 
 base_font00 = ImageFont.truetype("assets/Font/Font00.ttf", 30)
 
-font0_50pt = base_font00.font_variant(size= 50)
-font0_34pt = base_font00.font_variant(size= 34)
-font0_33pt = base_font00.font_variant(size= 33)
-font0_28pt = base_font00.font_variant(size= 28)
-font0_24pt = base_font00.font_variant(size= 24)
-font0_20pt = base_font00.font_variant(size= 20)
-font0_16pt = base_font00.font_variant(size= 16)
-font0_13pt = base_font00.font_variant(size= 13)
+font0_50pt = base_font00.font_variant(size=50)
+font0_34pt = base_font00.font_variant(size=34)
+font0_33pt = base_font00.font_variant(size=33)
+font0_28pt = base_font00.font_variant(size=28)
+font0_24pt = base_font00.font_variant(size=24)
+font0_20pt = base_font00.font_variant(size=20)
+font0_16pt = base_font00.font_variant(size=16)
+font0_13pt = base_font00.font_variant(size=13)
 
+# 17x17 Arrow (0 to 16 pixel boundaries)
+ARROW_LEFT = ((8, 1), (1, 8), (5, 8), (5, 15), (11, 15), (11, 8), (15, 8))
+ARROW_RIGHT = ((8, 15), (1, 8), (5, 8), (5, 1), (11, 1), (11, 8), (15, 8))  # Arrow right
+ARROW_UP = ((15, 8), (8, 1), (8, 5), (1, 5), (1, 11), (8, 11), (8, 15))  # arrow up
+ARROW_DOWN = ((1, 8), (8, 1), (8, 5), (15, 5), (15, 11), (8, 11), (8, 15))  # arrow down
 
+SKINNY_ARROW_LEFT = ((8, 0), (2, 6), (7, 6), (7, 16), (9, 16), (9, 6), (14, 6))
+SKINNY_ARROW_RIGHT = ((8, 16), (2, 10), (7, 10), (7, 0), (9, 0), (9, 10), (14, 10))
+SKINNY_ARROW_UP = ((16, 8), (10, 2), (10, 7), (0, 7), (0, 9), (10, 9), (10, 14))
+SKINNY_ARROW_DOWN = ((0, 8), (6, 2), (6, 7), (16, 7), (16, 9), (6, 9), (6, 14))
+
+# Arrow direction mapping
+DIRECTION_MAP = {
+    "up": SKINNY_ARROW_UP,
+    "down": SKINNY_ARROW_DOWN,
+    "right": SKINNY_ARROW_RIGHT,
+    "left": SKINNY_ARROW_LEFT
+}
 
 
 def init_lcd_display(index: int):
@@ -108,7 +123,7 @@ def create_lcd_display_canvases(splash_file_name):
     startup_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     disp_0.ShowImage(startup_0)
     disp_1.ShowImage(startup_1)
-    display_radar_splash_lcd(disp_2, splash_image_file=splash_file_name)
+    display_2_splash_lcd(disp_2, splash_image_file=splash_file_name)
     return disp_0, disp_1, disp_2
 
 
@@ -117,6 +132,26 @@ def clear_canvas(image):
     draw = ImageDraw.Draw(image)
     # FIX: Fills the RGB background back to absolute black
     draw.rectangle((0, 0, image.width, image.height), fill="BLACK")
+
+
+def display_2_splash_lcd(disp_2, splash_image_file=None):
+    """ Splash art jpg on display 2
+
+     radiant-ether-098.jpg
+     radiant-ether-368.jpg
+     radiant-ether-913.jpg
+
+    Args:
+        splash_image_file:
+    """
+    if splash_image_file is None:
+        splash_image_file = "radiant-ether-098.jpg"
+    try:
+        radar_image = Image.open(f"assets/images/{splash_image_file}")
+        rotated_radar = radar_image.rotate(270)
+        disp_2.ShowImage(rotated_radar)
+    except IOError:
+        print(f"Wallpaper '{splash_image_file}' not found at project root. Skipping center lcd")
 
 
 def print_270(text: str, pos: tuple, image, font, color):
@@ -195,3 +230,27 @@ def refresh_lcd_display(display, image):
     Flushes the RGB image array out across the SPI hardware bus directly.
     """
     display.ShowImage(image)
+
+
+def draw_directional_arrow(draw, direction: str, pos: tuple, fill_color="white"):
+    """
+    Draws a 17x17 pixel arrow with 1px boundary
+
+    :param draw: PIL ImageDraw object.
+    :param direction: "up", "down", "left", or "right"
+    :param x_pos: Leftmost X-coordinate for arrow
+    :param y_pos: Topmost Y-coordinate for arrow
+    :param fill_color: Arrow Color string or pixel value.
+    """
+    direction_select = direction.lower()
+    if direction_select not in DIRECTION_MAP:
+        raise ValueError("Direction must be 'up', 'down', 'left', or 'right'")
+
+    arrow_points = DIRECTION_MAP[direction_select]
+
+    x_pos, y_pos = pos
+    # Translate the local coordinates to the global screen target coordinates
+    global_points = [(x + x_pos, y + y_pos) for (x, y) in arrow_points]
+
+    # Draw the arrow
+    draw.polygon(global_points, fill=fill_color)
