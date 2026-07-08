@@ -1,8 +1,6 @@
-# lcd_rssi_polar_utils.py
+# lcd_rssi_radar_utils.py
 """
 lcd Radar Utilities, to be used by pi_yagi_uda.py an di_wifi_scan_radar.py
-
-
 
 Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
@@ -10,43 +8,25 @@ Functionality
 """
 
 import math
-from typing import Literal
 
 import numpy as np
 from PIL import Image
 from PIL.ImageDraw import ImageDraw
 
-from lib.matplot_rssi_polar_utils import rssi_peak
-from lib.radar_math_utils import calculate_peak_bounds, rotation_to_align_peak
+from lib.matplot_rssi_radar_utils import rssi_peak
+from lib.polar_math_utils import calculate_peak_bounds
+from lib.lcd_st7789_utils import draw_directional_arrow
 
 # Radar lines Boundary
-SCAN_RSSI_STRONG = -30
-SCAN_RSSI_WEAK = -80
-CONNECT_RSSI_STRONG = -30
-CONNECT_RSSI_WEAK = -75
-
-# 17x17 Arrow (0 to 16 pixel boundaries)
-ARROW_LEFT = ((8, 1), (1, 8), (5, 8), (5, 15), (11, 15), (11, 8), (15, 8))
-ARROW_RIGHT = ((8, 15), (1, 8), (5, 8), (5, 1), (11, 1), (11, 8), (15, 8))  # Arrow right
-ARROW_UP = ((15, 8), (8, 1), (8, 5), (1, 5), (1, 11), (8, 11), (8, 15))  # arrow up
-ARROW_DOWN = ((1, 8), (8, 1), (8, 5), (15, 5), (15, 11), (8, 11), (8, 15))  # arrow down
-
-SKINNY_ARROW_LEFT = ((8, 0), (2, 6), (7, 6), (7, 16), (9, 16), (9, 6), (14, 6))
-SKINNY_ARROW_RIGHT = ((8, 16), (2, 10), (7, 10), (7, 0), (9, 0), (9, 10), (14, 10))
-SKINNY_ARROW_UP = ((16, 8), (10, 2), (10, 7), (0, 7), (0, 9), (10, 9), (10, 14))
-SKINNY_ARROW_DOWN = ((0, 8), (6, 2), (6, 7), (16, 7), (16, 9), (6, 9), (6, 14))
-
-# Arrow direction mapping
-DIRECTION_MAP = {
-    "up": SKINNY_ARROW_UP,
-    "down": SKINNY_ARROW_DOWN,
-    "right": SKINNY_ARROW_RIGHT,
-    "left": SKINNY_ARROW_LEFT
-}
+SCAN_RSSI_STRONG = -70
+SCAN_RSSI_WEAK = -85
+CONNECT_RSSI_STRONG = -25
+CONNECT_RSSI_WEAK = -85
 
 
-def draw_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int, strong_bound: int,
-                 weak_bound: int):
+def draw_rssi_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int,
+                      strong_bound: int,
+                      weak_bound: int):
     # Antenna strength polygon vertex points at 5 degrees intervals, 72 vertices
     polygon_points = []
     for angle in range(0, 360, 5):
@@ -86,6 +66,8 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     """
     Draws a heavy red vector pointer and an encompassing signal arc across matching peak boundaries.
     """
+    if peak_rssi <= -99:
+        return
     max_signal_radius = max_radius - 10
     outer_marker_radius = max_radius + 10
 
@@ -95,7 +77,7 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
         proportion = (val - weak_bound) / (strong_bound - weak_bound)
         return max_signal_radius * proportion
 
-    # Align primary needle with the clean shared vector mean
+    # Align peak indicator line with vector mean
     peak_angle_rad = math.radians(heading - peak_degree)
     r_peak = rssi_to_radius(peak_rssi)
 
@@ -108,9 +90,10 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     x_halfway = int(center_x + halfway_radius * math.cos(peak_angle_rad))
     y_halfway = int(center_y - halfway_radius * math.sin(peak_angle_rad))
 
-    # Draw pointer hardware indicators
-    draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=7)
-    draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="red", width=3)
+    # draw thin line from peak point to halfway to circle, Thick line from halfway to 10px past outer edge
+    draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="orange", width=3)
+    draw.line([(center_x, center_y), (x_peak, y_peak)], fill="red", width=5)  #
+    draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=9)
 
     # Render the boundary tracking arc using the shared helper bounds
     if peak_cluster is not None and isinstance(peak_cluster, np.ndarray) and len(peak_cluster) > 1:
@@ -175,26 +158,6 @@ def draw_crosshairs(draw, heading: float, center_x: int, center_y: int, max_radi
         draw.ellipse((ex - 1, ey - 1, ex + 1, ey + 1), fill="white")
 
 
-def display_radar_splash_lcd(disp_2, splash_image_file=None):
-    """ Splash art jpg on display 2
-
-     radiant-ether-098.jpg
-     radiant-ether-368.jpg
-     radiant-ether-913.jpg
-
-    Args:
-        splash_image_file:
-    """
-    if splash_image_file is None:
-        splash_image_file = "radiant-ether-098.jpg"
-    try:
-        radar_image = Image.open(f"assets/images/{splash_image_file}")
-        rotated_radar = radar_image.rotate(270)
-        disp_2.ShowImage(rotated_radar)
-    except IOError:
-        print(f"Wallpaper '{splash_image_file}' not found at project root. Skipping center lcd")
-
-
 def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
                       peak_degree=None, peak_rssi=None, peak_cluster=None):
     """
@@ -209,13 +172,14 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     * arc        0.7ms
 
     """
-    center_x = 120
+    center_x = 120  # vertical height, 120 is centered, 111 drops 9 px, 1px margin
     center_y = 120
     max_radius = 110
 
     strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
     weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
 
+    # if no heading orientate to North 0°
     if heading is None:
         heading = 0.0
 
@@ -228,7 +192,7 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     # draw indicator, crosshairs and RSSI polygon
     draw_indicator(draw, cadence_fill, x_box=210, y_box=10, dot_size=15)
     draw_crosshairs(draw, heading, center_x, center_y, max_radius)
-    draw_polygon(draw, signal_history, heading, center_x, center_y, max_radius, strong_bound, weak_bound)
+    draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, strong_bound, weak_bound)
 
     # peak signal graphic
     if peak_rssi is not None and peak_degree is not None:
@@ -241,7 +205,7 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
 def extract_radar_metrics(signal_history):
     """
     Parses 360-degree signal history to locate peak clusters.
-    Returns: (peak_rssi, peak_degree, peak_cluster_array, valid_history_not_empty)
+    Returns: (peak_rssi, peak_degree, peak_cluster_array, valid_history)
     """
     # Create a 2D NumPy array: column 0 is degrees, column 1 is rssi
     history_array = np.column_stack((np.arange(360), signal_history))
@@ -257,37 +221,26 @@ def extract_radar_metrics(signal_history):
     return peak_rssi, peak_degree, peak_cluster, True
 
 
-def arrow_annotation(disp1_draw: ImageDraw, compass_heading, peak_degree,
+def rotation_to_peak(compass, peak_rssi_angle):
+    """ degree rotation to peak
+        clockwise: shortest_angle > 0
+        counter-clockwise: shortest_angle < 0:
+    """
+    if compass is not None and peak_rssi_angle is not None:
+        diff = peak_rssi_angle - compass
+        shortest_angle = (diff + 180) % 360 - 180
+        return shortest_angle
+    else:
+        return None
+
+
+def arrow_annotation(disp1_draw: ImageDraw, shortest_angle,
                      left_arrow_position, right_arrow_position):
     """Draw arrows to show shortest rotation to peak"""
-    cw_flag, ccw_flag, shortest_angle = rotation_to_align_peak(compass_heading, peak_degree)
-    if shortest_angle != 0:
-        #print(f"Rotate {shortest_angle}° {'clockwise to right' if cw_flag else 'counter-clockwise to left'}")
-        if cw_flag:
-            draw_directional_arrow(disp1_draw, "left", left_arrow_position, fill_color="red")
-        if ccw_flag:
-            draw_directional_arrow(disp1_draw, "right", right_arrow_position, fill_color="red")
-
-
-def draw_directional_arrow(draw, direction: str, pos: tuple, fill_color="white"):
-    """
-    Draws a 17x17 pixel arrow with 1px boundary
-
-    :param draw: PIL ImageDraw object.
-    :param direction: "up", "down", "left", or "right"
-    :param x_pos: Leftmost X-coordinate for arrow
-    :param y_pos: Topmost Y-coordinate for arrow
-    :param fill_color: Arrow Color string or pixel value.
-    """
-    direction_select = direction.lower()
-    if direction_select not in DIRECTION_MAP:
-        raise ValueError("Direction must be 'up', 'down', 'left', or 'right'")
-
-    arrow_points = DIRECTION_MAP[direction_select]
-
-    x_pos, y_pos = pos
-    # Batch translate the local coordinates to the global screen target coordinates
-    global_points = [(x + x_pos, y + y_pos) for (x, y) in arrow_points]
-
-    # Draw the solid polygon geometry
-    draw.polygon(global_points, fill=fill_color)
+    if shortest_angle is None or shortest_angle == 0:
+        return
+    if shortest_angle < 0:
+        draw_directional_arrow(disp1_draw, "left", left_arrow_position, fill_color="red")
+    if shortest_angle > 0:
+        draw_directional_arrow(disp1_draw, "right", right_arrow_position, fill_color="red")
+    return
