@@ -1,31 +1,31 @@
 # pi_yagi_uda.py
 """
 On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
-and Tx Bit Rate of the currently targeted network on interface wlan0.
+and RX Bit Rate of the currently targeted network on interface wlan0.
 When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
 The code handles connection drops and resumes automatically on reconnect.
 
 Scan Rates:
  If USE_PROC_NET_WIRELESS=True in wifi_utils.py
- - Connected Mode, actual ~ 24 ms 41 Hz  (at this rate, it won't return Tx Rate (n/a in output))
+ - Connected Mode, actual ~ 24 ms 41 Hz  (at this rate, it won't return RX Rate (n/a in output))
  - Scan Mode,      actual ~300 ms  3 Hz
  - Out of range,   actual ~ ?? ms ?? Hz
  - temperature read every 60 sec since this is system call
 
   If USE_PROC_NET_WIRELESS=False in wifi_utils.py
- - Connected Mode, actual ~ 50 ms 20 Hz  (at this rate, it won't return Tx Rate (n/a in output))
+ - Connected Mode, actual ~ 50 ms 20 Hz
  - Scan Mode,      actual ~300 ms  3 Hz
  - Out of range,   actual ~ ?? ms ?? Hz
  - temperature read every 60 sec since this is system call
 
     If LCD on and USE_PROC_NET_WIRELESS=False in wifi_utils.py  2-3 Hz likely worth the nice graphids
- - Connected Mode, actual ~300 ms  3 Hz (at this rate, it won't return Tx Rate (n/a in output))
+ - Connected Mode, actual ~300 ms  3 Hz (at this rate, it won't return RX Rate (n/a in output))
  - Scan Mode,      actual ~630 ms  2 Hz
  - Out of range,   actual ~ ?? ms ?? Hz
  - temperature read every 60 sec since this is system call
 
    If OLED on and USE_PROC_NET_WIRELESS=False in wifi_utils.py -- FLASHES !!!
- - Connected Mode, actual ~200 ms  5 Hz  (at this rate, it won't return Tx Rate (n/a in output))
+ - Connected Mode, actual ~200 ms  5 Hz  (at this rate, it won't return RX Rate (n/a in output))
  - Scan Mode,      actual ~461 ms  3 Hz
  - Out of range,   actual ~ ?? ms ?? Hz
  - temperature read every 60 sec since this is system call
@@ -83,11 +83,13 @@ Requirements (beyond normal i2c):
     pip3 install adafruit-circuitpython-lis3mdl --break-system-packages
     pip install python-dotenv --break-system-packages
 
- TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
+TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
+TODO uncomment logging code to Pi Zero flash
+TODO uncomment saving Actual RSSI to heading, instead of fake testing code
+
 """
 import math
 import os
-import random
 import subprocess
 import time
 from datetime import datetime
@@ -100,12 +102,13 @@ from dotenv import load_dotenv
 from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
-from lib.download_file import download_file
-from lib.lcd_rssi_polar_utils import display_radar_lcd, display_radar_splash_lcd, CONNECT_RSSI_STRONG, \
-    CONNECT_RSSI_WEAK, SCAN_RSSI_STRONG, SCAN_RSSI_WEAK, extract_radar_metrics, arrow_annotation
-from lib.lcd_st7789_utils import create_lcd_display_canvases
+from lib.download_file_utils import download_file
+from lib.fake_testing_utils import fake_heading_sweep, fake_rssi_history_fill
+from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics, arrow_annotation, rotation_to_peak
+from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
+from lib.oled_rssi_radar_utils import display_radar_oled
 from lib.pi_zero_utils import pico_temperature, timeout
 from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
     remove_ssid
@@ -113,13 +116,12 @@ from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_strin
 DEBUG = False
 USE_MONO_TYPE = False
 
-# TODO test Pi Pico as Access Point
-TARGET_SSID = "Luxul_XWO-BAP1"
-TARGET_SSID = "PCInn_LX"
-# TARGET_SSID = "ABox-PDX"
-# TARGET_SSID = "shell-fi"
+TARGET_SSID = "ABox-PDX"
+# TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
+# TODO #2 Try shell-fi with static-IP for faster connection wifi_utils.py
+# TARGET_SSID = "shell-fi"  #
 TARGET_CHANNEL = 11  # Set to None, if not target channel
-TARGET_CHANNEL = 6
+
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = "/home/pi-admin/downloads"
 LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
@@ -131,14 +133,8 @@ try_download = False
 RSSI_CONNECT_THRESHOLD = -80  # Minimum signal to allow a hardware connection
 RSSI_DOWNLOAD_THRESHOLD = -75  # Minimum signal to execute data payload transfer
 
-# TODO for future implementation if needed for performance
-RADAR_LUT = []
-for angle in range(0, 360, 5):
-    rad = math.radians(90.0 - angle)  # Rotation is handled during render
-    RADAR_LUT.append((math.cos(rad), math.sin(rad)))
-
 OLED_TEXT_WIDTH = 96  # text on left 96px
-CIRCLE_AREA_START_X = OLED_TEXT_WIDTH  # Graphic starts at 96px
+OLED_CIRCLE_AREA_START_X = OLED_TEXT_WIDTH  # Graphic starts at 96px
 
 
 class DisplayContextOLED:
@@ -150,7 +146,7 @@ class DisplayContextOLED:
 
     def update_line3_oled(self, text):
         """Clear only the bottom line (20px to 30px) and write new text."""
-        # 96 is TEXT_WIDTH_LIMIT
+        # OLED_TEXT_WIDTH_LIMIT extends to 96px
         self.draw.rectangle((0, 20, OLED_TEXT_WIDTH - 1, OLED_HEIGHT - 1), fill=0)
         self.draw.text((0, 20), text, font=self.font, fill=1)
         self.oled.image(self.image)
@@ -250,8 +246,7 @@ def scan_i2c_bus(i2c_primary):
 
 
 def init_i2c():
-    # Magnetometer has 400K frequency limit, SSD1305 display has 1M, i2c1 is primary I2C on Pi Zero 2 W
-    # Can't set frequency in Python
+    # i2c1 is primary I2C on Pi Zero, Magnetometer has 400K frequency limit, SSD1305 display has 1M, can't set in python
     i2c1 = busio.I2C(board.SCL, board.SDA)
     oled_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{oled_detected=} + {lis_detected=}")
@@ -268,7 +263,7 @@ def change_connection(action: Literal["up", "down"]) -> bool:
             return False
 
         if action == "up":
-            # Call your robust sequential connection architecture directly
+            # Call connect directly
             return connect_ssid(TARGET_SSID)
 
     except subprocess.TimeoutExpired:
@@ -283,7 +278,7 @@ def change_connection(action: Literal["up", "down"]) -> bool:
     return connect_ssid(TARGET_SSID)
 
 
-def display_metrics_oled(draw, font, rssi, ssid: str, tx_rate, heading: float, download_count, connected: bool = True):
+def display_metrics_oled(draw, font, rssi, ssid: str, rx_rate, heading: float, download_count, connected: bool = True):
     left_indent = 0
     direction_str = get_compass_8pt_string(heading) if heading is not None else ""
     heading_str = f"{heading:>3.0f}°" if heading is not None else "???°"
@@ -299,7 +294,7 @@ def display_metrics_oled(draw, font, rssi, ssid: str, tx_rate, heading: float, d
         if connected:
             line1 = f"SSID = {ssid}"
             # If connected, show Mb/s, else print "linked"
-            rate_str = f"{tx_rate:.0f} mb/s" if tx_rate is not None else "linked"
+            rate_str = f"{rx_rate:.0f} mb/s" if rx_rate is not None else "linked"
             line2 = f"{rssi} dbm  {rate_str}"
 
             # Notify if download is possible based on -70 dBm rule
@@ -323,113 +318,56 @@ def display_metrics_oled(draw, font, rssi, ssid: str, tx_rate, heading: float, d
     draw.text((left_indent, 20), line3, font=font, fill=1)
 
 
-def display_radar_oled(draw, cadence_fill, heading: float, signal_history, connected):
-    """
-    Draw a white box with a black radar circle in it.
-    Add white directional orientation lines for North, East, South, and West.
-    Calculates a solid white polygon tracking signal strength vs compass directions.
-    """
-    center_x = 112
-    center_y = 15
-    max_radius = 16
+def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_connect):
+    """" Screen 0: Mode Status"""
+    if not try_connect and rssi is None and download_count == 0:
+        return
 
-    strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
-    weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
-
-    if heading is None:
-        heading = 0.0
-
-    # Radar graphics layout
-    draw.rectangle((96, 0, 127, 31), fill=1)
-    draw.ellipse((center_x - max_radius, center_y - max_radius + 1,
-                  center_x + max_radius - 1, center_y + max_radius),
-                 outline=0, fill=0)
-
-    # Cadence indicator block
-    x_box, y_box, dot_size = 90, 0, 3
-    draw.rectangle((x_box, y_box, x_box + dot_size + 1, y_box + dot_size + 1), fill=1 - int(cadence_fill))
-    draw.rectangle((x_box + 1, y_box + 1, x_box + dot_size, y_box + dot_size), fill=int(cadence_fill))
-
-    # Solid North Crosshair
-    north_rad = math.radians(heading - 0.0)
-    nx = int(center_x + max_radius * math.cos(north_rad))
-    ny = int(center_y - max_radius * math.sin(north_rad))
-    draw.line((center_x, center_y, nx, ny), fill=1)
-
-    # Dashed Crosshairs (South, West, East)
-    south_rad = math.radians(heading - 180.0)
-    west_rad = math.radians(heading - 270.0)
-    east_rad = math.radians(heading - 90.0)
-    for r in range(0, max_radius + 1, 4):
-        draw.point((int(center_x + r * math.cos(south_rad)), int(center_y - r * math.sin(south_rad))), fill=1)
-        draw.point((int(center_x + r * math.cos(west_rad)), int(center_y - r * math.sin(west_rad))), fill=1)
-        draw.point((int(center_x + r * math.cos(east_rad)), int(center_y - r * math.sin(east_rad))), fill=1)
-
-    # Antenna strength polygon vertices (72 vertices)
-    polygon_points = []
-    for angle in range(0, 360, 5):
-        window_values = []
-        for offset in range(-2, 3):
-            neighbor_index = (angle + offset) % 360
-            window_values.append(signal_history[neighbor_index])
-
-        saved_rssi = max(window_values)
-
-        if saved_rssi < weak_bound:
-            saved_rssi = weak_bound
-        elif saved_rssi > strong_bound:
-            saved_rssi = strong_bound
-
-        proportion = (saved_rssi - weak_bound) / (strong_bound - weak_bound)
-        line_length = (max_radius - 2) * proportion
-
-        angle_rad = math.radians(heading - angle)
-        target_x = int(center_x + line_length * math.cos(angle_rad))
-        target_y = int(center_y - line_length * math.sin(angle_rad))
-        polygon_points.append((target_x, target_y))
-
-    if len(polygon_points) >= 3:
-        draw.polygon(polygon_points, fill=1, outline=1)
-
-    # Center axis marker dots
-    draw.point((center_x - 1, center_y - 1), fill=0)
-    draw.point((center_x, center_y - 1), fill=0)
-    draw.point((center_x - 1, center_y), fill=0)
-    draw.point((center_x, center_y), fill=0)
-
-
-def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, compass_heading: float, peak_degree,
-                        download_count, connected: bool = True, try_connect: bool = False, try_download: bool = False):
-    # Screen 0: Connection & Downloads
     disp0_image = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-
     if try_connect:
-        lcd.print_270(text="Trying", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt,
-                      color="green")
-        lcd.print_270(text="to link", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt,
-                      color="green")
+        lcd.print_270(text="Trying", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
+        lcd.print_270(text="to link", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
+        lcd.print_270(text="Pause", pos=(108 - 26, 0), image=disp0_image, font=lcd.font0_24pt, color="green")
+
     elif not connected and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
         lcd.print_270(text="Con-", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
-        lcd.print_270(text="nect?", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt,
-                      color="green")
-    if try_download:
-        lcd.print_270(text="Trying", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
-        lcd.print_270(text="File dl", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt,
-                      color="blue")
+        lcd.print_270(text="nect?", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
+
     elif connected and rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
         lcd.print_270(text="down", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
         lcd.print_270(text="load?", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
+
     if download_count > 0:
-        lcd.print_270(text=f"#{download_count}", pos=(2, 4), image=disp0_image, font=lcd.font0_34pt,
-                      color="blue")
+        lcd.print_270(text=f"#{download_count}", pos=(2, 4), image=disp0_image, font=lcd.font0_34pt, color="blue")
     disp_0.ShowImage(disp0_image)
 
-    # Screen 1 Signal Metrics & Mode Status
+
+def display_0_trying_download_lcd(lcd, disp_0, download_count):
+    """ Display 'trying download' on lcd screen 0"""
+    disp0_image = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+    lcd.print_270(text="Trying", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
+    lcd.print_270(text="File dl", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
+    lcd.print_270(text="Pause", pos=(44 - 26, 0), image=disp0_image, font=lcd.font0_24pt, color="blue")
+    disp_0.ShowImage(disp0_image)
+
+
+def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, connected: bool):
+    """ Screen 1 Signal Metrics"""
     disp1_image = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     disp1_draw = ImageDraw.Draw(disp1_image)
-    lcd.print_270(text="RSSI:", pos=(132, 0), image=disp1_image, font=lcd.font0_34pt, color="yellow")
+
+    heading_text = "RSSI:"
+    metric_color = "yellow"
+    # show RSSI & heading with orange font if +/- 30°, label as "PEAK" within +/- 15 degrees and red font
+    if shortest_angle is not None and abs(shortest_angle) < 30:
+        metric_color = "orange"
+        if abs(shortest_angle) < 15:
+            heading_text = "PEAK"
+            metric_color = "red"
+
+    lcd.print_270(text=heading_text, pos=(132, 0), image=disp1_image, font=lcd.font0_34pt, color=metric_color)
     if rssi is not None:
-        lcd.print_270(text=f"{rssi}", pos=(84, 2), image=disp1_image, font=lcd.font0_50pt, color="yellow")
+        lcd.print_270(text=f"{rssi}", pos=(84, 2), image=disp1_image, font=lcd.font0_50pt, color=metric_color)
     else:
         lcd.print_270(text=f"no dBm", pos=(84, 2), image=disp1_image, font=lcd.font0_20pt, color="yellow")
 
@@ -437,38 +375,48 @@ def display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid: str, tx_rate, compass_h
         indent = 3 - (1 if compass_heading < 10 else (2 if compass_heading < 100 else 3))
         lcd.print_270(text=f"{compass_heading:.0f}°", pos=(49, 8 + (9 * indent)), image=disp1_image,
                       font=lcd.font0_34pt,
-                      color="yellow")
+                      color=metric_color)
 
-        # Arrows to indicate rotation direction between current heading the the peak rssi
-        arrow_annotation(disp1_draw, compass_heading, peak_degree, left_arrow_position=(41, 0),
+        # Arrows to indicate rotation direction to align with the peak rssi
+        arrow_annotation(disp1_draw, shortest_angle, left_arrow_position=(41, 0),
                          right_arrow_position=(41, 80 - 17))
     else:
         lcd.print_270(text=f"? °", pos=(48, 30), image=disp1_image, font=lcd.font0_34pt, color="yellow")
 
     if connected:
         lcd.print_270(text="Wi-Fi", pos=(11, 1), image=disp1_image, font=lcd.font0_33pt, color="green")
-        lcd.print_270(text="connected", pos=(0, 3), image=disp1_image, font=lcd.font0_13pt,
-                      color="green")
+        lcd.print_270(text="connected", pos=(0, 3), image=disp1_image, font=lcd.font0_13pt, color="green")
     else:
         lcd.print_270(text="Scan", pos=(5, 0), image=disp1_image, font=lcd.font0_33pt, color="yellow")
 
     disp_1.ShowImage(disp1_image)
 
 
+def annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, heading, shortest_angle):
+    """ """
+    disp2_draw.rectangle([212, 91, 240, 154], fill="black")
+    indent = 3 - (1 if heading < 10 else (2 if heading < 100 else 3))
+    lcd.print_270(text=f"{heading:.0f}°", pos=(214, 92 + (indent * 10)), image=disp2_image,
+                  font=lcd.font0_28pt, color="yellow")
+
+    # Arrows to indicate rotation direction between current heading the peak rssi
+    arrow_annotation(disp2_draw, shortest_angle, left_arrow_position=(224, 91 - 20 - 17),
+                     right_arrow_position=(224, 154 + 20))
+
+
 def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel, oled_context: DisplayContextOLED, lcd,
                      disp0, disp1):
-    """ Scan for rssi metric, connect if sufficient strength and button pressed."""
+    """ Scan for rssi metric, connect if sufficient strength and button pressed. """
     global button0_short_press, button1_pressed, button2_pressed
 
-    # Only short press (Button 0) or Button 2 can trigger a connection
+    # Only short press (Button 0) or Button 2 can trigger connection, reset buttons after status noted
     connect_triggered = button0_short_press or button2_pressed
-
-    # Flush all button inputs instantly to clear background states
     button0_short_press = False
     button2_pressed = False
 
     rssi = None
     scan_timeout = 3
+    is_connected = False
     try:
         with timeout(scan_timeout):
             rssi = scan_target_ssid(interface="wlan0", target_ssid=target_ssid, channel=target_channel)
@@ -483,42 +431,54 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
 
     if connect_triggered:
         if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-            print(f"\n* Connection Triggered ({rssi} dBm). Trying to connect...")
+            print(f"\n* Connection Triggered ({rssi} dBm). Trying to connect/link...")
             if oled_context:
                 oled_context.update_line3_oled("trying to connect...")
             if lcd and disp0 and disp1:
-                display_metrics_lcd(lcd, disp0, disp1, rssi, ssid, None, heading, None, download_count, connected=False,
-                                    try_connect=True, try_download=False)
+                display_0_metrics_lcd(lcd, disp0, rssi, download_count, connected=False, try_connect=True)
+
             if change_connection("up"):
-                time.sleep(1.5)
+                is_connected = True
+                time.sleep(0.25)
+                _, _, _, _, bssid, _ = query_wifi()
+
+                if bssid:
+                    print(f" SUCCESS: Connected to BSSID: {bssid} with SSID: {ssid}\n")
+                else:
+                    print(" SUCCESS: Connected to unknown BSSID? with SSID: {ssid}\n")
+
                 rssi_heading_history[:] = [-99.0] * 360
-                return True, rssi, ssid
+                return is_connected, rssi, ssid
         else:
             print(f"\n* Connection ignored: Signal ({rssi} dBm) below threshold.")
 
-    return False, rssi, ssid
+    return is_connected, rssi, ssid
 
 
-def handle_connected_mode(download_count, heading, target_ssid, url, destination_dir, oled_context: DisplayContextOLED,
+def handle_connected_mode(download_count, heading, target_ssid, url, destination_dir, oled_context,
                           lcd, disp0, disp1):
     """Get signal metrics, download file if sufficient strength and button pressed."""
     global button0_short_press, button1_pressed, button2_pressed
 
-    # Only short press (Button 0) or Button 1 can trigger a download
-    download_triggered = button0_short_press or button1_pressed
+    is_connected = True
 
-    # Flush all button inputs instantly for the next async frame pass1_
+    # Only short press (Button 0) or Button 1 can trigger a download, reset buttons after status noted
+    download_triggered = button0_short_press or button1_pressed
     button0_short_press = False
     button1_pressed = False
 
-    rssi, quality, tx_rate = query_wifi()
+    rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi = query_wifi()
     if rssi is None:
+        # if no rssi check if connection dropped
         current_ssid = get_ssid()
-        # Allow "wlan0 essid unknown" to pass through without dropping to prevent post-connect drops
+        # Call connection dropped when HW switched networks or if middle of switching connections
         if current_ssid != target_ssid and current_ssid != "wlan0 essid unknown":
-            return False, None, None, None, None, download_count
+            is_connected = False
+            return is_connected, None, None, None, None, download_count, None, False
+        # allow temporary drop, check next scan
         current_ssid = target_ssid
     else:
+        # confirm that RSSI seen and current ssid is the target ssid
         current_ssid = target_ssid
 
     if download_triggered:
@@ -527,38 +487,36 @@ def handle_connected_mode(download_count, heading, target_ssid, url, destination
             if oled_context:
                 oled_context.update_line3_oled("trying download...")
             if lcd and disp0 and disp1:
-                display_metrics_lcd(lcd, disp0, disp1, rssi, target_ssid, None, heading, None, download_count,
-                                    connected=True, try_connect=False, try_download=True)
-            success, filename = download_file(url, destination_directory=destination_dir)
+                display_0_trying_download_lcd(lcd, disp0, download_count)
+
+            success, filename = download_file(url, destination_dir)
             if success:
                 download_count += 1
                 print(f" -> successfully downloaded {destination_dir}/{filename}")
         else:
             print(f"\n* Download aborted: Signal ({rssi} dBm) below threshold.")
 
-    return True, rssi, current_ssid, quality, tx_rate, download_count
+    return is_connected, rssi, current_ssid, quality, rx_rate, download_count, bssid, is_new_rssi
 
 
-def print_metrics(connected, ssid, rssi, quality, tx_rate, heading, download_count):
-    """
-    Console print metrics
-    """
+def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_count):
+    """Print metrics to Console"""
     if connected:
         print(
             f"** Connected {TARGET_SSID} (channel = {TARGET_CHANNEL}) RSSI: {f'{rssi} dBm' if rssi is not None else 'None'}")
         if rssi is not None:
             quality_string = quality_to_string(quality)
-            print(f"Bars:      {rssi_to_string(rssi)}")
-            print(f"Link Qual: {f'{quality:>2}/70' if quality is not None else 'n/a'}    {quality_string}")
-            print(f"Tx Rate:   {f'{tx_rate:.1f} Mb/s' if tx_rate is not None else 'n/a'}")
+            print(f"Bars:    {rssi_to_string(rssi)}")
+            print(f"Quality: {f'{quality:>3}%' if quality is not None else 'n/a'}  {quality_string}")
+            print(f"RX Rate: {f'{rx_rate:.1f} Mb/s' if rx_rate is not None else 'n/a'}")
 
             if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                print("-> download possible, use button?")
+                print("-> download possible, trigger with button1")
             else:
                 print("-> connected, weak signal")
         else:
-            print("Link Qual: n/a")
-            print("Tx Rate:   n/a")
+            print("Quality: n/a")
+            print("RX Rate: n/a")
             print("-> connected, but signal is lost")
 
     else:
@@ -613,8 +571,6 @@ def main():
     if lcd_detected:
         disp_0, disp_1, disp_2 = create_lcd_display_canvases(splash_file_name="radiant-ether-098.jpg")
 
-    LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
-
     print(f"\nScanning SSID = {TARGET_SSID}, channel = {TARGET_CHANNEL}")
     print(f"Fetch from: {URL_STRING} and then saved to: {DESTINATION_STRING}")
     print(f"Plots on Pi Zero are logged to: {LOG_DIRECTORY}\n")
@@ -624,13 +580,13 @@ def main():
     print(f"{oled_detected=}")
 
     scan_mode = True
-    connected_mode = False
+    is_connected = False
     load_dotenv()
 
     # clear signal history on all 360 discrete degree headings
     rssi_heading_history = [-99.0] * 360
 
-    ssid, rssi, quality, tx_rate = None, None, None, None
+    ssid, rssi, quality, rx_rate = None, None, None, None
 
     try:
         duration = 0.0
@@ -641,6 +597,9 @@ def main():
         pi_celsius = pico_temperature() or 0.0
         heading = get_compass_heading(lis3mdl)
 
+        # todo remove fake sweep initialization
+        sweep_degree = 270
+
         loop_counter = 0
         while True:
             loop_counter += 1
@@ -648,9 +607,10 @@ def main():
             start_loop = time.time()
 
             # write CSV of heading, rssi strength for entire 360 degrees, every 61 seconds
-            if start_loop - last_csv_write > 61:
-                write_history_to_csv(rssi_heading_history)
-                last_csv_write = time.time()
+            # TODO ADD BACK LOGGING CSV TO FLASH -  **************** LOGGING DISABLED *****************
+            # if start_loop - last_csv_write > 61:
+            #     write_history_to_csv(rssi_heading_history)
+            #     last_csv_write = time.time()
 
             temp_duration += duration
             if temp_duration > 60.0:
@@ -662,97 +622,78 @@ def main():
 
             # On long press, disconnect and revert to scanning, reset radar history
             if button0_long_press:
-                if connected_mode:
+                button0_long_press = False
+                if is_connected:
                     change_connection("down")
                     rssi_heading_history = [-99.0] * 360
-                connected_mode = False
-                button0_long_press = False
+                is_connected = False
 
-            # Logic for connected or scanning
-            if connected_mode:
-                connected_mode, rssi, ssid, quality, tx_rate, download_count = handle_connected_mode(
+            if is_connected:
+                # Connected mode - Update metrics
+                is_connected, rssi, ssid, quality, rx_rate, download_count, bssid, is_new_rssi = handle_connected_mode(
                     download_count, heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
                     lcd, disp_0,
                     disp_1)
-            else:
-                quality, tx_rate = None, None
-                connected_mode, rssi, ssid = handle_scan_mode(rssi_heading_history, heading, TARGET_SSID,
-                                                              TARGET_CHANNEL, oled_context,
-                                                              lcd, disp_0, disp_1)
 
-            # Record RSSI at integer heading angles
+            else:
+                # Scan mode - Update metrics
+                quality, rx_rate = None, None
+                is_new_rssi = True
+                is_connected, rssi, ssid = handle_scan_mode(rssi_heading_history, heading, TARGET_SSID,
+                                                            TARGET_CHANNEL, oled_context,
+                                                            lcd, disp_0, disp_1)
+
+            # Get current heading
             heading = get_compass_heading(lis3mdl)
 
-            if rssi:
-                if heading:
-                    clean_heading = int(heading) % 360
-                    rssi_heading_history[clean_heading] = rssi
-                # # show circular rssi if no heading known
+            # Store RSSI strength at current heading in rssi_heading_history
+            if is_new_rssi:
+                if heading is not None:
+                    rssi_heading_history[int(heading) % 360] = rssi
+                # # show circular rssi if no known heading
                 # else:
                 #     rssi_heading_history[:] = [rssi] * 360
                 else:
                     # TODO REMOVE this testing-only ELSE CLAUSE: which make Random index if no magnetometer
-                    random_degree = random.randint(0, 359)
-                    fake_rssi = rssi
-                    # signals out of 20° (10-30°), reduce signal by -15 dBm
-                    if not (random_degree > 19 and random_degree < 45):
-                        fake_rssi -= 20
-                        if fake_rssi < -99:
-                            fake_rssi = -99
-                    if (random_degree < 300 and random_degree > 100):
-                        fake_rssi -= 15
-                        if fake_rssi < -99:
-                            fake_rssi = -99
-                    if (random_degree > 175 and random_degree < 225):
-                        fake_rssi = -99
+                    if rssi is not None:
+                        rssi_heading_history = fake_rssi_history_fill(rssi, rssi_heading_history)
 
-                    rssi_heading_history[random_degree] = fake_rssi
-                    heading = random_degree
-                    #heading = 0
+            # todo remove fake sweeping
+            if heading is None:
+                heading, sweep_degree = fake_heading_sweep(sweep_degree)
 
-            # Print and display metrics
-            print_metrics(connected_mode, ssid, rssi, quality, tx_rate, heading, download_count)
+            # Print metrics to Console
+            print_metrics(is_connected, ssid, rssi, quality, rx_rate, heading, download_count)
 
-            # Display output
+            # Display metrics on OLED Screen
             if oled_detected:
                 clear_display_oled(oled_display, draw, image)
-                display_metrics_oled(draw, font, rssi, ssid, tx_rate, heading, download_count, connected_mode)
-                display_radar_oled(draw, cadence_fill, heading or 0.0, rssi_heading_history, connected_mode)
+                display_metrics_oled(draw, font, rssi, ssid, rx_rate, heading, download_count, is_connected)
+                display_radar_oled(draw, cadence_fill, heading or 0.0, rssi_heading_history, is_connected)
                 oled_display.image(image)
                 oled_display.show()
 
+            # Display metrics on LCD Screens
             if lcd_detected:
                 peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(rssi_heading_history)
-                display_metrics_lcd(lcd, disp_0, disp_1, rssi, ssid, tx_rate, heading, peak_degree, download_count,
-                                    connected_mode)
+                shortest_angle = rotation_to_peak(heading, peak_degree)
+
+                display_0_metrics_lcd(lcd, disp_0, rssi, download_count, is_connected, try_connect=False)
+                display_1_metrics_lcd(lcd, disp_1, rssi, heading, shortest_angle, is_connected)
+
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
 
                 display_radar_lcd(
-                    disp2_draw,
-                    cadence_fill=cadence_fill,
-                    heading=heading,
-                    signal_history=rssi_heading_history,
-                    connected=connected_mode,
-                    peak_degree=peak_degree,
-                    peak_rssi=peak_rssi,
-                    peak_cluster=peak_cluster
+                    disp2_draw, cadence_fill, heading, rssi_heading_history, is_connected, peak_degree, peak_rssi,
+                    peak_cluster
                 )
-                if heading is None:
-                    heading = 0
-                # annotate radar with actual compass heading
-                disp2_draw.rectangle([212, 91, 240, 154], fill="black")
-                indent = 3 - (1 if heading < 10 else (2 if heading < 100 else 3))
-                lcd.print_270(text=f"{heading:.0f}°", pos=(214, 92 + (indent * 10)), image=disp2_image,
-                              font=lcd.font0_28pt, color="yellow")
 
-                # Arrows to indicate rotation direction between current heading the the peak rssi
-                arrow_annotation(disp2_draw, heading, peak_degree, left_arrow_position=(224, 91 - 20 - 17),
-                                 right_arrow_position=(224, 154 + 20))
-
+                # Annotate radar with compass heading, seems enough visual cues with radar peak indicators
+                # annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, heading, shortest_angle)
                 disp_2.ShowImage(disp2_image)
 
-            # Print update frequency and period
+            # Print update frequency and period to console
             finish_time = time.time()
             duration = finish_time - start_time
             start_time = finish_time
@@ -764,7 +705,7 @@ def main():
         print("\nEnded Tracking (^c).")
 
     finally:
-        # remove shell-fi on normal exit, crashes, or KeyboardInterrupt
+        # remove shell-fi on exit
         if TARGET_SSID == "shell-fi":
             remove_ssid(TARGET_SSID)
 
@@ -773,7 +714,7 @@ def main():
             disp_0.ShowImage(black_0)
             black_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
             disp_1.ShowImage(black_1)
-            display_radar_splash_lcd(disp_2, splash_image_file="radiant-ether-098.jpg")
+            display_2_splash_lcd(disp_2, splash_image_file="radiant-ether-098.jpg")
             disp_0.module_exit()
             disp_1.module_exit()
             disp_2.module_exit()
