@@ -19,8 +19,8 @@ Features
     * Displays channel used by each
     *
 
-Unfortunately, No Quality nor Tx bitrates on unconnected networks.
-For connected network use: pi_wifi_rssi_quality_txrate.py
+Unfortunately, No Quality nor RX bitrates on unconnected networks.
+For connected network use: pi_wifi_rssi_quality_rxrate.py
 
 NOTES:
   1) Python MUST be enabled in System Settings > Privacy & Security> Location Services.
@@ -48,12 +48,12 @@ from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
 from lib.e_ink_utils import init_e_ink_display, refresh_e_ink_display, blank_canvas_e_ink
-from lib.lcd_rssi_polar_utils import display_radar_lcd, extract_radar_metrics
+from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
 from lib.pi_zero_utils import pico_temperature, timeout
-from lib.matplot_rssi_polar_utils import plot_rssi_polar
+from lib.matplot_rssi_radar_utils import plot_rssi_polar
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
     channel_to_frequency, trigger_background_scan
 
@@ -96,7 +96,7 @@ def init_i2c() -> tuple[bool, I2C, bool]:
 def update_bssid_map(data, heading, bssid_map):
     """
     Updates the persistent bssid_map with current rssi data. If ssid is unknown it will updated in later
-    scans if an ssid is found.
+    scans if a ssid is found.
     """
     heading = int(heading % 360) if heading is not None else None
 
