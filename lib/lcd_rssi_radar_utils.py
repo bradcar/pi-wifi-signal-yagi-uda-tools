@@ -63,9 +63,7 @@ def draw_rssi_polygon(draw, signal_history, heading: float, center_x: int, cente
 
 def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius: int,
                   strong_bound: int, weak_bound: int, peak_degree: float, peak_rssi: float, peak_cluster):
-    """
-    Draws a heavy red vector pointer and an encompassing signal arc across matching peak boundaries.
-    """
+    """ Draws a heavy red vector pointer and an arc across matching peaks."""
     if peak_rssi <= -99:
         return
     max_signal_radius = max_radius - 10
@@ -90,7 +88,7 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     x_halfway = int(center_x + halfway_radius * math.cos(peak_angle_rad))
     y_halfway = int(center_y - halfway_radius * math.sin(peak_angle_rad))
 
-    # draw thin line from peak point to halfway to circle, Thick line from halfway to 10px past outer edge
+    # Draw thin line from peak point to halfway to circle, Thick line from halfway to 10px past outer edge
     draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="orange", width=3)
     draw.line([(center_x, center_y), (x_peak, y_peak)], fill="red", width=5)  #
     draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=9)
@@ -123,7 +121,7 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
 
 
 def draw_indicator(draw, cadence_fill, x_box: int, y_box: int, dot_size: int):
-    """ show indicator, then toggle to next state """
+    """ Show indicator, then toggle to next state """
     if cadence_fill is not None:
         outer_color = "white" if int(cadence_fill) == 1 else "black"
         inner_color = "black" if int(cadence_fill) == 1 else "white"

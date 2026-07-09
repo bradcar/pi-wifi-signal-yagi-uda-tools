@@ -589,16 +589,17 @@ def main():
     ssid, rssi, quality, rx_rate = None, None, None, None
 
     try:
-        duration = 0.0
-        temp_duration = 0.0
+
         cadence_fill = False
         start_time = time.time()
         last_csv_write = time.time()
         pi_celsius = pico_temperature() or 0.0
+        duration = 0.0
+        temp_duration = 0.0
         heading = get_compass_heading(lis3mdl)
 
         # todo remove fake sweep initialization
-        sweep_degree = 270
+        sweep_degree = 290
 
         loop_counter = 0
         while True:
@@ -629,24 +630,22 @@ def main():
                 is_connected = False
 
             if is_connected:
-                # Connected mode - Update metrics
+                # Connected mode - Update full metrics, depends on iw or /net/proc/wireless probing
                 is_connected, rssi, ssid, quality, rx_rate, download_count, bssid, is_new_rssi = handle_connected_mode(
                     download_count, heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
                     lcd, disp_0,
                     disp_1)
 
             else:
-                # Scan mode - Update metrics
+                # Scan mode - Update RSSI metric
                 quality, rx_rate = None, None
                 is_new_rssi = True
                 is_connected, rssi, ssid = handle_scan_mode(rssi_heading_history, heading, TARGET_SSID,
                                                             TARGET_CHANNEL, oled_context,
                                                             lcd, disp_0, disp_1)
 
-            # Get current heading
+            # Get current heading, then update RSSI strength at that heading in rssi_heading_history
             heading = get_compass_heading(lis3mdl)
-
-            # Store RSSI strength at current heading in rssi_heading_history
             if is_new_rssi:
                 if heading is not None:
                     rssi_heading_history[int(heading) % 360] = rssi
@@ -662,10 +661,10 @@ def main():
             if heading is None:
                 heading, sweep_degree = fake_heading_sweep(sweep_degree)
 
-            # Print metrics to Console
+            # Print metrics to console
             print_metrics(is_connected, ssid, rssi, quality, rx_rate, heading, download_count)
 
-            # Display metrics on OLED Screen
+            # Display metrics on OLED screen
             if oled_detected:
                 clear_display_oled(oled_display, draw, image)
                 display_metrics_oled(draw, font, rssi, ssid, rx_rate, heading, download_count, is_connected)
@@ -673,7 +672,7 @@ def main():
                 oled_display.image(image)
                 oled_display.show()
 
-            # Display metrics on LCD Screens
+            # Display metrics on LCD screens
             if lcd_detected:
                 peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(rssi_heading_history)
                 shortest_angle = rotation_to_peak(heading, peak_degree)
@@ -689,7 +688,7 @@ def main():
                     peak_cluster
                 )
 
-                # Annotate radar with compass heading, seems enough visual cues with radar peak indicators
+                # Annotate radar with heading & peak arrows, seems unneeded enough visual cues with peak indicators
                 # annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, heading, shortest_angle)
                 disp_2.ShowImage(disp2_image)
 
