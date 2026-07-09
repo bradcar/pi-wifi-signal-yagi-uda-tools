@@ -247,7 +247,7 @@ button0.when_released = on_button0_released
 print("Button0 Listeners Active (GPIO 26) for Press and Release Edges.")
 button1.when_pressed = button1_callback
 button2.when_pressed = button2_callback
-print("Button1 & 2  Listeners Active (GPIO 25 26) for Press and Release Edges.")
+print("Button1 & Button2  Listeners Active (GPIO 25 & GPIO 26) for Presses.")
 
 
 def scan_i2c_bus(i2c_primary):
@@ -548,13 +548,13 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
             time.sleep(0.01)  # 10 ms Throttle down resource usage when scanning
             continue
 
-        # Execute long network calls completely outside the critical lock section
+        # Get network results outside the critical lock section
         is_connected, rssi, ssid, quality, rx_rate, dowload_count, bssid, is_new_rssi = handle_connected_mode(
             download_count, current_heading, TARGET_SSID, URL_STRING, DESTINATION_STRING,
             oled_context, lcd, disp_0, disp_1
         )
 
-        # Safely dump metrics back into the shared namespace container
+        # Safely write metrics into the shared namespace
         with metrics_lock:
             download_count = dowload_count
             metrics.is_connected = is_connected
@@ -564,11 +564,25 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
             metrics.rx_rate = rx_rate
             metrics.bssid = bssid
             metrics.is_new_rssi = is_new_rssi
+            update_rssi_heading_history(metrics)
 
             if not metrics.is_connected:
                 print("[Thread] Connection dropped. Background loop backgrounding.")
 
         time.sleep(0.01)
+
+
+def update_rssi_heading_history(metrics):
+    if metrics.heading is not None:
+        metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
+    # # show circular rssi if no known heading
+    # else:
+    #     metrics.rssi_heading_history[:] = [rssi] * 360
+    else:
+        # TODO REMOVE this testing-only ELSE CLAUSE: which make Random index if no magnetometer
+        if metrics.rssi is not None:
+            metrics.rssi_heading_history = fake_rssi_history_fill(metrics.rssi,
+                                                                  metrics.rssi_heading_history)
 
 
 def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_count):
@@ -732,16 +746,7 @@ def main():
             # Get current heading, then update RSSI strength at that heading in rssi_heading_history
             metrics.heading = get_compass_heading(lis3mdl)
             if is_new_rssi:
-                if metrics.heading is not None:
-                    metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
-                # # show circular rssi if no known heading
-                # else:
-                #     metrics.rssi_heading_history[:] = [rssi] * 360
-                else:
-                    # TODO REMOVE this testing-only ELSE CLAUSE: which make Random index if no magnetometer
-                    if metrics.rssi is not None:
-                        metrics.rssi_heading_history = fake_rssi_history_fill(metrics.rssi,
-                                                                              metrics.rssi_heading_history)
+                update_rssi_heading_history(metrics)
 
             # todo remove fake sweeping
             if metrics.heading is None:
