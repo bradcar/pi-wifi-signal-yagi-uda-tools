@@ -74,6 +74,35 @@ Updates: 546.5 msec, 2 Hz - Out of Range
     - 72 vertices every 5 degrees (360/5) -- likely best for clean signals
     - 40 vertices every 9 degrees (360/9)
 
+Metrics Data Structure:
+    The state is maintained via `metrics = types.SimpleNamespace(...)` containing:
+        - is_connected (bool): Active hardware link status to TARGET_SSID.
+        - rssi (int/None): RSSI in dBm.
+        - quality (int/None): Link quality percentage (0-100%).
+        - rx_rate (float/None): Receiver bit rate in Mbps.
+        - tx_rate (float/None): Transmitter bit rate in Mbps.
+        - bssid (str/None): BSSID (MAC) address of the connected Access Point.
+        - heading (float): Current magnetometer compass direction (0.0 - 359.9°).
+        - is_new_rssi (bool): Event flag indicating an unconsumed RSSI update.
+        - rssi_heading_history (list): 360-element array mapping degrees to last known RSSI value.
+        - update_period (float/None): Async duration in seconds of metrics update_period
+
+    Data Structure Rules:
+        1. ALL reads and writes to metrics when USE_ASYNCH_METRICS must be protected with metrics_lock.
+        2. Connected Mode Lifecycle (is_connected == True):
+            - BACKGROUND THREAD: Owns exclusive mutation rights for metrics
+              (rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi). It polls the hardware interface
+              via `handle_connected_mode()` and flushes state safely down to the metrics namespace.
+            - MAIN THREAD: operates strictly in READ-ONLY pass-through mode for network metrics.
+              It handles button modes and display.
+            - EXCEPTION: If a hardware interrupt occurs (or Button0 long_press), the Main Thread
+              can clear `is_connected` and clean up tracking histories.
+        3. Scan Mode (is_connected == False):
+            - BACKGROUND THREAD: Becomes idle/throttled. It safely halts writing to metrics SimpleNamespace.
+            - MAIN THREAD: Regains READ/WRITE ownership. It directly invokes handle_scan_mode()
+              to update metrics, hand buttons, and display results.
+
+
 Requirements (beyond normal i2c):
     update: lis3mdl_calibraton_parameters.py from output of hard_only_calibrate_lis3mdl_test.py
 
@@ -88,10 +117,10 @@ TODO uncomment logging code to Pi Zero flash
 TODO uncomment saving Actual RSSI to heading, instead of fake testing code
 
 """
-import math
 import os
 import subprocess
 import time
+import threading
 import types
 from datetime import datetime
 from typing import Literal
@@ -116,6 +145,8 @@ from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_strin
 
 DEBUG = False
 USE_MONO_TYPE = False
+USE_ASYNC_METRICS = False
+metrics_lock = threading.Lock() # Protects SimpleNamespace data transitions
 
 TARGET_SSID = "ABox-PDX"
 # TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
@@ -480,7 +511,7 @@ def handle_connected_mode(download_count, heading, target_ssid, url, destination
             return is_connected, None, None, None, None, download_count, None, False
         # allow temporary drop, check next scan
         current_ssid = target_ssid
-        
+
     else:
         # confirm that RSSI seen and current ssid is the target ssid
         current_ssid = target_ssid
@@ -501,6 +532,43 @@ def handle_connected_mode(download_count, heading, target_ssid, url, destination
             print(f"\n* Download aborted: Signal ({rssi} dBm) below threshold.")
 
     return is_connected, rssi, current_ssid, quality, rx_rate, download_count, bssid, is_new_rssi
+
+
+def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, disp_1):
+    """Background worker thread that runs exclusively when connected."""
+    global download_count
+    print("[Thread] Background connected worker loop started.")
+
+    while USE_ASYNC_METRICS:
+        current_heading = get_compass_heading(lis3mdl)
+        with metrics_lock:
+            active = metrics.is_connected
+
+        if not active:
+            time.sleep(0.01)  # 10 ms Throttle down resource usage when scanning
+            continue
+
+        # Execute long network calls completely outside the critical lock section
+        is_connected, rssi, ssid, quality, rx_rate, dowload_count, bssid, is_new_rssi = handle_connected_mode(
+            download_count, current_heading, TARGET_SSID, URL_STRING, DESTINATION_STRING,
+            oled_context, lcd, disp_0, disp_1
+        )
+
+        # Safely dump metrics back into the shared namespace container
+        with metrics_lock:
+            download_count = dowload_count
+            metrics.is_connected = is_connected
+            metrics.heading = current_heading
+            metrics.rssi = rssi
+            metrics.quality = quality
+            metrics.rx_rate = rx_rate
+            metrics.bssid = bssid
+            metrics.is_new_rssi = is_new_rssi
+
+            if not metrics.is_connected:
+                print("[Thread] Connection dropped. Background loop backgrounding.")
+
+        time.sleep(0.01)
 
 
 def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_count):
@@ -594,7 +662,8 @@ def main():
         tx_rate=None,
         bssid=None,
         heading=0.0,
-        rssi_heading_history=[-99.0] * 360
+        rssi_heading_history=[-99.0] * 360,
+        update_period=None
     )
 
     # Local variables
@@ -640,14 +709,7 @@ def main():
                     metrics.rssi_heading_history = [-99.0] * 360
                 metrics.is_connected = False
 
-            if metrics.is_connected:
-                # Connected mode - Update full metrics, depends on iw or /net/proc/wireless probing
-                metrics.is_connected, metrics.rssi, ssid, metrics.quality, metrics.rx_rate, download_count, metrics.bssid, is_new_rssi = handle_connected_mode(
-                    download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
-                    lcd, disp_0,
-                    disp_1)
-
-            else:
+            if not metrics.is_connected:
                 # Scan mode - Update RSSI metric
                 metrics.quality, metrics.rx_rate = None, None
                 is_new_rssi = True
@@ -655,6 +717,17 @@ def main():
                                                                             metrics.heading, TARGET_SSID,
                                                                             TARGET_CHANNEL, oled_context,
                                                                             lcd, disp_0, disp_1)
+            else:
+                # CONNECTED MODES - Synchronous & Asynchronous
+                if not USE_ASYNC_METRICS:
+                    # Synchronous Connected mode - Update full metrics, depends on iw or /net/proc/wireless probing
+                    metrics.is_connected, metrics.rssi, ssid, metrics.quality, metrics.rx_rate, download_count, metrics.bssid, is_new_rssi = handle_connected_mode(
+                        download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
+                        lcd, disp_0,
+                        disp_1)
+                else:
+                    print("USE ASYNC_METRICS - ******* unimplemented CODE !!!!!!!!!!!!!")
+                    break
 
             # Get current heading, then update RSSI strength at that heading in rssi_heading_history
             metrics.heading = get_compass_heading(lis3mdl)
@@ -716,7 +789,10 @@ def main():
             duration = finish_time - start_time
             start_time = finish_time
             print(f"Pi Zero 2W temp: {pi_celsius:.1f}°C")
-            print(f"Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
+            print(f"Display Updates: {duration * 1000:>7.1f} msec, {1.0 / duration:.0f} Hz")
+            if not metrics.is_connected or not USE_ASYNC_METRICS:
+                metrics.update_period = duration
+            print(f"Radar Updates:   {metrics.update_period * 1000:>7.1f} msec, {1.0 / metrics.update_period:.0f} Hz")
             print(f"Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     except KeyboardInterrupt:
