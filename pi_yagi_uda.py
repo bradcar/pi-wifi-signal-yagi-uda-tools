@@ -92,6 +92,7 @@ import math
 import os
 import subprocess
 import time
+import types
 from datetime import datetime
 from typing import Literal
 
@@ -447,6 +448,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
                 else:
                     print(" SUCCESS: Connected to unknown BSSID? with SSID: {ssid}\n")
 
+                # lists are mutatable
                 rssi_heading_history[:] = [-99.0] * 360
                 return is_connected, rssi, ssid
         else:
@@ -471,12 +473,14 @@ def handle_connected_mode(download_count, heading, target_ssid, url, destination
     if rssi is None:
         # if no rssi check if connection dropped
         current_ssid = get_ssid()
+
         # Call connection dropped when HW switched networks or if middle of switching connections
-        if current_ssid != target_ssid and current_ssid != "wlan0 essid unknown":
+        if current_ssid != target_ssid and current_ssid not in [None, "", "wlan0 essid unknown"]:
             is_connected = False
             return is_connected, None, None, None, None, download_count, None, False
         # allow temporary drop, check next scan
         current_ssid = target_ssid
+        
     else:
         # confirm that RSSI seen and current ssid is the target ssid
         current_ssid = target_ssid
@@ -580,23 +584,30 @@ def main():
     print(f"{oled_detected=}")
 
     scan_mode = True
-    is_connected = False
     load_dotenv()
 
-    # clear signal history on all 360 discrete degree headings
-    rssi_heading_history = [-99.0] * 360
+    metrics = types.SimpleNamespace(
+        is_connected=False,
+        rssi=None,
+        quality=None,
+        rx_rate=None,
+        tx_rate=None,
+        bssid=None,
+        heading=0.0,
+        rssi_heading_history=[-99.0] * 360
+    )
 
-    ssid, rssi, quality, rx_rate = None, None, None, None
+    # Local variables
+    ssid = None
 
     try:
-
         cadence_fill = False
         start_time = time.time()
         last_csv_write = time.time()
         pi_celsius = pico_temperature() or 0.0
         duration = 0.0
         temp_duration = 0.0
-        heading = get_compass_heading(lis3mdl)
+        metrics.heading = get_compass_heading(lis3mdl)
 
         # todo remove fake sweep initialization
         sweep_degree = 290
@@ -624,72 +635,80 @@ def main():
             # On long press, disconnect and revert to scanning, reset radar history
             if button0_long_press:
                 button0_long_press = False
-                if is_connected:
+                if metrics.is_connected:
                     change_connection("down")
-                    rssi_heading_history = [-99.0] * 360
-                is_connected = False
+                    metrics.rssi_heading_history = [-99.0] * 360
+                metrics.is_connected = False
 
-            if is_connected:
+            if metrics.is_connected:
                 # Connected mode - Update full metrics, depends on iw or /net/proc/wireless probing
-                is_connected, rssi, ssid, quality, rx_rate, download_count, bssid, is_new_rssi = handle_connected_mode(
-                    download_count, heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
+                metrics.is_connected, metrics.rssi, ssid, metrics.quality, metrics.rx_rate, download_count, metrics.bssid, is_new_rssi = handle_connected_mode(
+                    download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
                     lcd, disp_0,
                     disp_1)
 
             else:
                 # Scan mode - Update RSSI metric
-                quality, rx_rate = None, None
+                metrics.quality, metrics.rx_rate = None, None
                 is_new_rssi = True
-                is_connected, rssi, ssid = handle_scan_mode(rssi_heading_history, heading, TARGET_SSID,
-                                                            TARGET_CHANNEL, oled_context,
-                                                            lcd, disp_0, disp_1)
+                metrics.is_connected, metrics.rssi, ssid = handle_scan_mode(metrics.rssi_heading_history,
+                                                                            metrics.heading, TARGET_SSID,
+                                                                            TARGET_CHANNEL, oled_context,
+                                                                            lcd, disp_0, disp_1)
 
             # Get current heading, then update RSSI strength at that heading in rssi_heading_history
-            heading = get_compass_heading(lis3mdl)
+            metrics.heading = get_compass_heading(lis3mdl)
             if is_new_rssi:
-                if heading is not None:
-                    rssi_heading_history[int(heading) % 360] = rssi
+                if metrics.heading is not None:
+                    metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
                 # # show circular rssi if no known heading
                 # else:
-                #     rssi_heading_history[:] = [rssi] * 360
+                #     metrics.rssi_heading_history[:] = [rssi] * 360
                 else:
                     # TODO REMOVE this testing-only ELSE CLAUSE: which make Random index if no magnetometer
-                    if rssi is not None:
-                        rssi_heading_history = fake_rssi_history_fill(rssi, rssi_heading_history)
+                    if metrics.rssi is not None:
+                        metrics.rssi_heading_history = fake_rssi_history_fill(metrics.rssi,
+                                                                              metrics.rssi_heading_history)
 
             # todo remove fake sweeping
-            if heading is None:
-                heading, sweep_degree = fake_heading_sweep(sweep_degree)
+            if metrics.heading is None:
+                metrics.heading, sweep_degree = fake_heading_sweep(sweep_degree)
 
             # Print metrics to console
-            print_metrics(is_connected, ssid, rssi, quality, rx_rate, heading, download_count)
+            print_metrics(metrics.is_connected, ssid, metrics.rssi, metrics.quality, metrics.rx_rate, metrics.heading,
+                          download_count)
 
             # Display metrics on OLED screen
             if oled_detected:
                 clear_display_oled(oled_display, draw, image)
-                display_metrics_oled(draw, font, rssi, ssid, rx_rate, heading, download_count, is_connected)
-                display_radar_oled(draw, cadence_fill, heading or 0.0, rssi_heading_history, is_connected)
+                display_metrics_oled(draw, font, metrics.rssi, ssid, metrics.rx_rate, metrics.heading, download_count,
+                                     metrics.is_connected)
+                display_radar_oled(draw, cadence_fill, metrics.heading or 0.0, metrics.rssi_heading_history,
+                                   metrics.is_connected)
                 oled_display.image(image)
                 oled_display.show()
 
             # Display metrics on LCD screens
             if lcd_detected:
-                peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(rssi_heading_history)
-                shortest_angle = rotation_to_peak(heading, peak_degree)
+                peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(
+                    metrics.rssi_heading_history)
+                shortest_angle = rotation_to_peak(metrics.heading, peak_degree)
 
-                display_0_metrics_lcd(lcd, disp_0, rssi, download_count, is_connected, try_connect=False)
-                display_1_metrics_lcd(lcd, disp_1, rssi, heading, shortest_angle, is_connected)
+                display_0_metrics_lcd(lcd, disp_0, metrics.rssi, download_count, metrics.is_connected,
+                                      try_connect=False)
+                display_1_metrics_lcd(lcd, disp_1, metrics.rssi, metrics.heading, shortest_angle, metrics.is_connected)
 
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
 
                 display_radar_lcd(
-                    disp2_draw, cadence_fill, heading, rssi_heading_history, is_connected, peak_degree, peak_rssi,
+                    disp2_draw, cadence_fill, metrics.heading, metrics.rssi_heading_history, metrics.is_connected,
+                    peak_degree, peak_rssi,
                     peak_cluster
                 )
 
                 # Annotate radar with heading & peak arrows, seems unneeded enough visual cues with peak indicators
-                # annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, heading, shortest_angle)
+                # annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, metrics.heading, shortest_angle)
                 disp_2.ShowImage(disp2_image)
 
             # Print update frequency and period to console
