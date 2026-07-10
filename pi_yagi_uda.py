@@ -123,11 +123,11 @@ LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
 try_connect = False
 try_download = False
 
-# Network Signal Lock Thresholds
+# Network Signal Thresholds
 RSSI_CONNECT_THRESHOLD = -80  # Minimum signal to allow a hardware connection
 RSSI_DOWNLOAD_THRESHOLD = -75  # Minimum signal to execute data payload transfer
 
-OLED_TEXT_WIDTH = 96  # text on left 96px
+OLED_TEXT_WIDTH = 96  # Text on left 96px
 OLED_CIRCLE_AREA_START_X = OLED_TEXT_WIDTH  # Graphic starts at 96px
 
 
@@ -148,12 +148,12 @@ class DisplayContextOLED:
 
 
 # Globals
+download_count = 0
 button0_long_press = False
 button0_short_press = False
+button0_press_time = 0.0
 button1_pressed = False
 button2_pressed = False
-button0_press_time = 0.0
-download_count = 0
 
 # Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
 button1 = Button(25, pull_up=True, bounce_time=0.1)
@@ -240,7 +240,11 @@ def scan_i2c_bus(i2c_primary):
 
 
 def init_i2c():
-    # i2c1 is primary I2C on Pi Zero, Magnetometer has 400K frequency max, SSD1305 display has 1M
+    """
+        i2c1 is primary I2C on Pi Zero
+        Frequency Max: Magnetometer 400K, SSD1305 display has 1M
+        Can not set frequency in Python for Pi Zero
+    """
     i2c1 = busio.I2C(board.SCL, board.SDA)  # can't set frequency in Python on Pi Zer
     oled_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{oled_detected=} + {lis_detected=}")
@@ -267,7 +271,7 @@ def change_connection(action: Literal["up", "down"]) -> bool:
     except Exception as e:
         print(f"CRITICAL: Unexpected error in change_connection: {e}")
 
-    # Fallback: Re-connect using the .env password
+    # Connect using passwords in .env
     print(f"Profile '{TARGET_SSID}' failed. Trying to reconnect...")
     return connect_ssid(TARGET_SSID)
 
@@ -306,7 +310,7 @@ def display_metrics_oled(draw, font, rssi, ssid: str, rx_rate, heading: float, d
             else:
                 line3 = f"{heading_str} {direction_str:<2}"
 
-    # Write text to OLED buffer
+    # Write text to OLED
     draw.text((left_indent, 0), line1, font=font, fill=1)
     draw.text((left_indent, 10), line2, font=font, fill=1)
     draw.text((left_indent, 20), line3, font=font, fill=1)
@@ -322,11 +326,9 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
         lcd.print_270(text="Trying", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
         lcd.print_270(text="to link", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
         lcd.print_270(text="Pause", pos=(108 - 26, 0), image=disp0_image, font=lcd.font0_24pt, color="green")
-
     elif not connected and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
         lcd.print_270(text="Con-", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
         lcd.print_270(text="nect?", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
-
     elif connected and rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
         lcd.print_270(text="down", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
         lcd.print_270(text="load?", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
@@ -403,7 +405,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
     """ Scan for rssi metric, connect if sufficient strength and button pressed. """
     global button0_short_press, button1_pressed, button2_pressed
 
-    # Only short press (Button 0) or Button 2 can trigger connection, reset buttons after status noted
+    # Only short press (Button 0) or Button 2 can trigger connection
     connect_triggered = button0_short_press or button2_pressed
     button0_short_press = False
     button2_pressed = False
@@ -441,7 +443,6 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
                 else:
                     print(" SUCCESS: Connected to unknown BSSID? with SSID: {ssid}\n")
 
-                # lists are mutatable
                 rssi_heading_history[:] = [-99.0] * 360
                 return is_connected, rssi, ssid
         else:
@@ -458,24 +459,23 @@ def handle_connected_mode(metrics, download_count, heading, target_ssid, url, de
     is_connected = True
     rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi = query_wifi()
 
-    # On short press (Button 0) or Button 1 can trigger a download, reset buttons after status noted
+    # On short press (Button 0) or Button 1 can trigger a download
     download_triggered = button0_short_press or button1_pressed
     button0_short_press = False
     button1_pressed = False
 
-
     if rssi is None:
-        # check if connection dropped
+        # Check if connection dropped
         current_ssid = get_ssid()
 
         # Set connection dropped when HW switched networks or if middle of switching connections
         if current_ssid != target_ssid and current_ssid not in [None, "", "wlan0 essid unknown"]:
             is_connected = False
             return is_connected, None, None, None, None, download_count, None, False
-        # allow temporary drop, check next scan
+        # Allow temporary drop, check next scan
         current_ssid = target_ssid
     else:
-        # since RSSI result, set ssid
+        # Since RSSI result, set ssid
         current_ssid = target_ssid
 
         if download_triggered:
@@ -494,7 +494,7 @@ def handle_connected_mode(metrics, download_count, heading, target_ssid, url, de
                 success, filename = download_file(url, destination_dir)
                 if success:
                     download_count += 1
-                    print(f" -> successfully downloaded {destination_dir}/{filename}")
+                    print(f" -> Successful download to {destination_dir}/{filename}")
                 else:
                     print(" -> Failed to download\n")
             else:
@@ -514,7 +514,7 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
     with iw connected mode updates in 50ms to 68ms period (14 Hz to 20 Hz).
     """
     global download_count, button0_short_press, button1_pressed
-    print("[Thread] Background connected worker loop started.\n")
+    print("[Thread] Background connected-mode worker started.\n")
 
     start_time = time.time()
     while USE_ASYNC_METRICS:
@@ -526,7 +526,7 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
             time.sleep(0.1)  # 100 ms sleep in scan mode
             continue
 
-        # update metrics.is_downloading for main loop, buttons status reset in handle_connected mode
+        # Update metrics.is_downloading for main loop, buttons reset in handle_connected_mode
         if button0_short_press or button1_pressed:
             with metrics_lock:
                 metrics.is_downloading = True
@@ -640,7 +640,7 @@ def main():
         oled_display, draw, font, image = init_oled_display(i2c1, use_mono_type=USE_MONO_TYPE)
         oled_context = DisplayContextOLED(draw, font, oled_display, image)
 
-    # Initialize 3 LCD displays, splash Radiant Ether image
+    # Initialize 3 LCD displays, splash Radiant Ether image to Display 2
     if lcd_detected:
         disp_0, disp_1, disp_2 = create_lcd_display_canvases(splash_file_name="radiant-ether-098.jpg")
 
@@ -668,7 +668,7 @@ def main():
         is_downloading=False,
     )
 
-    # Start background worker thread
+    # Start background connected-mode worker thread
     lcd_parameter = lcd if lcd_detected else None
     if USE_ASYNC_METRICS:
         bg_thread = threading.Thread(
@@ -759,7 +759,8 @@ def main():
                 else:
                     # legacy Sync Path: main thread writing metrics
                     is_connected, rssi, ssid, quality, rx_rate, download_count, bssid, is_new_rssi = handle_connected_mode(
-                        metrics, download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
+                        metrics, download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING,
+                        oled_context,
                         lcd_parameter, disp_0, disp_1
                     )
                     with metrics_lock:
