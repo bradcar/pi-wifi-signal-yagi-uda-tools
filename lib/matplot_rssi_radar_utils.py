@@ -158,8 +158,9 @@ def plot_rssi_polar(degrees, rssi, theta, heading, subtitle, lcd_png_generate, f
     rssi_min_plot = RSSI_MIN_PLOT_CONSTANT
 
     if peak_rssi != -99:
-        rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * 1.2
-        print(f"Autoscaled Plot boundaries: {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
+        max_radius_percent = 0.90
+        rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0/max_radius_percent)
+        print(f"Autoscaled Plot Range ({int(max_radius_percent*100)}%): {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
 
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
