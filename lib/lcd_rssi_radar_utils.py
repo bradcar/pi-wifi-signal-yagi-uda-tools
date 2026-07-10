@@ -34,18 +34,17 @@ def draw_rssi_polygon(draw, signal_history, heading: float, center_x: int, cente
             neighbor_index = (angle + offset) % 360
             window_values.append(signal_history[neighbor_index])
 
-        saved_rssi = max(window_values)
+        peak_rssi = max(window_values)
 
-        # Apply the dynamic bounds
-        if saved_rssi < weak_bound:
-            saved_rssi = weak_bound
-        elif saved_rssi > strong_bound:
-            saved_rssi = strong_bound
+        # Ensure no zero division error
+        bound_range = strong_bound - weak_bound if strong_bound != weak_bound else 1
 
-        # Calculate proportion using dynamic bounds
-        proportion = (saved_rssi - weak_bound) / (strong_bound - weak_bound)
-        # Keep a 5px offset inward so outer boundary lines remain clean
-        line_length = (max_radius - 5) * proportion
+        # Clamp peak value within our newly calculated limits
+        peak_rssi = max(weak_bound, min(peak_rssi, strong_bound))
+
+        # Scale across the entire functional pixel radius length
+        proportion = (peak_rssi - weak_bound) / bound_range
+        line_length = max_radius * proportion
 
         # Apply identical screen space angle mapping
         angle_rad = math.radians(heading - angle)
@@ -65,18 +64,16 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     """ Draws a heavy red vector pointer and an arc across matching peaks."""
     if peak_rssi <= -99:
         return
-    max_signal_radius = max_radius - 10
-    outer_marker_radius = max_radius + 10
 
-    def rssi_to_radius(val):
-        if val < weak_bound: val = weak_bound
-        if val > strong_bound: val = strong_bound
-        proportion = (val - weak_bound) / (strong_bound - weak_bound)
-        return max_signal_radius * proportion
+    outer_marker_radius = max_radius + 10
+    bound_range = strong_bound - weak_bound if strong_bound != weak_bound else 1
+
+    # Dynamic calculation mapping val straight to the main radius metrics
+    val_clamped = max(weak_bound, min(peak_rssi, strong_bound))
+    r_peak = max_radius * ((val_clamped - weak_bound) / bound_range)
 
     # Align peak indicator line with vector mean
     peak_angle_rad = math.radians(heading - peak_degree)
-    r_peak = rssi_to_radius(peak_rssi)
 
     x_peak = int(center_x + r_peak * math.cos(peak_angle_rad))
     y_peak = int(center_y - r_peak * math.sin(peak_angle_rad))
@@ -88,7 +85,7 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
     y_halfway = int(center_y - halfway_radius * math.sin(peak_angle_rad))
 
     # Draw thin line from peak point to halfway to circle, Thick line from halfway to 10px past outer edge
-    draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="orange", width=3)
+    # draw.line([(x_halfway, y_halfway), (x_peak, y_peak)], fill="yellow", width=3)
     draw.line([(center_x, center_y), (x_peak, y_peak)], fill="red", width=5)  #
     draw.line([(x_edge, y_edge), (x_halfway, y_halfway)], fill="red", width=9)
 
@@ -173,8 +170,14 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     center_y = 120
     max_radius = 110
 
-    strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
     weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
+
+    if peak_rssi is not None and peak_rssi > -99:
+        max_radius_percent = 0.85
+        strong_bound = weak_bound + (peak_rssi - weak_bound) * (1.0 / max_radius_percent)
+    else:
+        # Fallback to defaults if no signal is detected
+        strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
 
     # if no heading orientate to North 0°
     if heading is None:
