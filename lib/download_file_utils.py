@@ -14,10 +14,10 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
     if not os.path.exists(destination_directory):
         os.makedirs(destination_directory)
 
-    print(f"download_file: Download from {url_string}...")
+    timeout = 5
+    print(f"download_file: Download from {url_string}, timeout = {timeout} secs")
     try:
-        # 5-second timeout if range is lost
-        with urllib.request.urlopen(url_string, timeout=5) as response:
+        with urllib.request.urlopen(url_string, timeout=timeout) as response:
             if response.status == 200:
 
                 # Get dynamic Content-Disposition filename
