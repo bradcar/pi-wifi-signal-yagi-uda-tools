@@ -632,6 +632,51 @@ def perform_wifi_scan(interface, target_ssid=None, channel: int = None):
         return None
 
 
+def scan_single_channel(interface: str, channel: int):
+    """
+    No Faster in testing... It may be of no value
+    Forces the Wi-Fi card to probe one single 2.4GHz channel
+    Bypasses all cached data.
+
+    Returns:
+        list: Sorted list of PiNetworkMock objects detected on that channel alone,
+              or an empty list if quiet.
+    """
+    freq_mhz = channel_to_frequency(channel, "2.4 GHz")
+    if not freq_mhz:
+        logger.error(f"Invalid channel for 2.4 GHz band: {channel}")
+        return []
+
+    cmd = ["sudo", IW_CMD, "dev", interface, "scan", "freq", str(freq_mhz)]
+
+    try:
+        scan = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    if scan.startswith("BSS "):
+        scan = "\n" + scan
+    bss_blocks = re.split(r'\nBSS ', scan)
+    networks = []
+
+    for block in bss_blocks[1:]:
+        ssid_match = re.search(r'SSID: (.*)', block)
+        ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
+
+        rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
+        rssi = int(float(rssi_match.group(1))) if rssi_match else -100
+
+        bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
+        bssid = bssid_match.group(1) if bssid_match else "Unknown"
+
+        band, parsed_ch = parse_band_from_cell(block)
+
+        if parsed_ch == channel:
+            networks.append(PiNetworkMock(ssid, bssid, rssi, band, channel))
+
+    return sorted(networks, key=lambda net: net.rssi_value(), reverse=True)
+
+
 def trigger_background_scan(interface):
     """Trigger background scan with timeout."""
     try:
