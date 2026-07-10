@@ -185,22 +185,22 @@ def on_button0_released():
 
     if duration >= button0.hold_time:
         button0_long_press = True
-        print(f"\n* ====== Long Press Detected ({duration:.4f}s). Reverting to Scan Mode.")
+        print(f"\n* [Button] ====== Button 0: Long Press Detected ({duration:.4f}s). Reverting to Scan Mode.")
     else:
         button0_short_press = True
-        print(f"\n* ------ Short Press Detected ({duration:.4f}s).")
+        print(f"\n* [Button] ------ Button 0: Short Press Detected ({duration:.4f}s).")
 
 
 def button1_callback():
     global button1_pressed
     button1_pressed = True
-    print("\n[Hardware] Button 1 Activated (GPIO 25)")
+    print("\n[Button] Button 1 Activated (GPIO 25)")
 
 
 def button2_callback():
     global button2_pressed
     button2_pressed = True
-    print("\n[Hardware] Button 2 Activated (GPIO 24)")
+    print("\n[Button] Button 2 Activated (GPIO 24)")
 
 
 # Button0: Listen to both edges to measure button press duration
