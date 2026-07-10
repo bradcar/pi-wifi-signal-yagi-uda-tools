@@ -1,6 +1,6 @@
 # lcd_rssi_radar_utils.py
 """
-lcd Radar Utilities, to be used by pi_yagi_uda.py an di_wifi_scan_radar.py
+lcd Radar Utilities, to be used by pi_yagi_uda.py and pi_wifi_scan_radar.py
 
 Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
@@ -10,7 +10,6 @@ Functionality
 import math
 
 import numpy as np
-from PIL import Image
 from PIL.ImageDraw import ImageDraw
 
 from lib.matplot_rssi_radar_utils import rssi_peak
@@ -18,7 +17,7 @@ from lib.polar_math_utils import calculate_peak_bounds
 from lib.lcd_st7789_utils import draw_directional_arrow
 
 # Radar lines Boundary
-SCAN_RSSI_STRONG = -70
+SCAN_RSSI_STRONG = -30
 SCAN_RSSI_WEAK = -85
 CONNECT_RSSI_STRONG = -25
 CONNECT_RSSI_WEAK = -85
@@ -234,7 +233,7 @@ def rotation_to_peak(compass, peak_rssi_angle):
 
 def arrow_annotation(disp1_draw: ImageDraw, shortest_angle,
                      left_arrow_position, right_arrow_position):
-    """Draw arrows to show shortest rotation to peak"""
+    """Draw arrows to show the shortest rotation to peak"""
     if shortest_angle is None or shortest_angle == 0:
         return
     if shortest_angle < 0:
