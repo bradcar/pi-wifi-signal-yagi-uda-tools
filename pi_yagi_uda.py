@@ -1,48 +1,14 @@
 # pi_yagi_uda.py
 """
 On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
-and RX Bit Rate of the currently targeted network on interface wlan0.
+and RX Bitrate of the currently targeted network on interface wlan0.
 When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
 The code handles connection drops and resumes automatically on reconnect.
 
-Scan Rates:
- If USE_PROC_NET_WIRELESS=True in wifi_utils.py
- - Connected Mode, actual ~ 24 ms 41 Hz  (at this rate, it won't return RX Rate (n/a in output))
- - Scan Mode,      actual ~300 ms  3 Hz
- - Out of range,   actual ~ ?? ms ?? Hz
- - temperature read every 60 sec since this is system call
-
-  If USE_PROC_NET_WIRELESS=False in wifi_utils.py
- - Connected Mode, actual ~ 50 ms 20 Hz
- - Scan Mode,      actual ~300 ms  3 Hz
- - Out of range,   actual ~ ?? ms ?? Hz
- - temperature read every 60 sec since this is system call
-
-    If LCD on and USE_PROC_NET_WIRELESS=False in wifi_utils.py  2-3 Hz likely worth the nice graphids
- - Connected Mode, actual ~300 ms  3 Hz (at this rate, it won't return RX Rate (n/a in output))
- - Scan Mode,      actual ~630 ms  2 Hz
- - Out of range,   actual ~ ?? ms ?? Hz
- - temperature read every 60 sec since this is system call
-
-   If OLED on and USE_PROC_NET_WIRELESS=False in wifi_utils.py -- FLASHES !!!
- - Connected Mode, actual ~200 ms  5 Hz  (at this rate, it won't return RX Rate (n/a in output))
- - Scan Mode,      actual ~461 ms  3 Hz
- - Out of range,   actual ~ ?? ms ?? Hz
- - temperature read every 60 sec since this is system call
- TODO consider do not clear whole OLED screen, but black out values to be updated
-
-If the targeted network is not connected, it uses a lighter weight Scan Mode which scans all available networks looking for the targeted network.
- - The OLED SSD display shows:
- - ssid <target-ssid>
-If the targeted network is connected, it can download the data file.
- - The OLED SSD display shows:
- - SSID = <target-ssid>
-
-Metrics are printed to std out and show on the OLED display.
+Metrics are printed to console and shown on the OLED display.
 The OLED display on the left has 96px for text:
- - 3 lines of text with 16 chars
- - using 3 lines of text, instead of 4 since 4 looks cramped
-On the right 32px, graphically shows the signal strength at a compass direction as a radar-style screen.
+ - 3 lines of text with 16 chars (4 lines looks bad)
+On the right 32px, show the signal strength at a compass direction as a radar-style graphic.
  - 32x32 box with circle centered with a radius of 15px
 
 0. short press >0.1 sec
@@ -60,9 +26,7 @@ On the right 32px, graphically shows the signal strength at a compass direction 
  https://www.briandorey.com/post/raspberry-pi-zero-2-w-external-antenna-mod  (maybe beter on uFL soldering?)
   Note: I've read that Uda was the inventor and Yagi was the promoter.
 
- The Pi Zero 2 W is running Debian Trixie base. 64-bit
-  - with no desktop environment
-  - 555.1 MB download, Released: 2026-04-21
+ The Pi Zero 2 W is running Debian Trixie base. 64-bit with no desktop environment
   - uname -a
 Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
 
@@ -70,7 +34,7 @@ Update rates:
 Updates: 546.5 msec, 2 Hz - Out of Range
 
 "Radar display" Polygon vertex count
-    - The radar circle (radius of 15 px) has max of 84 pixels on perimeter
+    - OLED radar circle (radius of 15 px) has max of 84 pixels on perimeter
     - 72 vertices every 5 degrees (360/5) -- likely best for clean signals
     - 40 vertices every 9 degrees (360/9)
 
@@ -79,8 +43,8 @@ Metrics Data Structure:
         - is_connected (bool): Active hardware link status to TARGET_SSID.
         - rssi (int/None): RSSI in dBm.
         - quality (int/None): Link quality percentage (0-100%).
-        - rx_rate (float/None): Receiver bit rate in Mbps.
-        - tx_rate (float/None): Transmitter bit rate in Mbps.
+        - rx_rate (float/None): RX bitrate (download from AP) in Mbps.
+        - tx_rate (float/None): TX bitrate in Mbps.
         - bssid (str/None): BSSID (MAC) address of the connected Access Point.
         - heading (float): Current magnetometer compass direction (0.0 - 359.9°).
         - is_new_rssi (bool): Event flag indicating an unconsumed RSSI update.
@@ -93,20 +57,19 @@ Metrics Data Structure:
             - BACKGROUND THREAD: Owns exclusive mutation rights for metrics
               (rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi). It polls the hardware interface
               via `handle_connected_mode()` and flushes state safely down to the metrics namespace.
-            - MAIN THREAD: operates strictly in READ-ONLY pass-through mode for network metrics.
+            - MAIN THREAD: runs in READ-ONLY pass-through mode for network metrics.
               It handles button modes and display.
             - EXCEPTION: If a hardware interrupt occurs (or Button0 long_press), the Main Thread
               can clear `is_connected` and clean up tracking histories.
         3. Scan Mode (is_connected == False):
-            - BACKGROUND THREAD: Becomes idle/throttled. It safely halts writing to metrics SimpleNamespace.
+            - BACKGROUND THREAD: Is idle/throttled. It safely halts writing to metrics SimpleNamespace.
             - MAIN THREAD: Regains READ/WRITE ownership. It directly invokes handle_scan_mode()
               to update metrics, hand buttons, and display results.
-
 
 Requirements (beyond normal i2c):
     update: lis3mdl_calibraton_parameters.py from output of hard_only_calibrate_lis3mdl_test.py
 
-    installs:
+    install:
     sudo pip3 install adafruit-circuitpython-ssd1305 --break-system-packages
     sudo apt-get install python3-pil
     pip3 install adafruit-circuitpython-lis3mdl --break-system-packages
@@ -115,7 +78,6 @@ Requirements (beyond normal i2c):
 TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 TODO uncomment logging code to Pi Zero flash
 TODO uncomment saving Actual RSSI to heading, instead of fake testing code
-
 """
 import os
 import subprocess
@@ -145,8 +107,8 @@ from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_strin
 
 DEBUG = False
 USE_MONO_TYPE = False
-USE_ASYNC_METRICS = False
-metrics_lock = threading.Lock() # Protects SimpleNamespace data transitions
+USE_ASYNC_METRICS = True
+metrics_lock = threading.Lock()  # Protects SimpleNamespace data transitions
 
 TARGET_SSID = "ABox-PDX"
 # TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
@@ -278,8 +240,8 @@ def scan_i2c_bus(i2c_primary):
 
 
 def init_i2c():
-    # i2c1 is primary I2C on Pi Zero, Magnetometer has 400K frequency limit, SSD1305 display has 1M, can't set in python
-    i2c1 = busio.I2C(board.SCL, board.SDA)
+    # i2c1 is primary I2C on Pi Zero, Magnetometer has 400K frequency max, SSD1305 display has 1M
+    i2c1 = busio.I2C(board.SCL, board.SDA)  # can't set frequency in Python on Pi Zer
     oled_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{oled_detected=} + {lis_detected=}")
     return i2c1, oled_detected, lis_detected
@@ -299,7 +261,7 @@ def change_connection(action: Literal["up", "down"]) -> bool:
             return connect_ssid(TARGET_SSID)
 
     except subprocess.TimeoutExpired:
-        print(f"CRITICAL: NetworkManager command timed out ({change_timeout} sec) - possible system hang.")
+        print(f"CRITICAL: NetworkManager timed out ({change_timeout} sec) - possible system hang.")
     except subprocess.CalledProcessError as e:
         print(f"CRITICAL: NetworkManager issue (nmcli): {e}")
     except Exception as e:
@@ -457,7 +419,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
         subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        print(f"Error during scan: {e}")
+        print(f"Error during wifi scan: {e}")
 
     ssid = target_ssid if rssi is not None else None
 
@@ -488,75 +450,100 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
     return is_connected, rssi, ssid
 
 
-def handle_connected_mode(download_count, heading, target_ssid, url, destination_dir, oled_context,
+def handle_connected_mode(metrics, download_count, heading, target_ssid, url, destination_dir, oled_context,
                           lcd, disp0, disp1):
     """Get signal metrics, download file if sufficient strength and button pressed."""
     global button0_short_press, button1_pressed, button2_pressed
 
     is_connected = True
+    rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi = query_wifi()
 
-    # Only short press (Button 0) or Button 1 can trigger a download, reset buttons after status noted
+    # On short press (Button 0) or Button 1 can trigger a download, reset buttons after status noted
     download_triggered = button0_short_press or button1_pressed
     button0_short_press = False
     button1_pressed = False
 
-    rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi = query_wifi()
+
     if rssi is None:
-        # if no rssi check if connection dropped
+        # check if connection dropped
         current_ssid = get_ssid()
 
-        # Call connection dropped when HW switched networks or if middle of switching connections
+        # Set connection dropped when HW switched networks or if middle of switching connections
         if current_ssid != target_ssid and current_ssid not in [None, "", "wlan0 essid unknown"]:
             is_connected = False
             return is_connected, None, None, None, None, download_count, None, False
         # allow temporary drop, check next scan
         current_ssid = target_ssid
-
     else:
-        # confirm that RSSI seen and current ssid is the target ssid
+        # since RSSI result, set ssid
         current_ssid = target_ssid
 
-    if download_triggered:
-        if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-            print(f"\n* Download Triggered ({rssi} dBm). Executing Transfer...")
-            if oled_context:
-                oled_context.update_line3_oled("trying download...")
-            if lcd and disp0 and disp1:
-                display_0_trying_download_lcd(lcd, disp0, download_count)
+        if download_triggered:
+            if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
+                print(f"\n* Download Triggered ({rssi} dBm). Starting Transfer...")
 
-            success, filename = download_file(url, destination_dir)
-            if success:
-                download_count += 1
-                print(f" -> successfully downloaded {destination_dir}/{filename}")
-        else:
-            print(f"\n* Download aborted: Signal ({rssi} dBm) below threshold.")
+                # Signal main code that the display being controlled
+                if hasattr(metrics, 'is_downloading'):
+                    metrics.is_downloading = True
+
+                if oled_context:
+                    oled_context.update_line3_oled("trying download...")
+                if lcd and disp0 and disp1:
+                    display_0_trying_download_lcd(lcd, disp0, download_count)
+
+                success, filename = download_file(url, destination_dir)
+                if success:
+                    download_count += 1
+                    print(f" -> successfully downloaded {destination_dir}/{filename}")
+                else:
+                    print(" -> Failed to download\n")
+            else:
+                signal_str = f"RSSI: {rssi} dBm" if rssi is not None else "Signal dropped (No dBm)"
+                print(f"\n* Download aborted: {signal_str} below threshold ({RSSI_DOWNLOAD_THRESHOLD} dBm).")
+
+            # Release the display state lock
+            if hasattr(metrics, 'is_downloading'):
+                metrics.is_downloading = False
 
     return is_connected, rssi, current_ssid, quality, rx_rate, download_count, bssid, is_new_rssi
 
 
 def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, disp_1):
-    """Background worker thread that runs exclusively when connected."""
-    global download_count
-    print("[Thread] Background connected worker loop started.")
+    """
+    Background worker thread that runs exclusively when connected.
+    with iw connected mode updates in 50ms to 68ms period (14 Hz to 20 Hz).
+    """
+    global download_count, button0_short_press, button1_pressed
+    print("[Thread] Background connected worker loop started.\n")
 
+    start_time = time.time()
     while USE_ASYNC_METRICS:
         current_heading = get_compass_heading(lis3mdl)
         with metrics_lock:
             active = metrics.is_connected
 
         if not active:
-            time.sleep(0.01)  # 10 ms Throttle down resource usage when scanning
+            time.sleep(0.1)  # 100 ms sleep in scan mode
             continue
 
-        # Get network results outside the critical lock section
-        is_connected, rssi, ssid, quality, rx_rate, dowload_count, bssid, is_new_rssi = handle_connected_mode(
-            download_count, current_heading, TARGET_SSID, URL_STRING, DESTINATION_STRING,
+        # update metrics.is_downloading for main loop, buttons status reset in handle_connected mode
+        if button0_short_press or button1_pressed:
+            with metrics_lock:
+                metrics.is_downloading = True
+
+        # Get network updates
+        is_connected, rssi, ssid, quality, rx_rate, download_count, bssid, is_new_rssi = handle_connected_mode(
+            metrics, download_count, current_heading, TARGET_SSID, URL_STRING, DESTINATION_STRING,
             oled_context, lcd, disp_0, disp_1
         )
 
+        finish_time = time.time()
+        duration = finish_time - start_time
+        start_time = finish_time
+
         # Safely write metrics into the shared namespace
         with metrics_lock:
-            download_count = dowload_count
+            download_count = download_count
             metrics.is_connected = is_connected
             metrics.heading = current_heading
             metrics.rssi = rssi
@@ -564,25 +551,25 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
             metrics.rx_rate = rx_rate
             metrics.bssid = bssid
             metrics.is_new_rssi = is_new_rssi
+            metrics.update_period = duration
             update_rssi_heading_history(metrics)
 
             if not metrics.is_connected:
                 print("[Thread] Connection dropped. Background loop backgrounding.")
 
-        time.sleep(0.01)
-
 
 def update_rssi_heading_history(metrics):
-    if metrics.heading is not None:
-        metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
-    # # show circular rssi if no known heading
+    if metrics.rssi is None:
+        return
+
+    # if metrics.heading is not None:
+    #     metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
     # else:
+    #     # show circular rssi if no known heading
     #     metrics.rssi_heading_history[:] = [rssi] * 360
-    else:
-        # TODO REMOVE this testing-only ELSE CLAUSE: which make Random index if no magnetometer
-        if metrics.rssi is not None:
-            metrics.rssi_heading_history = fake_rssi_history_fill(metrics.rssi,
-                                                                  metrics.rssi_heading_history)
+
+    # TODO REMOVE this testing-only code: make random heading
+    metrics.rssi_heading_history = fake_rssi_history_fill(metrics.rssi, metrics.rssi_heading_history)
 
 
 def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_count):
@@ -641,7 +628,7 @@ def main():
     lcd_detected = False
     if not oled_detected:
         lcd_detected = True
-    # TODO FIX EASY WAY TO SWAP OLED TO LCD !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # TODO FIX EASY WAY TO SWAP OLED TO LCD !!
     else:
         disp_0 = None
         disp_1 = None
@@ -653,7 +640,7 @@ def main():
         oled_display, draw, font, image = init_oled_display(i2c1, use_mono_type=USE_MONO_TYPE)
         oled_context = DisplayContextOLED(draw, font, oled_display, image)
 
-    # Initialize 3 LCD displays, splash radiant ether image
+    # Initialize 3 LCD displays, splash Radiant Ether image
     if lcd_detected:
         disp_0, disp_1, disp_2 = create_lcd_display_canvases(splash_file_name="radiant-ether-098.jpg")
 
@@ -677,8 +664,19 @@ def main():
         bssid=None,
         heading=0.0,
         rssi_heading_history=[-99.0] * 360,
-        update_period=None
+        update_period=0.0,
+        is_downloading=False,
     )
+
+    # Start background worker thread
+    lcd_parameter = lcd if lcd_detected else None
+    if USE_ASYNC_METRICS:
+        bg_thread = threading.Thread(
+            target=wifi_connected_thread_worker,
+            args=(metrics, lis3mdl, oled_context, lcd_parameter, disp_0, disp_1),
+            daemon=True
+        )
+        bg_thread.start()
 
     # Local variables
     ssid = None
@@ -702,7 +700,7 @@ def main():
             start_loop = time.time()
 
             # write CSV of heading, rssi strength for entire 360 degrees, every 61 seconds
-            # TODO ADD BACK LOGGING CSV TO FLASH -  **************** LOGGING DISABLED *****************
+            # TODO ADD BACK LOGGING CSV TO FLASH -  ** LOGGING DISABLED **
             # if start_loop - last_csv_write > 61:
             #     write_history_to_csv(rssi_heading_history)
             #     last_csv_write = time.time()
@@ -723,64 +721,106 @@ def main():
                     metrics.rssi_heading_history = [-99.0] * 360
                 metrics.is_connected = False
 
-            if not metrics.is_connected:
-                # Scan mode - Update RSSI metric
-                metrics.quality, metrics.rx_rate = None, None
-                is_new_rssi = True
-                metrics.is_connected, metrics.rssi, ssid = handle_scan_mode(metrics.rssi_heading_history,
-                                                                            metrics.heading, TARGET_SSID,
-                                                                            TARGET_CHANNEL, oled_context,
-                                                                            lcd, disp_0, disp_1)
-            else:
-                # CONNECTED MODES - Synchronous & Asynchronous
-                if not USE_ASYNC_METRICS:
-                    # Synchronous Connected mode - Update full metrics, depends on iw or /net/proc/wireless probing
-                    metrics.is_connected, metrics.rssi, ssid, metrics.quality, metrics.rx_rate, download_count, metrics.bssid, is_new_rssi = handle_connected_mode(
-                        download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
-                        lcd, disp_0,
-                        disp_1)
-                else:
-                    print("USE ASYNC_METRICS - ******* unimplemented CODE !!!!!!!!!!!!!")
-                    break
+            # RUNTIME METRICS
+            # Read fresh magnetometer hardware data at the beginning of the evaluation loop
+            hw_heading = get_compass_heading(lis3mdl)
 
-            # Get current heading, then update RSSI strength at that heading in rssi_heading_history
-            metrics.heading = get_compass_heading(lis3mdl)
-            if is_new_rssi:
-                update_rssi_heading_history(metrics)
+            # Thread-safe check of the current connection status
+            with metrics_lock:
+                is_currently_connected = metrics.is_connected
+                if hw_heading is not None:
+                    metrics.heading = hw_heading
+
+            # Metrics update
+            # ==============
+            if not is_currently_connected:
+                # SCAN MODE: Main thread runs  network scanning
+                with metrics_lock:
+                    current_history_array = metrics.rssi_heading_history
+                    current_heading_value = metrics.heading
+
+                is_connected, rssi, ssid = handle_scan_mode(
+                    current_history_array, current_heading_value, TARGET_SSID,
+                    TARGET_CHANNEL, oled_context, lcd_parameter, disp_0, disp_1
+                )
+
+                with metrics_lock:
+                    metrics.is_connected = is_connected
+                    metrics.rssi = rssi
+                    metrics.is_new_rssi = True
+                    metrics.quality = None
+                    metrics.rx_rate = None
+                    update_rssi_heading_history(metrics)
+            else:
+                # CONNECTED MODE: Async & Sync update of metrics
+                if USE_ASYNC_METRICS:
+                    # Async Path: Pass-through, Background thread already writing metrics
+                    pass
+                else:
+                    # legacy Sync Path: main thread writing metrics
+                    is_connected, rssi, ssid, quality, rx_rate, download_count, bssid, is_new_rssi = handle_connected_mode(
+                        metrics, download_count, metrics.heading, TARGET_SSID, URL_STRING, DESTINATION_STRING, oled_context,
+                        lcd_parameter, disp_0, disp_1
+                    )
+                    with metrics_lock:
+                        metrics.is_connected = is_connected
+                        metrics.rssi = rssi
+                        metrics.quality = quality
+                        metrics.rx_rate = rx_rate
+                        metrics.bssid = bssid
+                        metrics.is_new_rssi = is_new_rssi
+                        if metrics.is_new_rssi:
+                            update_rssi_heading_history(metrics)
 
             # todo remove fake sweeping
-            if metrics.heading is None:
-                metrics.heading, sweep_degree = fake_heading_sweep(sweep_degree)
+            metrics.heading, sweep_degree = fake_heading_sweep(sweep_degree)
+
+            # Handle Displays and Outputs
+            with metrics_lock:
+                loc_is_connected = metrics.is_connected
+                loc_heading = metrics.heading
+                loc_rssi = metrics.rssi
+                loc_quality = metrics.quality
+                loc_rx_rate = metrics.rx_rate
+                loc_heading = metrics.heading
+                loc_rssi_heading_history = list(metrics.rssi_heading_history)
+                loc_is_downloading = getattr(metrics, 'is_downloading', False)
+
+            # Handle explicit display pause if background download thread is active
+            # On active download. skip normal rendering
+            if loc_is_downloading:
+                wait_seconds = 1
+                print(f"-> Main Loop Paused: Waiting on download ({wait_seconds} sec)...")
+                time.sleep(1)
+                continue  # Skip regular metrics until success or timeout
 
             # Print metrics to console
-            print_metrics(metrics.is_connected, ssid, metrics.rssi, metrics.quality, metrics.rx_rate, metrics.heading,
-                          download_count)
+            print_metrics(loc_is_connected, ssid, loc_rssi, loc_quality, loc_rx_rate, loc_heading, download_count)
 
             # Display metrics on OLED screen
             if oled_detected:
                 clear_display_oled(oled_display, draw, image)
-                display_metrics_oled(draw, font, metrics.rssi, ssid, metrics.rx_rate, metrics.heading, download_count,
-                                     metrics.is_connected)
-                display_radar_oled(draw, cadence_fill, metrics.heading or 0.0, metrics.rssi_heading_history,
-                                   metrics.is_connected)
+                display_metrics_oled(draw, font, loc_rssi, ssid, loc_rx_rate, loc_heading, download_count,
+                                     loc_is_connected)
+                display_radar_oled(draw, cadence_fill, loc_heading or 0.0, loc_rssi_heading_history,
+                                   loc_is_connected)
                 oled_display.image(image)
                 oled_display.show()
 
             # Display metrics on LCD screens
             if lcd_detected:
                 peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(
-                    metrics.rssi_heading_history)
-                shortest_angle = rotation_to_peak(metrics.heading, peak_degree)
+                    loc_rssi_heading_history)
+                shortest_angle = rotation_to_peak(loc_heading, peak_degree)
 
-                display_0_metrics_lcd(lcd, disp_0, metrics.rssi, download_count, metrics.is_connected,
-                                      try_connect=False)
-                display_1_metrics_lcd(lcd, disp_1, metrics.rssi, metrics.heading, shortest_angle, metrics.is_connected)
+                display_0_metrics_lcd(lcd, disp_0, loc_rssi, download_count, loc_is_connected, try_connect=False)
+                display_1_metrics_lcd(lcd, disp_1, loc_rssi, loc_heading, shortest_angle, loc_is_connected)
 
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
 
                 display_radar_lcd(
-                    disp2_draw, cadence_fill, metrics.heading, metrics.rssi_heading_history, metrics.is_connected,
+                    disp2_draw, cadence_fill, loc_heading, loc_rssi_heading_history, loc_is_connected,
                     peak_degree, peak_rssi,
                     peak_cluster
                 )
