@@ -36,7 +36,7 @@ Add LCD st7789 to user code:
     global button1_pressed, button2_pressed
 
 """
-
+import os
 import spidev as SPI
 import sys
 from PIL import Image, ImageDraw, ImageFont
@@ -144,14 +144,19 @@ def display_2_splash_lcd(disp_2, splash_image_file=None):
     Args:
         splash_image_file:
     """
+    lib_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(lib_dir)
+    image_directory = os.path.join(project_root, "assets", "images")
+
     if splash_image_file is None:
         splash_image_file = "radiant-ether-098.jpg"
+    print(f"Splash Image directory: {image_directory}/{splash_image_file}")
     try:
-        radar_image = Image.open(f"assets/images/{splash_image_file}")
+        radar_image = Image.open(f"{image_directory}/{splash_image_file}")
         rotated_radar = radar_image.rotate(270)
         disp_2.ShowImage(rotated_radar)
     except IOError:
-        print(f"Wallpaper '{splash_image_file}' not found at project root. Skipping center lcd")
+        print(f"Wallpaper '{splash_image_file}' not found at project root. Skipping splash on Display 2 LCD")
 
 
 def print_270(text: str, pos: tuple, image, font, color):
