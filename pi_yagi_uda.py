@@ -517,16 +517,18 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
     print("[Thread] Background connected-mode worker started.\n")
 
     start_time = time.time()
+    last_bssid = None  # catch BSSID transitions
+
     while USE_ASYNC_METRICS:
         current_heading = get_compass_heading(lis3mdl)
         with metrics_lock:
             active = metrics.is_connected
 
         if not active:
-            time.sleep(0.1)  # 100 ms sleep in scan mode
+            last_bssid = None  # Reset tracking when out of connection mode
+            time.sleep(0.1)
             continue
 
-        # Update metrics.is_downloading for main loop, buttons reset in handle_connected_mode
         if button0_short_press or button1_pressed:
             with metrics_lock:
                 metrics.is_downloading = True
@@ -537,13 +539,17 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
             oled_context, lcd, disp_0, disp_1
         )
 
+        # Print the BSSID when connection is established
+        if is_connected and bssid and bssid != last_bssid:
+            print(f"\n[Thread] SUCCESS: Connected to BSSID: {bssid} ({rssi} dBm)")
+            last_bssid = bssid
+
         finish_time = time.time()
         duration = finish_time - start_time
         start_time = finish_time
 
         # Safely write metrics into the shared namespace
         with metrics_lock:
-            download_count = download_count
             metrics.is_connected = is_connected
             metrics.heading = current_heading
             metrics.rssi = rssi
@@ -555,7 +561,8 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
             update_rssi_heading_history(metrics)
 
             if not metrics.is_connected:
-                print("[Thread] Connection dropped. Background loop backgrounding.")
+                print("[Thread] Connection dropped. Background loop idling.")
+                last_bssid = None
 
 
 def update_rssi_heading_history(metrics):
@@ -787,9 +794,11 @@ def main():
                 loc_rssi_heading_history = list(metrics.rssi_heading_history)
                 loc_is_downloading = getattr(metrics, 'is_downloading', False)
 
-            # Handle explicit display pause if background download thread is active
-            # On active download. skip normal rendering
+            # Handle display pause if background download thread is active. Skip display output till next loop.
             if loc_is_downloading:
+                button0_short_press = False
+                button1_pressed = False
+                button2_pressed = False
                 wait_seconds = 1
                 print(f"-> Main Loop Paused: Waiting on download ({wait_seconds} sec)...")
                 time.sleep(1)
