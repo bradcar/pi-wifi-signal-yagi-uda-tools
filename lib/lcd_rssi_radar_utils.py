@@ -5,6 +5,8 @@ lcd Radar Utilities, to be used by pi_yagi_uda.py and pi_wifi_scan_radar.py
 Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
     * Indicator update cadence if showing continuous updates, not shown for single render
+    * RSSI current value shown as box at compass heading
+    * todo should RSSI=0 or =None be invisible or at center?
 """
 
 import math
@@ -21,6 +23,81 @@ SCAN_RSSI_STRONG = -30
 SCAN_RSSI_WEAK = -85
 CONNECT_RSSI_STRONG = -25
 CONNECT_RSSI_WEAK = -85
+
+
+def extract_radar_metrics(signal_history):
+    """
+    Parses 360-degree signal history to locate peak clusters.
+    Returns: (peak_rssi, peak_degree, peak_cluster_array, valid_history)
+    """
+    # Create a 2D NumPy array: column 0 is degrees, column 1 is rssi
+    history_array = np.column_stack((np.arange(360), signal_history))
+
+    # Filter rows directly based on the RSSI column condition
+    valid_history = history_array[history_array[:, 1] > -98]
+
+    if len(valid_history) == 0:
+        return -99.0, 0.0, None, False
+
+    # Pass the filtered NumPy matrix down to your peak locator
+    arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
+    return peak_rssi, peak_degree, peak_cluster, True
+
+
+def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
+                      peak_degree=None, peak_rssi=None, peak_cluster=None, rssi=None):
+    """
+    Draw a white box with a black radar circle in it.
+    Add white directional orientation lines for North, East, South, and West.
+    Calculates a solid white polygon tracking signal strength vs compass directions.
+    Tailored for 240px x 240px RGB LCD panel configurations.
+
+    Time:
+    * indicator  6ms
+    * polygon   17ms
+    * arc        0.7ms
+
+    """
+    center_x = 120  # vertical height, 120 is centered, 111 drops 9 px, 1px margin
+    center_y = 120
+    max_radius = 110
+
+    weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
+
+    if peak_rssi is not None and peak_rssi > -99:
+        max_radius_percent = 0.85
+        strong_bound = weak_bound + (peak_rssi - weak_bound) * (1.0 / max_radius_percent)
+    else:
+        # Fallback to defaults if no signal is detected
+        strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
+
+    # if no heading orientate to North 0°
+    if heading is None:
+        heading = 0.0
+
+    # Draw basic radar layout
+    draw.rectangle((0, 0, 240, 240), fill="#111111")
+    draw.ellipse((center_x - max_radius, center_y - max_radius,
+                  center_x + max_radius, center_y + max_radius),
+                 outline="black", fill="black")
+
+    # draw indicator, crosshairs and RSSI polygon
+    draw_indicator(draw, cadence_fill, x_box=210, y_box=10, dot_size=15)
+    draw_crosshairs(draw, heading, center_x, center_y, max_radius)
+    draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, strong_bound, weak_bound)
+
+    # peak signal graphic
+    if peak_rssi is not None and peak_degree is not None:
+        draw_peak_arc(draw, heading, center_x, center_y, max_radius,
+                      strong_bound, weak_bound, peak_degree, peak_rssi, peak_cluster)
+
+    # Show RSSI strength at antenna location at proportional distance
+    draw_rssi_box(draw=draw, rssi=rssi, target_degree=0.0, heading=0.0, center_x=center_x,
+                  center_y=center_y, max_radius=max_radius, strong_bound=strong_bound,
+                  weak_bound=weak_bound, box_size=12, color="cyan")
+
+    # Center axis core marker
+    draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="blue")
 
 
 def draw_rssi_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int,
@@ -57,6 +134,33 @@ def draw_rssi_polygon(draw, signal_history, heading: float, center_x: int, cente
     # Draw the Antenna strength/direction polygon in pure green
     if len(polygon_points) >= 3:
         draw.polygon(polygon_points, fill="#00ff00", outline="#00ff00")
+
+
+def draw_crosshairs(draw, heading: float, center_x: int, center_y: int, max_radius: int):
+    """ Draw Crosshairs in cardinal directions """
+    # Solid North Crosshair
+    north_rad = math.radians(heading)
+    nx = int(center_x + max_radius * math.cos(north_rad))
+    ny = int(center_y - max_radius * math.sin(north_rad))
+    draw.line((center_x, center_y, nx, ny), fill="white", width=2)
+
+    # Dashed Crosshairs (South, West, East)
+    south_rad = math.radians(heading - 180)
+    west_rad = math.radians(heading - 270)
+    east_rad = math.radians(heading - 90)
+
+    for r in range(0, max_radius + 1, 12):
+        sx = int(center_x + r * math.cos(south_rad))
+        sy = int(center_y - r * math.sin(south_rad))
+        draw.ellipse((sx - 1, sy - 1, sx + 1, sy + 1), fill="white")
+
+        wx = int(center_x + r * math.cos(west_rad))
+        wy = int(center_y - r * math.sin(west_rad))
+        draw.ellipse((wx - 1, wy - 1, wx + 1, wy + 1), fill="white")
+
+        ex = int(center_x + r * math.cos(east_rad))
+        ey = int(center_y - r * math.sin(east_rad))
+        draw.ellipse((ex - 1, ey - 1, ex + 1, ey + 1), fill="white")
 
 
 def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius: int,
@@ -116,8 +220,59 @@ def draw_peak_arc(draw, heading: float, center_x: int, center_y: int, max_radius
             draw.line(arc_points, fill="red", width=4)
 
 
+def draw_rssi_box(draw, rssi: int, target_degree: float, heading: float, center_x: int, center_y: int,
+                  max_radius: int, strong_bound: int, weak_bound: int, box_size: int = 10, color: str = "cyan"):
+    """
+    Draws a box at a specific degree orientation, positioned at a distance
+    proportional to the provided RSSI signal strength from a center coordinate.
+    Only odd numbered box sizes are symmetric about the position.
+    """
+    # Prevent handling empty out-of-range scans
+    if rssi is None or rssi <= -99:
+        return
+
+    box_size = max(box_size, 3)
+
+    # Enforce an odd number so there a single-pixel center point
+    if box_size % 2 == 0:
+        box_size += 1
+
+    # Scale the RSSI to fit usable range
+    bound_range = strong_bound - weak_bound if strong_bound != weak_bound else 1
+    clamped_rssi = max(weak_bound, min(rssi, strong_bound))
+    proportion = (clamped_rssi - weak_bound) / bound_range
+    distance = max_radius * proportion
+    half_size = box_size // 2
+
+    # half-size*sqrt(2) makes sure box corners not outside radius, avoid negative distances
+    max_center_distance = max_radius - (half_size * 1.41421356)
+    max_center_distance = max(0.0, max_center_distance)
+    distance = min(distance, max_center_distance)
+
+    # Translate coordinates to respect the current radar display orientation
+    angle_rad = math.radians(heading - target_degree)
+
+    # Project the box from center point
+    box_center_x = int(center_x + distance * math.cos(angle_rad))
+    box_center_y = int(center_y - distance * math.sin(angle_rad))  # Subtracted for screen-space Y
+
+    # draw color outer box
+    x0 = box_center_x - half_size
+    y0 = box_center_y - half_size
+    x1 = x0 + box_size - 1
+    y1 = y0 + box_size - 1
+    draw.rectangle((x0, y0, x1, y1), outline=color)
+
+    # draw black inner box
+    x0_inner = x0 + 1
+    y0_inner = y0 + 1
+    x1_inner = x1 - 1
+    y1_inner = y1 - 1
+    draw.rectangle((x0_inner, y0_inner, x1_inner, y1_inner), outline="black")
+
+
 def draw_indicator(draw, cadence_fill, x_box: int, y_box: int, dot_size: int):
-    """ Show indicator, then toggle to next state """
+    """ Draw indicator, then toggle to next state """
     if cadence_fill is not None:
         outer_color = "white" if int(cadence_fill) == 1 else "black"
         inner_color = "black" if int(cadence_fill) == 1 else "white"
@@ -125,100 +280,21 @@ def draw_indicator(draw, cadence_fill, x_box: int, y_box: int, dot_size: int):
         draw.rectangle((x_box + 2, y_box + 2, x_box + dot_size + 2, y_box + dot_size + 2), fill=inner_color)
 
 
-def draw_crosshairs(draw, heading: float, center_x: int, center_y: int, max_radius: int):
-    """ Draw Crosshairs in cardinal directions """
-    # Solid North Crosshair
-    north_rad = math.radians(heading)
-    nx = int(center_x + max_radius * math.cos(north_rad))
-    ny = int(center_y - max_radius * math.sin(north_rad))
-    draw.line((center_x, center_y, nx, ny), fill="white", width=2)
-
-    # Dashed Crosshairs (South, West, East)
-    south_rad = math.radians(heading - 180)
-    west_rad = math.radians(heading - 270)
-    east_rad = math.radians(heading - 90)
-
-    for r in range(0, max_radius + 1, 12):
-        sx = int(center_x + r * math.cos(south_rad))
-        sy = int(center_y - r * math.sin(south_rad))
-        draw.ellipse((sx - 1, sy - 1, sx + 1, sy + 1), fill="white")
-
-        wx = int(center_x + r * math.cos(west_rad))
-        wy = int(center_y - r * math.sin(west_rad))
-        draw.ellipse((wx - 1, wy - 1, wx + 1, wy + 1), fill="white")
-
-        ex = int(center_x + r * math.cos(east_rad))
-        ey = int(center_y - r * math.sin(east_rad))
-        draw.ellipse((ex - 1, ey - 1, ex + 1, ey + 1), fill="white")
+def arrow_annotation(disp1_draw: ImageDraw, shortest_angle,
+                     left_arrow_position, right_arrow_position):
+    """Draw arrows to show the shortest rotation to peak"""
+    if shortest_angle is None or shortest_angle == 0:
+        return
+    if shortest_angle < 0:
+        draw_directional_arrow(disp1_draw, "left", left_arrow_position, fill_color="red")
+    if shortest_angle > 0:
+        draw_directional_arrow(disp1_draw, "right", right_arrow_position, fill_color="red")
+    return
 
 
-def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
-                      peak_degree=None, peak_rssi=None, peak_cluster=None):
-    """
-    Draw a white box with a black radar circle in it.
-    Add white directional orientation lines for North, East, South, and West.
-    Calculates a solid white polygon tracking signal strength vs compass directions.
-    Tailored for 240px x 240px RGB LCD panel configurations.
-
-    Time:
-    * indicator  6ms
-    * polygon   17ms
-    * arc        0.7ms
-
-    """
-    center_x = 120  # vertical height, 120 is centered, 111 drops 9 px, 1px margin
-    center_y = 120
-    max_radius = 110
-
-    weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
-
-    if peak_rssi is not None and peak_rssi > -99:
-        max_radius_percent = 0.85
-        strong_bound = weak_bound + (peak_rssi - weak_bound) * (1.0 / max_radius_percent)
-    else:
-        # Fallback to defaults if no signal is detected
-        strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
-
-    # if no heading orientate to North 0°
-    if heading is None:
-        heading = 0.0
-
-    # Draw basic radar layout
-    draw.rectangle((0, 0, 240, 240), fill="#111111")
-    draw.ellipse((center_x - max_radius, center_y - max_radius,
-                  center_x + max_radius, center_y + max_radius),
-                 outline="black", fill="black")
-
-    # draw indicator, crosshairs and RSSI polygon
-    draw_indicator(draw, cadence_fill, x_box=210, y_box=10, dot_size=15)
-    draw_crosshairs(draw, heading, center_x, center_y, max_radius)
-    draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, strong_bound, weak_bound)
-
-    # peak signal graphic
-    if peak_rssi is not None and peak_degree is not None:
-        draw_peak_arc(draw, heading, center_x, center_y, max_radius,
-                      strong_bound, weak_bound, peak_degree, peak_rssi, peak_cluster)
-    # Center axis core marker
-    draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="blue")
-
-
-def extract_radar_metrics(signal_history):
-    """
-    Parses 360-degree signal history to locate peak clusters.
-    Returns: (peak_rssi, peak_degree, peak_cluster_array, valid_history)
-    """
-    # Create a 2D NumPy array: column 0 is degrees, column 1 is rssi
-    history_array = np.column_stack((np.arange(360), signal_history))
-
-    # Filter rows directly based on the RSSI column condition
-    valid_history = history_array[history_array[:, 1] > -98]
-
-    if len(valid_history) == 0:
-        return -99.0, 0.0, None, False
-
-    # Pass the filtered NumPy matrix down to your peak locator
-    arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
-    return peak_rssi, peak_degree, peak_cluster, True
+def draw_box(draw, x_box: int, y_box: int, dot_size: int, color: str):
+    """ Draw box at location, with dot size, and selected color """
+    draw.rectangle((x_box, y_box, x_box + dot_size + 4, y_box + dot_size + 4), fill=color)
 
 
 def rotation_to_peak(compass, peak_rssi_angle):
@@ -232,15 +308,3 @@ def rotation_to_peak(compass, peak_rssi_angle):
         return shortest_angle
     else:
         return None
-
-
-def arrow_annotation(disp1_draw: ImageDraw, shortest_angle,
-                     left_arrow_position, right_arrow_position):
-    """Draw arrows to show the shortest rotation to peak"""
-    if shortest_angle is None or shortest_angle == 0:
-        return
-    if shortest_angle < 0:
-        draw_directional_arrow(disp1_draw, "left", left_arrow_position, fill_color="red")
-    if shortest_angle > 0:
-        draw_directional_arrow(disp1_draw, "right", right_arrow_position, fill_color="red")
-    return
