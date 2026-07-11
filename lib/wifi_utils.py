@@ -14,6 +14,37 @@ Features
     * Connected: iw scan dump - if use SCAN_CACHES_FAST_MODE=True, however this may return stale data
     * Scan:  iw scan - returns RSSI
 
+Classes / Data Models
+    PiNetworkMock: Data model mimicks CoreWLAN network objects used by MacOS
+
+Initialization
+    init_wifi(): Validates system dependencies (iw) and checks for physical accessibility of the wlan0 interface.
+
+Connected Mode (High-Level Active Links):
+    query_wifi(): In Connected mode gets (RSSI, quality, rx_bitrate, tx_bitrate, bssid
+    query_wifi_proc_net_wireless_fast(): reads /proc/net/wireless for RSSI
+    get_ssid_bssid(): Returns ESSID name and the AP's BSSID hardware address.
+    get_ssid():  Returns ESSID nam
+
+Connection Profile Deployment & Setup:
+    connect_ssid(): Connects to SSID using nmcli, & has fast-path for static IP
+    get_password_for_ssid(): Get Wi-Fi network credentials from .env
+    remove_ssid(): Hard-deletes specific connected network
+
+Scanning Mode Operations:
+    perform_wifi_scan(): High-level network scanner executing targeted discoveries wrapped in hardware timeout guards.
+    scan_target_ssid(): Scan unconnected SSID with channel
+    scan_single_channel(): Scan single channel. No faster
+    trigger_background_scan(): Pre-warms hardware caches
+
+Metric Conversions & Formatting:
+    map_band_to_string(): Evaluates duck-typed mock objects to get wireless band label.
+    parse_band_from_cell(): Parses raw block strings to get frequency band and channel.
+    channel_to_frequency(): Maps channel and band types to center frequency in MHz.
+    frequency_to_channel(): Maps 2.4GHz frequency center metrics to channel integers.
+    rssi_to_string(): Decibel-milliwatts (dBm) signal strength to text ("3 bars").
+    rssi_to_bars(): Transforms a dBm signal integer number of bars (0 to 4).
+    quality_to_string(): Maps % qualities to text ("Excellent" to "Disconnected").
 
 TODOS
     * TODO added code for 'shell-fi' to use static IPs, CHECK to see if connect drops from 6 sec to 1-2sec
@@ -87,49 +118,6 @@ def init_wifi():
     if os.path.exists("/sys/class/net/wlan0"):
         return "wlan0"
     return None
-
-
-def get_ssid():
-    """
-    get ESSID string from iw
-
-    Returns:
-        str: ESSID string, or "wlan0 essid unknown"
-    """
-    try:
-        out = subprocess.check_output([IW_CMD, "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
-        for line in out.splitlines():
-            if "SSID:" in line:
-                return line.split("SSID:")[1].strip()
-    except Exception as e:
-        logger.exception(e)
-        pass
-
-    return "wlan0 essid unknown"
-
-
-def get_ssid_bssid():
-    """
-    get ESSID and bssid strings from iw
-
-    Returns:
-        str: ESSID string, or "wlan0 essid unknown"
-        str: BSSID string, or "wlan0 bssid unknown"
-    """
-    ssid = "wlan0 essid unknown"
-    bssid = "wlan0 bssid unknown"
-    try:
-        out = subprocess.check_output([IW_CMD, "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
-        for line in out.splitlines():
-            if "Connected to" in line:
-                bssid = line.split("Connected to")[1].split("(")[0].strip()
-            elif "SSID:" in line:
-                ssid = line.split("SSID:")[1].strip()
-    except Exception as e:
-        logger.exception(e)
-        pass
-
-    return ssid, bssid
 
 
 def query_wifi():
@@ -255,249 +243,47 @@ def query_wifi_proc_net_wireless_fast():
     return None, None, False
 
 
-def parse_band_from_cell(cell) -> tuple:
-    """Parses channel and frequency from text to calculate the band string and explicit channel number"""
-    # capture explicit channel from text
-    channel_match = re.search(r'Channel:\s*(\d+)', cell, re.IGNORECASE)
-    channel = int(channel_match.group(1)) if channel_match else None
-
-    # capture frequency (freq: 2412" or "freq: 5180")
-    freq_match = re.search(r'freq:\s*(\d+\.?\d*)', cell, re.IGNORECASE)
-    freq = float(freq_match.group(1)) if freq_match else None
-
-    # Fallback if channel parsing fails but frequency exists
-    if channel is None and freq:
-        if freq > 100:
-            freq = freq / 1000.0
-
-        if 2.400 <= freq <= 2.495:
-            if freq == 2.484:
-                channel = 14
-            else:
-                channel = int((freq - 2.412) / 0.005) + 1
-
-        elif 5.150 <= freq <= 5.895:
-            channel = int((freq - 5.000) / 0.005) / 4
-            channel = int(channel)
-
-        elif 5.925 <= freq <= 7.125:
-            channel = int((freq - 5.940) / 0.005) / 4 + 1
-            channel = int(channel)
-        else:
-            channel = None
-
-    if channel is None:
-        band = "Unknown"
-    elif channel <= 14:
-        band = "2.4 GHz"
-    elif channel <= 177:  # Standard upper limit boundary for regional 5GHz bands
-        band = "5 GHz"
-    else:
-        band = "6 GHz"
-
-    return band, channel
-
-
-def channel_to_frequency(channel: int, band: str) -> int:
+def get_ssid_bssid():
     """
-    Maps a given channel number and band back to its standard MHz.
-
-    Args:
-        channel (int): The Wi-Fi channel number (ex: 1, 6, 36, 149).
-        band (str): The string descriptor of the band ("2.4 GHz", "5 GHz", "6 GHz").
+    get ESSID and bssid strings from iw
 
     Returns:
-        int: The center frequency in MHz, or None if the mapping is invalid.
+        str: ESSID string, or "wlan0 essid unknown"
+        str: BSSID string, or "wlan0 bssid unknown"
     """
-    if channel is None or not band:
-        return None
-
-    band_clean = band.replace(" ", "").lower()
-
-    # 2.4 GHz
-    if "2.4" in band_clean:
-        if channel == 14:
-            return 2484
-        if 1 <= channel <= 13:
-            return 2412 + (channel - 1) * 5
-
-    # 5 GHz Band
-    elif "5" in band_clean:
-        if 32 <= channel <= 177:
-            return 5000 + (channel * 5)
-
-    # 6 GHz Band (Wi-Fi 6E / 7)
-    elif "6" in band_clean:
-        if 1 <= channel <= 233:
-            return 5940 + (channel * 5)
-
-    return None
-
-
-def scan_target_ssid(interface, target_ssid=None, channel: int = None):
-    """
-    High-speed scan. Uses kernel cache (fastest) with fallback option
-    for forced hardware scan (moderate).
-
-    TODO: only works for 2.4GHz in this implementation.
-
-    Args:
-        interface (str): The network interface to scan (default: "wlan0").
-        target_ssid (str): The SSID to search for in the scan results.
-        channel (int): The Wi-Fi channel number (ex: 1, 6, 11),
-
-        Moderate is slower but guarantees fresh data.
-
-    Returns:
-        int: The signal strength (RSSI) in dBm if found, otherwise None.
-    """
-
+    ssid = "wlan0 essid unknown"
+    bssid = "wlan0 bssid unknown"
     try:
-        if SCAN_CACHES_FAST_MODE:
-            cmd = ["sudo", IW_CMD, "dev", interface, "scan", "dump"]
-        else:
-            cmd = ["sudo", IW_CMD, "dev", interface, "scan"]
+        out = subprocess.check_output([IW_CMD, "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            if "Connected to" in line:
+                bssid = line.split("Connected to")[1].split("(")[0].strip()
+            elif "SSID:" in line:
+                ssid = line.split("SSID:")[1].strip()
+    except Exception as e:
+        logger.exception(e)
+        pass
 
-        # Append channel frequency scoping if running physical scans to speed up turnaround times
-        if channel is not None and not SCAN_CACHES_FAST_MODE:
-            freq_mhz = channel_to_frequency(channel, "2.4 GHz")
-            if freq_mhz:
-                cmd.extend(["freq", str(freq_mhz)])
-
-        scan = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
-
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
-
-    # Parse 'iw' output cleanly regardless of leading newlines
-    if scan.startswith("BSS "):
-        scan = "\n" + scan
-    bss_blocks = re.split(r'\nBSS ', scan)
-    networks = []
-
-    for block in bss_blocks[1:]:
-        ssid_match = re.search(r'SSID: (.*)', block)
-        ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
-
-        rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
-        rssi = int(float(rssi_match.group(1))) if rssi_match else -100
-
-        # If found target_ssid, return immediately
-        if target_ssid and (target_ssid in ssid):
-            return rssi
-
-        bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
-        bssid = bssid_match.group(1) if bssid_match else "Unknown"
-
-        band, channel = parse_band_from_cell(block)
-        networks.append(PiNetworkMock(ssid, bssid, rssi, band, channel))
-
-    logger.debug(f"Checking SSID: {target_ssid} on channel: {channel}")
-    if target_ssid is not None:
-        return None
-
-    return sorted(networks, key=lambda net: net.rssi_value(), reverse=True) if target_ssid is None else None
+    return ssid, bssid
 
 
-def map_band_to_string(net) -> str:
+def get_ssid():
     """
-    Duck-typed for Linux mock objects to keep the display same function signature as
-    CoreWLAN Map bands using CoreWLAN's band integers
-    """
-    if hasattr(net, 'parsed_band'):
-        return net.parsed_band()
-    return "Unknown"
-
-
-def rssi_to_string(rssi):
-    """
-    Generates text strings from RSSI value.
-
-        Args:
-            rssi (int): The signal strength in dBm.
-
-        Returns:
-            str: A string representing signal strength ("3 bars").
-        """
-    if rssi is None:
-        return "None"
-    if rssi > -50: return "4 bars"
-    if rssi > -60: return "3 bars"
-    if rssi > -70: return "2 bars"
-    if rssi > -80: return "1 bar"
-    return "0 bar"
-
-
-def rssi_to_bars(rssi):
-    """
-    Integer number of bars from RSSI values.
-
-        Args:
-            rssi (int): The signal strength in dBm.
-
-        Returns:
-            str: A string representing signal strength ("3 bars").
-        """
-    if rssi is None:
-        return 0
-
-    if rssi > -50:
-        return 4
-    elif rssi > -60:
-        return 3
-    elif rssi > -70:
-        return 2
-    elif rssi > -80:
-        return 1
-    else:
-        return 0
-
-
-def quality_to_string(quality):
-    """
-    Generates text strings for signal metrics.
-    Args:
-        quality (int): The link quality metric from the system.
+    get ESSID string from iw
 
     Returns:
-        str: A descriptive string ("Excellent" to "Unstable Link").
+        str: ESSID string, or "wlan0 essid unknown"
     """
-    if quality is not None:
-        if quality >= 90:
-            return "Excellent"
-        elif quality >= 80:
-            return "Very Good"
-        elif quality >= 70:
-            return "Good"
-        elif quality >= 50:
-            return "Low Quality"
-        else:
-            return "Unstable Link"
-    else:
-        return "Disconnected"
+    try:
+        out = subprocess.check_output([IW_CMD, "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
+        for line in out.splitlines():
+            if "SSID:" in line:
+                return line.split("SSID:")[1].strip()
+    except Exception as e:
+        logger.exception(e)
+        pass
 
-
-def frequency_to_channel(frequency):
-    """Converts MHz frequency to a standard 2.4GHz channel number."""
-    if frequency == 2484:
-        return 14
-    if 2412 <= frequency <= 2472:
-        return (frequency - 2412) // 5 + 1
-    return "???"
-
-
-def get_password_for_ssid(ssid):
-    """
-    Gets the Wi-Fi password for a given SSID from environment variables.
-
-    Args:
-        ssid (str): The SSID to look up in the environment.
-
-    Returns:
-        str: The password string if found, otherwise None.
-    """
-    env_key = f"WIFI_PASS_{ssid}"
-    return os.getenv(env_key)
+    return "wlan0 essid unknown"
 
 
 def connect_ssid(ssid):
@@ -597,6 +383,20 @@ def connect_ssid(ssid):
     return f"wlan0:connected:{ssid}" in status_check.stdout
 
 
+def get_password_for_ssid(ssid):
+    """
+    Gets the Wi-Fi password for a given SSID from environment variables.
+
+    Args:
+        ssid (str): The SSID to look up in the environment.
+
+    Returns:
+        str: The password string if found, otherwise None.
+    """
+    env_key = f"WIFI_PASS_{ssid}"
+    return os.getenv(env_key)
+
+
 def remove_ssid(ssid="shell-fi"):
     """
     Deletes a specific WiFi connection profile from NetworkManager.
@@ -630,6 +430,69 @@ def perform_wifi_scan(interface, target_ssid=None, channel: int = None):
         subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return None
+
+
+def scan_target_ssid(interface, target_ssid=None, channel: int = None):
+    """
+    High-speed scan with forced hardware scan (moderate), also contains kernel cache (faster but stale data).
+    Only works for 2.4GHz in Pi Zero
+
+    Args:
+        interface (str): The network interface to scan (default: "wlan0").
+        target_ssid (str): The SSID to search for in the scan results.
+        channel (int): The Wi-Fi channel number (ex: 1, 6, 11),
+
+        Moderate is slower but guarantees fresh data.
+
+    Returns:
+        int: The signal strength (RSSI) in dBm if found, otherwise None.
+    """
+
+    try:
+        if SCAN_CACHES_FAST_MODE:
+            cmd = ["sudo", IW_CMD, "dev", interface, "scan", "dump"]
+        else:
+            cmd = ["sudo", IW_CMD, "dev", interface, "scan"]
+
+        # Append channel frequency scoping if running physical scans to speed up turnaround times
+        if channel is not None and not SCAN_CACHES_FAST_MODE:
+            freq_mhz = channel_to_frequency(channel, "2.4 GHz")
+            if freq_mhz:
+                cmd.extend(["freq", str(freq_mhz)])
+
+        scan = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    # Parse 'iw' output cleanly regardless of leading newlines
+    if scan.startswith("BSS "):
+        scan = "\n" + scan
+    bss_blocks = re.split(r'\nBSS ', scan)
+    networks = []
+
+    for block in bss_blocks[1:]:
+        ssid_match = re.search(r'SSID: (.*)', block)
+        ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
+
+        rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
+        rssi = int(float(rssi_match.group(1))) if rssi_match else -100
+
+        # If found target_ssid, return immediately
+        if target_ssid and (target_ssid in ssid):
+            return rssi
+
+        bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
+        bssid = bssid_match.group(1) if bssid_match else "Unknown"
+
+        band, channel = parse_band_from_cell(block)
+        networks.append(PiNetworkMock(ssid, bssid, rssi, band, channel))
+
+    logger.debug(f"Checking SSID: {target_ssid} on channel: {channel}")
+    if target_ssid is not None:
+        return None
+
+    return sorted(networks, key=lambda net: net.rssi_value(), reverse=True) if target_ssid is None else None
 
 
 def scan_single_channel(interface: str, channel: int):
@@ -691,3 +554,169 @@ def trigger_background_scan(interface):
         time.sleep(0.5)
         subprocess.run(["sudo", "nmcli", "device", "connect", interface], stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL)
+
+
+def parse_band_from_cell(cell) -> tuple:
+    """Parses channel and frequency from text to calculate the band string and explicit channel number"""
+    # capture explicit channel from text
+    channel_match = re.search(r'Channel:\s*(\d+)', cell, re.IGNORECASE)
+    channel = int(channel_match.group(1)) if channel_match else None
+
+    # capture frequency (freq: 2412" or "freq: 5180")
+    freq_match = re.search(r'freq:\s*(\d+\.?\d*)', cell, re.IGNORECASE)
+    freq = float(freq_match.group(1)) if freq_match else None
+
+    # Fallback if channel parsing fails but frequency exists
+    if channel is None and freq:
+        if freq > 100:
+            freq = freq / 1000.0
+
+        if 2.400 <= freq <= 2.495:
+            if freq == 2.484:
+                channel = 14
+            else:
+                channel = int((freq - 2.412) / 0.005) + 1
+
+        elif 5.150 <= freq <= 5.895:
+            channel = int((freq - 5.000) / 0.005) / 4
+            channel = int(channel)
+
+        elif 5.925 <= freq <= 7.125:
+            channel = int((freq - 5.940) / 0.005) / 4 + 1
+            channel = int(channel)
+        else:
+            channel = None
+
+    if channel is None:
+        band = "Unknown"
+    elif channel <= 14:
+        band = "2.4 GHz"
+    elif channel <= 177:  # Standard upper limit boundary for regional 5GHz bands
+        band = "5 GHz"
+    else:
+        band = "6 GHz"
+
+    return band, channel
+
+
+def map_band_to_string(net) -> str:
+    """
+    Duck-typed for Linux mock objects to keep the display same function signature as
+    CoreWLAN Map bands using CoreWLAN's band integers
+    """
+    if hasattr(net, 'parsed_band'):
+        return net.parsed_band()
+    return "Unknown"
+
+
+def rssi_to_string(rssi):
+    """
+    Generates text strings from RSSI value.
+
+        Args:
+            rssi (int): The signal strength in dBm.
+
+        Returns:
+            str: A string representing signal strength ("3 bars").
+        """
+    if rssi is None:
+        return "None"
+    if rssi > -50: return "4 bars"
+    if rssi > -60: return "3 bars"
+    if rssi > -70: return "2 bars"
+    if rssi > -80: return "1 bar"
+    return "0 bar"
+
+
+def rssi_to_bars(rssi):
+    """
+    Integer number of bars from RSSI values.
+
+        Args:
+            rssi (int): The signal strength in dBm.
+
+        Returns:
+            str: A string representing signal strength ("3 bars").
+        """
+    if rssi is None:
+        return 0
+
+    if rssi > -50:
+        return 4
+    elif rssi > -60:
+        return 3
+    elif rssi > -70:
+        return 2
+    elif rssi > -80:
+        return 1
+    else:
+        return 0
+
+
+def quality_to_string(quality):
+    """
+    Generates text strings for signal metrics.
+    Args:
+        quality (int): The link quality metric from the system.
+
+    Returns:
+        str: A descriptive string ("Excellent" to "Unstable Link").
+    """
+    if quality is not None:
+        if quality >= 90:
+            return "Excellent"
+        elif quality >= 80:
+            return "Very Good"
+        elif quality >= 70:
+            return "Good"
+        elif quality >= 50:
+            return "Low Quality"
+        else:
+            return "Unstable Link"
+    else:
+        return "Disconnected"
+
+
+def frequency_to_channel(frequency):
+    """Converts MHz frequency to a standard 2.4GHz channel number."""
+    if frequency == 2484:
+        return 14
+    if 2412 <= frequency <= 2472:
+        return (frequency - 2412) // 5 + 1
+    return "???"
+
+
+def channel_to_frequency(channel: int, band: str) -> int:
+    """
+    Maps a given channel number and band back to its standard MHz.
+
+    Args:
+        channel (int): The Wi-Fi channel number (ex: 1, 6, 36, 149).
+        band (str): The string descriptor of the band ("2.4 GHz", "5 GHz", "6 GHz").
+
+    Returns:
+        int: The center frequency in MHz, or None if the mapping is invalid.
+    """
+    if channel is None or not band:
+        return None
+
+    band_clean = band.replace(" ", "").lower()
+
+    # 2.4 GHz
+    if "2.4" in band_clean:
+        if channel == 14:
+            return 2484
+        if 1 <= channel <= 13:
+            return 2412 + (channel - 1) * 5
+
+    # 5 GHz Band
+    elif "5" in band_clean:
+        if 32 <= channel <= 177:
+            return 5000 + (channel * 5)
+
+    # 6 GHz Band (Wi-Fi 6E / 7)
+    elif "6" in band_clean:
+        if 1 <= channel <= 233:
+            return 5940 + (channel * 5)
+
+    return None
