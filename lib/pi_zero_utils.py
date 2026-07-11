@@ -1,6 +1,12 @@
 # pi_zero_utils.py
 """
 General purpose Pi Zero functions
+
+Temperature:
+    pico_temperature(): get temperature of internal on-chip temperature.
+
+Time-out:
+    time_out(): wrapper to timeout number of seconds.
 """
 import signal
 from contextlib import contextmanager
@@ -9,7 +15,7 @@ from contextlib import contextmanager
 def pico_temperature() -> float:
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            # Read millicelsius string ("43500")
+            # Read milli-celsius string ("43500")
             raw_temp = f.read().strip()
             return float(raw_temp) / 1000.0
     except (FileNotFoundError, ValueError, IOError):
