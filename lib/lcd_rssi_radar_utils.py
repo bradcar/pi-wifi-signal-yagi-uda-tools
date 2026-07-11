@@ -2,6 +2,24 @@
 """
 lcd Radar Utilities, to be used by pi_yagi_uda.py and pi_wifi_scan_radar.py
 
+Primary Metrics Parsing
+    extract_radar_metrics(): Get peaks info from  a 360-degree array of RSSI signals
+
+Main Radar Display
+    display_radar_lcd(): High-level rendering of 240px x 240px radar screen elements.
+
+Radar Draw Engine
+    draw_rssi_polygon(): Computes multi-vertex radar coordinates area map.
+    draw_crosshairs(): Draw a North solid line and dotted line for other 3 coordinates.
+    draw_peak_arc(): Draws arc connecting same peak values also mean indicator.
+    draw_rssi_box(): Draws tracking box at compass angle at RSSI distance.
+    draw_indicator(): Switches square indicating cadence of display updates.
+    arrow_annotation(): Radar image display Left/Right direction guidance for peak rotation.
+    draw_box(): Draw rectangle shape at a given screen coordinate.
+
+Vector Navigation & Geometry
+    rotation_to_peak(): Calculate shortest angular difference between two directions.
+
 Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
     * Indicator update cadence if showing continuous updates, not shown for single render
