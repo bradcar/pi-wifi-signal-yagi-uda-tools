@@ -14,7 +14,7 @@ Hardware:
 Features
     * Scans all Wi-Fi's and collects strength at direction
     * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
-    * Can Create Hi-Resolution .png of selected Wi-Fis every 1° plot
+    * Can Create Hi-Resolution .png of selected Wi-Fi's every 1° plot
     * Outputs csv of 360° data for each Wi-Fi
     * Displays channel used by each
     *
@@ -95,7 +95,7 @@ def init_i2c() -> tuple[bool, I2C, bool]:
 
 def update_bssid_map(data, heading, bssid_map):
     """
-    Updates the persistent bssid_map with current rssi data. If ssid is unknown it will updated in later
+    Updates the persistent bssid_map with current rssi data. If ssid is unknown it is updated in later
     scans if a ssid is found.
     """
     heading = int(heading % 360) if heading is not None else None
@@ -226,7 +226,7 @@ def e_ink_print(draw, font, image, epd_display, data, heading):
 
 
 def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
-    """ Print for LCD display """
+    """ Text Print for LCD """
 
     # Screen 0: Interactive menu option to Plot RSSI?
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
@@ -370,6 +370,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
             return target_bssid, chosen_ssid
 
         time.sleep(0.1)
+    return None
 
 
 def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
@@ -395,7 +396,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
     print(f"Saved csv: {csv_file}")
 
-    # Create pngs
+    # Create png's
     start_time = time.time()
     polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
@@ -712,8 +713,8 @@ def main():
         print("\nSaving plots...")
 
         # directory for polar plots
-        dir = "logs_polar_plots"
-        plot_dir = Path(dir)
+        plot_dir_string = "logs_polar_plots"
+        plot_dir = Path(plot_dir_string)
         plot_dir.mkdir(exist_ok=True)
 
         timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
