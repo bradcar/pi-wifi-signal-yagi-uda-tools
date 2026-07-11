@@ -6,6 +6,22 @@ Left Display:   160px x  80px (12,800 px)
 Center display: 240px x 240px (57,600 px)
 Right display:  160px x  80px (12,800 px)
 
+Hardware Initialization
+    init_lcd_display():Inits Waveshare LCD 3 Screens (center: 240px x 240px, two: 160px x  80px)
+    create_lcd_display_canvases(): Create 3 Canvases one for each Screen.
+
+Canvas Management
+    clear_canvas(): Clear canvas to black.
+    refresh_lcd_display(): Transmits raw frame buffers to redraw through SPI hardware.
+
+Text Renditions
+    print_270(): Use anti-aliased transparency map to rotate string 270 degrees
+    print_rotated(): Use anti-aliased transparency map to rotate string arbitrary degrees
+
+Vector Primitive Layouts & Splash Art
+    display_2_splash_lcd(): Reads images from asset/image to the hardware display driver.
+    draw_directional_arrow(): Draws bitmap array to screen coordinates.
+
 Add LCD st7789 to user code:
 1) Imports
     import lib.lcd_st7789_utils as lcd
