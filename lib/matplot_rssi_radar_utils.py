@@ -6,12 +6,17 @@ Peak RSSI is detected and its value and heading are printed in the title.
 Magnetic North is 0° degrees, East is 90° degrees.
 
 Features:
-- Runs on MacOS or Pi Zero 2 W
+- Runs on macOS or Pi Zero 2 W
 - lcd_png_generate flag - if True creates small 240px x 240px png for direct display on small color LCD
 - Dark Mode created for testing and possible use for lcd png's.
 - Detects peak RSSI, or mid of plateau of peaks
 - Autoscales so the peak is 85% of the polar plot limit.
 - Indicates peak with red line from plot boundary to peak, outside of boundary peaks RSSI printed.
+
+Methods:
+    peaks_arc_calc(): Calculates the angular midpoint and bounding arc across a cluster of peak RSSI readings.
+    rssi_peak(): Identifies the maximum RSSI value and filters data to pass peak cluster information down for arc calculation.
+    plot_rssi_polar(): Filters input data, dark/light UI modes, generates matplotlib polar radar plot. Creates png.
 
 Dependencies:
     matplotlib, numpy
@@ -52,7 +57,7 @@ LCD_INCHES = LCD_PIXELS / LCD_DPI
 
 
 def rssi_peak(valid_data) -> tuple[float, float, Any, Any, Any]:
-    """valid_data is a a 2D numpy array. Column 0: degree, Column 1: rssi"""
+    """valid_data is a 2D numpy array. Column 0: degree, Column 1: rssi"""
     max_rssi = valid_data[:, 1].max()
 
     # Filter rows where rssi matches the maximum value

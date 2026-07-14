@@ -14,10 +14,11 @@ Features
     * Connected: iw scan dump - if use SCAN_CACHES_FAST_MODE=True, however this may return stale data
     * Scan:  iw scan - returns RSSI
 
-Classes / Data Models
+Methods & Classes:
+Classes / Data Models:
     PiNetworkMock: Data model mimicks CoreWLAN network objects used by MacOS
 
-Initialization
+Initialization:
     init_wifi(): Validates system dependencies (iw) and checks for physical accessibility of the wlan0 interface.
 
 Connected Mode (High-Level Active Links):

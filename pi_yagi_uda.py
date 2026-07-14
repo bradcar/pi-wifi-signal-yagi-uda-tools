@@ -78,6 +78,7 @@ Requirements (beyond normal i2c):
 TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 TODO uncomment logging code to Pi Zero flash
 TODO uncomment saving Actual RSSI to heading, instead of fake testing code
+TODO add small rectangle around RSSI point at peak value at compass heading at top of display
 """
 import os
 import subprocess
@@ -832,7 +833,7 @@ def main():
                 display_radar_lcd(
                     disp2_draw, cadence_fill, loc_heading, loc_rssi_heading_history, loc_is_connected,
                     peak_degree, peak_rssi,
-                    peak_cluster
+                    peak_cluster, loc_rssi
                 )
 
                 # Annotate radar with heading & peak arrows, seems unneeded enough visual cues with peak indicators

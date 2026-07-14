@@ -1,4 +1,10 @@
 # polar_math_utils.py
+"""
+
+Methods:
+    calculate_peak_bounds(): Calculate the vector mean between multiple peaks
+
+"""
 import numpy as np
 
 

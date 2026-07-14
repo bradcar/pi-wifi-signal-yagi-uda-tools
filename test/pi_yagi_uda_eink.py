@@ -65,7 +65,7 @@ from datetime import datetime
 import digitalio
 from adafruit_epd.ssd1680 import Adafruit_SSD1680
 
-# for Monochrom E-ink 0 is black and 255 is white,  SSD1306 Monochrome is 0 for black and 1 for white
+# for Monochrome E-ink 0 is black and 255 is white,  SSD1306 Monochrome is 0 for black and 1 for white
 FILL_WHITE = 255
 
 import board
@@ -76,7 +76,8 @@ from adafruit_bno08x.i2c import BNO08X_I2C
 from gpiozero import Button
 
 # Network signal tracking dependencies
-from pi_wifi_rssi_quality_txrate import get_ssid, probe_target_ssid, query_wifi, print_metrics
+from pi_wifi_rssi_quality_rxrate import print_metrics
+from vendor.waveshare_lcd import get_ssid, query_wifi, scan_target_ssid
 
 # Import the mock test environment
 from cardiod_test_data_generator import measured_signal_strength, MOCK_SIGNAL_ARRAY
@@ -101,9 +102,9 @@ VIRTUAL_WIDTH = 250
 VIRTUAL_HEIGHT = 122
 
 # Globals
-long_press = False
-short_press = False
-button_press_time = 0.0
+button0_long_press = False
+button0_short_press = False
+button0_press_time = 0.0
 download_count = 0
 
 # SSD1306: Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
@@ -113,12 +114,12 @@ button0 = Button(5, pull_up=True, bounce_time=0.1, hold_time=1.0)
 
 
 def on_button_pressed():
-    global button_press_time
+    global button0_press_time
     button_press_time = time.time()  # Capture raw baseline time on down-stroke
 
 
 def on_button_released():
-    global short_press, long_press, button_press_time
+    global button0_short_press, button0_long_press, button0_press_time
 
     # Calculate press time
     if button_press_time > 0.0:
@@ -390,7 +391,7 @@ def display_radar_ssd(draw, current_sweep_angle: float, cadence_fill, heading: f
 
 
 def main():
-    global short_press, long_press, download_count
+    global button0_short_press, button0_long_press, download_count
 
     print("Starting Pi Zero 2 W Signal & Antenna Tracking...\n")
     i2c1, i2c0, ssd_detected, bno_detected = init_i2c()
@@ -446,7 +447,7 @@ def main():
                 tx_rate = None
                 quality = None
 
-                rssi = probe_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
+                rssi = scan_target_ssid(interface="wlan0", target_ssid=TARGET_SSID)
                 ssid = TARGET_SSID if rssi is not None else None
 
                 if rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
