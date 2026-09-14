@@ -14,10 +14,9 @@ Hardware:
 Features
     * Scans all Wi-Fi's and collects strength at direction
     * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
-    * Can Create Hi-Resolution .png of selected Wi-Fi's every 1° plot
+    * Can Create Hi-Resolution .png of selected Wi-Fis every 1° plot
     * Outputs csv of 360° data for each Wi-Fi
     * Displays channel used by each
-    *
 
 Unfortunately, No Quality nor RX bitrates on unconnected networks.
 For connected network use: pi_wifi_rssi_quality_rxrate.py
@@ -29,7 +28,11 @@ Usage:
   in terminal, python3 mac_wifi_scan_rssi.py
   can also run in PyCharm
 
-TODO:
+TODOs:
+TODO REMOVE heading=0 WHEN MAGNETOMETER IS INSTALLED
+TODO REMOVE For testing: Make Random index of no magnetometer
+TODO DO NOT HARDCODE e_ink_detected
+TODO Fix hardcoded heading = 37° when add Magnetometer !!!!
 
 """
 import random
@@ -64,7 +67,7 @@ BLOCK_NON_2_4_G = True  # Pi Zero 2 W shows only 2.4 GHz
 button1_pressed = False
 button2_pressed = False
 button1 = Button(25, pull_up=True, bounce_time=0.1)
-button2 = Button(26, pull_up=True, bounce_time=0.1)  # TODO CHANGE THIS TO 26 with LCD
+button2 = Button(26, pull_up=True, bounce_time=0.1)
 
 
 def button1_callback():
@@ -95,7 +98,7 @@ def init_i2c() -> tuple[bool, I2C, bool]:
 
 def update_bssid_map(data, heading, bssid_map):
     """
-    Updates the persistent bssid_map with current rssi data. If ssid is unknown it is updated in later
+    Updates the persistent bssid_map with current rssi data. If ssid is unknown it will updated in later
     scans if a ssid is found.
     """
     heading = int(heading % 360) if heading is not None else None
@@ -226,7 +229,7 @@ def e_ink_print(draw, font, image, epd_display, data, heading):
 
 
 def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
-    """ Text Print for LCD """
+    """ Print for LCD display """
 
     # Screen 0: Interactive menu option to Plot RSSI?
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
@@ -370,7 +373,6 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
             return target_bssid, chosen_ssid
 
         time.sleep(0.1)
-    return None
 
 
 def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
@@ -396,7 +398,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
     print(f"Saved csv: {csv_file}")
 
-    # Create png's
+    # Create pngs
     start_time = time.time()
     polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
@@ -713,8 +715,8 @@ def main():
         print("\nSaving plots...")
 
         # directory for polar plots
-        plot_dir_string = "logs_polar_plots"
-        plot_dir = Path(plot_dir_string)
+        dir = "logs_polar_plots"
+        plot_dir = Path(dir)
         plot_dir.mkdir(exist_ok=True)
 
         timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
