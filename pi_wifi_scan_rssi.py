@@ -4,7 +4,7 @@ Pi hardware only measures RSSI on 2.4GHz WiFi (not 5GHz or 6GHz). Runs on Raspbe
 Scans repeatedly, sorted by strongest RSSI first.
 
 Hardware:
-    * Waveshare: Triple LCD HAT for Raspberry Pi Zero/Zero W/Zero WH/2B/3B/3B+/4B
+    * WaveShare: Triple LCD HAT for Raspberry Pi Zero/Zero W/Zero WH/2B/3B/3B+/4B
     * Onboard 1.3inch IPS LCD Main Screen
     * Dual 0.96inch IPS LCD Secondary Screens
     * 2x User-Defined Keys
@@ -13,8 +13,9 @@ Hardware:
 
 Features
     * Scans all Wi-Fi's and collects strength at direction
+    * Pi Zero 2W scan perioid 940ms (~1 Hz)
     * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
-    * Can Create Hi-Resolution .png of selected Wi-Fis every 1° plot
+    * Can Create Hi-Resolution .png of selected Wi-Fi's every 1° plot
     * Outputs csv of 360° data for each Wi-Fi
     * Displays channel used by each
 
@@ -98,7 +99,7 @@ def init_i2c() -> tuple[bool, I2C, bool]:
 
 def update_bssid_map(data, heading, bssid_map):
     """
-    Updates the persistent bssid_map with current rssi data. If ssid is unknown it will updated in later
+    Updates the persistent bssid_map with current rssi data. If ssid is unknown it will be updated in later
     scans if a ssid is found.
     """
     heading = int(heading % 360) if heading is not None else None
@@ -132,7 +133,7 @@ def update_bssid_map(data, heading, bssid_map):
             random_degree = random.randint(0, 300)
             fake_rssi = rssi
             # signals out of 20° (150-170°), reduce signal by -15 dBm
-            if not (random_degree > 150 and random_degree < 170):
+            if not (150 < random_degree < 170):
                 fake_rssi -= 15
             if fake_rssi < -99:
                 fake_rssi = -99
@@ -328,14 +329,14 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
 
     select = False
     idx_pick = 1
-    MAX_VISIBLE_ROWS = 8
+    max_visible_rows = 8
 
     while not select:
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
 
         # sliding window start, and show title
-        if idx_pick > MAX_VISIBLE_ROWS:
-            start_idx = idx_pick - MAX_VISIBLE_ROWS
+        if idx_pick > max_visible_rows:
+            start_idx = idx_pick - max_visible_rows
         else:
             start_idx = 0
 
@@ -344,7 +345,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
         y -= 24
 
         # show visible rows
-        visible_chunk = filtered_networks[start_idx:start_idx + MAX_VISIBLE_ROWS]
+        visible_chunk = filtered_networks[start_idx:start_idx + max_visible_rows]
         for local_i, net_dict in enumerate(visible_chunk):
             current_abs_idx = start_idx + local_i + 1
             ssid = net_dict["ssid"]
@@ -375,6 +376,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
             return target_bssid, chosen_ssid
 
         time.sleep(0.1)
+    return None
 
 
 def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
@@ -697,11 +699,11 @@ def main():
                     if any(v > -80.0 for v in info["rssi_history"])
                 )
 
-                print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Wi-Fis above -80 dBm (>1-bar)")
+                print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Networks, only {above_80_rssi} above -80 dBm (>1-bar)")
                 print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"  Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
                 print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C")
-                print(f"{'Blocked <1-bar & Pi Zero (only 2.4GHz)' if BLOCK_0_BAR else 'Pi Zero (only 2.4GHz)'}\n")
+                print(f"{'Only showing networks with >1-bar & 2.4GHz' if BLOCK_0_BAR else 'Only showing 2.4GHz networks'}\n")
 
             if button2_pressed:
                 button2_pressed = False
@@ -717,8 +719,8 @@ def main():
         print("\nSaving plots...")
 
         # directory for polar plots
-        dir = "logs_polar_plots"
-        plot_dir = Path(dir)
+        plot_directory_name = "logs_polar_plots"
+        plot_dir = Path(plot_directory_name)
         plot_dir.mkdir(exist_ok=True)
 
         timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
