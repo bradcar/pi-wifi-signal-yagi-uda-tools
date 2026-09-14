@@ -236,8 +236,8 @@ def lcd_display(lcd, disp_0, disp_1, disp_2, data, heading):
 
     # Screen 0: Interactive Menu Option - left-most display
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270("Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="green")
-    lcd.print_270("RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="green")
+    lcd.print_270("Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="yellow")
+    lcd.print_270("RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="yellow")
     disp_0.ShowImage(image0)
 
     # Screen 1: Heading & Clock - right-most display
@@ -409,8 +409,8 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
     return polar_plot_image
 
 
-def render_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
-                        has_valid_history):
+def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree, peak_cluster,
+                         has_valid_history):
     """
     Pure rendering function: Draws the UI layers onto screens 0, 1, and 2.
     """
