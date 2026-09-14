@@ -65,7 +65,7 @@ from lib.pi_zero_utils import timeout
 # Fast scan only get RSSI
 USE_PROC_NET_WIRELESS = False
 
-# fast scan but stale cached data returned quickly
+# Fast scan but stale cached data returned quickly
 SCAN_CACHES_FAST_MODE = False
 
 # Tracks (Link Quality, RSSI, Missed Beacons) to filter out results with no state change
@@ -115,7 +115,7 @@ def init_wifi():
             f"CRITICAL: Failed to execute '{IW_CMD}'. Check environment variables or run 'sudo apt install iw'."
         )
 
-    # For Raspberry Pi, check that wlan0 interface is accessible via iwlist
+    # On Raspberry Pi, check that wlan0 interface is accessible via iwlist
     if os.path.exists("/sys/class/net/wlan0"):
         return "wlan0"
     return None
@@ -151,7 +151,7 @@ def query_wifi():
         try:
             rssi, quality, is_new_rssi = query_wifi_proc_net_wireless_fast()
 
-            # If the fingerprint matches old state, drop out to prevent stale UI redraws
+            # When the fingerprint matches old state, drop out to prevent stale UI redraws
             if not is_new_rssi:
                 return None, None, None, None, None, is_new_rssi
 
@@ -163,7 +163,7 @@ def query_wifi():
 
         return None, None, None, None, None, is_new_rssi
 
-    # Standard iw for all metrics
+    # Use standard 'iw' for all metrics
     try:
         out = subprocess.check_output([IW_CMD, "dev", "wlan0", "link"], text=True, stderr=subprocess.DEVNULL)
 
@@ -186,7 +186,7 @@ def query_wifi():
                     tx_bitrate = float(match.group(1))
 
     except subprocess.CalledProcessError as e:
-        # Check if the process died due to Ctrl+C (SIGINT)
+        # Check if the process died due to Ctrl-C (SIGINT)
         if e.returncode == -2 or e.returncode == 130:
             logger.debug("query_wifi: 'iw' command interrupted by user (SIGINT)")
         else:
