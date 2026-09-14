@@ -24,7 +24,7 @@ Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
     * Indicator update cadence if showing continuous updates, not shown for single render
     * RSSI current value shown as box at compass heading
-    * todo should RSSI=0 or =None be invisible or at center?
+    * TODO should RSSI=0 or =None be invisible or at center?
 """
 
 import math
