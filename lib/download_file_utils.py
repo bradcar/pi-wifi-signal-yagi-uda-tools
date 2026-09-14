@@ -9,7 +9,7 @@ import urllib.error
 from urllib.parse import urlparse
 
 
-def download_file(url_string, destination_directory="/home/pi/downloads"):
+def download_file(url_string, destination_directory="/home/pi/downloads", timeout=5):
     """
     Downloads log file directly from the Pi Pico AP.
     Saves it using the Pico's dynamic versioned filename and validates file size.
@@ -34,7 +34,6 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
         print(f"download_file ERROR: Directory exists but is not writable: '{destination_directory}'")
         return False, None
 
-    timeout = 5
     print(f"download_file: Download from {url_string}, timeout = {timeout} secs")
 
     local_filename = None
