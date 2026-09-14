@@ -1,57 +1,70 @@
-# pi_yagi_uda.py
+#
 """
+pi_yagi_uda.py
+
 On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
-and RX Bitrate of the currently targeted network on interface wlan0.
-When connected to a Yagi-Uda Antenna and an Magnetometer we can use this to locate the Wi-Fi source.
-The code handles connection drops and resumes automatically on reconnect.
+and RX Bitrate of a targeted network on interface wlan0.
+When paired with a Yagi-Uda directional antenna and an LIS3MDL magnetometer,
+signal strength is mapped with physical headings to locate the Wi-Fi signal source.
+The code automatically handles connection drops and resumes polling upon reconnect.
+When there is sufficient signal strength when connected a the file on a specifiec webpage can be downloaded.
 
-Metrics are printed to console and shown on the OLED display.
-The OLED display on the left has 96px for text:
- - 3 lines of text with 16 chars (4 lines looks bad)
-On the right 32px, show the signal strength at a compass direction as a radar-style graphic.
- - 32x32 box with circle centered with a radius of 15px
+Operational Modes:
+    * Scan Mode (is_connected == False, nmcli is 'down')
+      - Uses low-frequency Wi-Fi pings with system utilities (`nmcli` / `iw`).
+      - Measures RSSI for signal stength.
+      - First successful transition to Connected mode initializes/resumes background polling.
+      - Refresh Rate: ~5 Hz (194 ms period) on Pi Zero 2 W.
+    * Connected Mode (is_connected == True, nmcli is 'up'):
+      - Multi-threaded polling direct from the network interface that tracks RSSI, Link Quality, and RX Bitrate.
+      - Threading model utilizes a `SimpleNamespace` metrics store protected by `metrics_lock`.
+      - Display Refresh Rate : ~ 9 Hz (113 ms period) on Pi Zero 2 W.
+      - Wi-Fi Metric Updates : ~31 Hz (32 ms period) on Pi Zero 2 W.
 
-0. short press >0.1 sec
-   long press >0.5 sec
-1. Starts in Scan Mode
-   a. If signal ≥ RSSI_CONNECT_THRESHOLD, a short press starts Connected Mode (nmcli up).
-2. In Connection Mode
-   a. If signal ≥ RSSI_DOWNLOAD_THRESHOLD, a short press starts download.
-      if no download after 5 second timeout, display will continue to show "..dload 0?"
-   b. A long press returns to Scan Mode (nmcli down)
+Display Layouts & Hardware Mapping:
+    * Waveshare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
+      - Left Display  (disp_0): 160px x  80px (12,800 px)
+      - Center Display(disp_1): 240px x 240px (57,600 px)
+      - Right Display (disp_2): 160px x  80px (12,800 px)
+    * Button Mapping - Displaty buttons next to left display (gpiozero with active on Pi pull-ups):
+      - External trigger Button 0 (GPIO 6)  : Primary trigger (Supports short/long press detection)
+      - Top Button 2 (GPIO 26) : Connection mode toggle (Scan vs. Connected)
+      - Botton Button 1 (GPIO 25) : Manual file download trigger
+    * External Trigger Button Press Logic, overlaps with display buttons:
+      - Short Press (< 0.5s):
+        * In Scan Mode      -> Triggers transition to Connected Mode (`nmcli connection up`).
+        * In Connected Mode -> Triggers remote file payload download.
+      - Long Press (>= 0.5s):
+        * Forces disconnect and reverts interface to Scan Mode (`nmcli connection down`).
 
- Pi Zero 2 W must be modified to attach an external antenna like a Yagi-Uda Antenna.
- directions:
- https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s   (great peal trace back idea)
- https://www.briandorey.com/post/raspberry-pi-zero-2-w-external-antenna-mod  (maybe beter on uFL soldering?)
-  Note: I've read that Uda was the inventor and Yagi was the promoter.
+Sensors & Antenna Integration:
+    * Configuration and Wi-Fi credentials loaded via `python-dotenv`.
+    * Magnetometer (LIS3MDL): Tracks compass heading (0.0° – 359.9°).
+      - Calibration uses `lis3mdl_calibration_parameters.py` using raw output from
+        `hard_only_calibrate_lis3mdl_test.py`.
+    * Yagi-Uda Antenna:
+      - Requires a modification, by adding u.FL connector on Pi Zero 2 W (see YouTube references below).
 
- The Pi Zero 2 W is running Debian Trixie base. 64-bit with no desktop environment
-  - uname -a
-Linux pi-zero 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64 GNU/Linux
-
-Update rates:
-Updates: 546.5 msec, 2 Hz - Out of Range
-
-"Radar display" Polygon vertex count
+"Radar display" Polygon vertex count:
     - OLED radar circle (radius of 15 px) has max of 84 pixels on perimeter
     - 72 vertices every 5 degrees (360/5) -- likely best for clean signals
-    - 40 vertices every 9 degrees (360/9)
+    - (fallback lower rez, not used) 40 vertices every 9 degrees (360/9)
 
 Metrics Data Structure:
-    The state is maintained via `metrics = types.SimpleNamespace(...)` containing:
-        - is_connected (bool): Active hardware link status to TARGET_SSID.
-        - rssi (int/None): RSSI in dBm.
-        - quality (int/None): Link quality percentage (0-100%).
-        - rx_rate (float/None): RX bitrate (download from AP) in Mbps.
-        - tx_rate (float/None): TX bitrate in Mbps.
-        - bssid (str/None): BSSID (MAC) address of the connected Access Point.
-        - heading (float): Current magnetometer compass direction (0.0 - 359.9°).
-        - is_new_rssi (bool): Event flag indicating an unconsumed RSSI update.
-        - rssi_heading_history (list): 360-element array mapping degrees to last known RSSI value.
-        - update_period (float/None): Async duration in seconds of metrics update_period
+    State maintained via `metrics = types.SimpleNamespace(...)` containing:
+        - is_connected (bool)        : Link status to TARGET_SSID.
+        - rssi (int | None)          : Signal strength in dBm.
+        - quality (int | None)       : Link quality percentage (0–100%).
+        - rx_rate (float | None)     : RX bitrate in Mbps.
+        - tx_rate (float | None)     : TX bitrate in Mbps.
+        - bssid (str | None)         : MAC address of connected AP.
+        - heading (float)            : Magnetometer compass heading (0.0° – 359.9°).
+        - is_new_rssi (bool)         : Event flag indicating unconsumed RSSI update.
+        - rssi_heading_history (list): 360-element array mapping degrees (0–359) to RSSI dBm.
+        - update_period (float | None): Async execution loop duration in seconds.
+        - is_downloading (bool)      : Flag indicating active payload download task.
 
-    Data Structure Rules:
+    Multi-threaded Concurrency Rules:
         1. ALL reads and writes to metrics when USE_ASYNCH_METRICS must be protected with metrics_lock.
         2. Connected Mode Lifecycle (is_connected == True):
             - BACKGROUND THREAD: Owns exclusive mutation rights for metrics
@@ -64,18 +77,63 @@ Metrics Data Structure:
         3. Scan Mode (is_connected == False):
             - BACKGROUND THREAD: Is idle/throttled. It safely halts writing to metrics SimpleNamespace.
             - MAIN THREAD: Regains READ/WRITE ownership. It directly invokes handle_scan_mode()
-              to update metrics, hand buttons, and display results.
+              to update metrics, handle buttons, and display results.
 
-Requirements (beyond normal i2c):
-    update: lis3mdl_calibraton_parameters.py from output of hard_only_calibrate_lis3mdl_test.py
+Hardware Pinouts:
+    Component               Interface / Pins    Details
+    Magnetometer (LIS3MDL)	I2C1 (SDA / SCL)    I2C Address: 0x1C (or 0x1E)
+    Triple LCD Hat(ST7789)  SPI + GPIO          Disp 0, Disp 1, Disp 2, and has GPIO 25,26 on Hat
+    Buttons	(on external)   GPIO 6, 25, 26      Pulled up with hardware debouncing via gpiozero
+    Old: OLED (SSD1305)	I2C1 (SDA / SCL)        Display I2C Address: 0x3C
 
-    install:
-    sudo pip3 install adafruit-circuitpython-ssd1305 --break-system-packages
-    sudo apt-get install python3-pil
-    pip3 install adafruit-circuitpython-lis3mdl --break-system-packages
-    pip install python-dotenv --break-system-packages
+External Directional Antenna - Yagi Uda - Pi Zero 2 W Modifications
+    Pi Zero 2 W must be modified to attach an external antenna like a Yagi-Uda Antenna.
+    Uda was the inventor and Yagi was the promoter.
+
+    Pi Zero 2 W must be modified to add uFL connector. Modfification directions:
+        https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s   (great peal trace back idea)
+        https://www.briandorey.com/post/raspberry-pi-zero-2-w-external-antenna-mod  (maybe beter on uFL soldering?)
+
+Legacty OLED Display:
+    Metrics are printed to console and shown on the OLED display.
+    The OLED display on the left has 96px for text:
+     - 3 lines of text with 16 chars (4 lines looks bad)
+    On the right 32px, show the signal strength at a compass direction as a radar-style graphic.
+     - 32x32 box with circle centered with a radius of 15px
+
+SYSTEM PREPARATION & VIRTUAL ENVIRONMENT SETUP (Raspberry Pi Zero 2 W)
+======================================================================
+1. Enable Hardware Interfaces (I2C & SPI):
+   $ sudo raspi-config nonint do_i2c 0
+   $ sudo raspi-config nonint do_spi 0
+   $ sudo usermod -aG spi,gpio,i2c,netdev pi
+   (Requires 'sudo reboot' to apply group memberships and interface nodes)
+
+2. Grant Passwordless Sudo Privileges for NetworkManager (`nmcli` execution):
+   $ sudo visudo -f /etc/sudoers.d/010_pi-nopasswd
+   Add line:
+   pi ALL=(ALL) NOPASSWD: ALL
+
+3. System C Extensions & Binary Build Dependencies (APT):
+   $ sudo apt update && sudo apt install -y swig python3-dev liblgpio-dev build-essential python3-pil
+
+4. Native Virtual Environment Creation:
+   (Note: Keep outside PyCharm project directory to prevent cross-sync issues)
+   $ mkdir -p /home/pi/.virtualenvs
+   $ python3 -m venv /home/pi/.virtualenvs/pi-wifi-signal-yagi-uda-tools
+
+5. Install Python Package Requirements:
+   $ /home/pi/.virtualenvs/pi-wifi-signal-yagi-uda-tools/bin/python -m pip install --upgrade pip
+   $ /home/pi/.virtualenvs/pi-wifi-signal-yagi-uda-tools/bin/python -m pip install -r requirements.txt
+
+PyCharm Remote Deployment Notes:
+   - Target Interpreter: /home/pi/.virtualenvs/pi-wifi-signal-yagi-uda-tools/bin/python
+   - Target Deployment Path: /home/pi/pi-wifi-signal-yagi-uda-tools
+   - Excluded Paths: Exclude `.venv` from local/remote deployment sync options.
+================================================================================
 
 TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
+TODO fix heading with Magentometer data
 TODO uncomment logging code to Pi Zero flash
 TODO uncomment saving Actual RSSI to heading, instead of fake testing code
 TODO add small rectangle around RSSI point at peak value at compass heading at top of display
@@ -156,16 +214,15 @@ button0_press_time = 0.0
 button1_pressed = False
 button2_pressed = False
 
-# Configure Button on GPIO 26 (Physical Pin 37) with a 2.0 second hold threshold
-button1 = Button(25, pull_up=True, bounce_time=0.1)
 # Button Definitions for OLED Display
-# TODO TOGGLE FOR OLED
-# button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo OLED currently solder to 26
-# button2 = Button(6, pull_up=True, bounce_time=0.1)  # # todo OLED currently solder to 26
+# button0 = Button(26, pull_up=True, bounce_time=0.1, hold_time=0.5)
+# button1 = Button(25, pull_up=True, bounce_time=0.1)
+# button2 = Button(6, pull_up=True, bounce_time=0.1)
+
 # Button Definitions for LCD Display
-# TODO TOGGLE FOR LCD
 button0 = Button(6, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo resolder OLED to gpio6 p31
-button2 = Button(26, pull_up=True, bounce_time=0.1)  # todo resolder OLED to gpio6 p31
+button1 = Button(25, pull_up=True, bounce_time=0.1)
+button2 = Button(26, pull_up=True, bounce_time=0.1)
 
 
 def on_button0_pressed():
@@ -492,7 +549,7 @@ def handle_connected_mode(metrics, download_count, heading, target_ssid, url, de
                 if lcd and disp0 and disp1:
                     display_0_trying_download_lcd(lcd, disp0, download_count)
 
-                success, filename = download_file(url, destination_dir)
+                success, filename = download_file(url, destination_dir, timeout=5)
                 if success:
                     download_count += 1
                     print(f" -> Successful download to {destination_dir}/{filename}")
