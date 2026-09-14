@@ -3,12 +3,12 @@
 Pi hardware only measures RSSI on 2.4GHz WiFi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
 Scans repeatedly, sorted by strongest RSSI first.
 
-Hardware:
-    * WaveShare: Triple LCD HAT for Raspberry Pi Zero/Zero W/Zero WH/2B/3B/3B+/4B
-    * Onboard 1.3inch IPS LCD Main Screen
-    * Dual 0.96inch IPS LCD Secondary Screens
-    * 2x User-Defined Keys
-    * SPI Communication
+
+Display Layouts & Hardware Mapping:
+    * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
+      - Left Display  (disp_0): 160px x  80px (12,800 px)
+      - Center Display(disp_1): 240px x 240px (57,600 px)
+      - Right Display (disp_2): 160px x  80px (12,800 px)
 
 
 Features

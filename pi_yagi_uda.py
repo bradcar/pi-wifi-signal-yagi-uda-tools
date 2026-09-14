@@ -22,7 +22,7 @@ Operational Modes:
       - Wi-Fi Metric Updates : ~31 Hz (32 ms period) on Pi Zero 2 W.
 
 Display Layouts & Hardware Mapping:
-    * Waveshare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
+    * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
       - Left Display  (disp_0): 160px x  80px (12,800 px)
       - Center Display(disp_1): 240px x 240px (57,600 px)
       - Right Display (disp_2): 160px x  80px (12,800 px)
