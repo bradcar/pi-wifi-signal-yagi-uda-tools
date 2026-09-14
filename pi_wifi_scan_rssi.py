@@ -10,7 +10,6 @@ Display Layouts & Hardware Mapping:
       - Center Display(disp_1): 240px x 240px (57,600 px)
       - Right Display (disp_2): 160px x  80px (12,800 px)
 
-
 Features
     * Scans all Wi-Fi's and collects strength at direction
     * Pi Zero 2W scan perioid 940ms (~1 Hz)
@@ -173,7 +172,7 @@ def console_print(data, heading):
         if not (BLOCK_0_BAR and rssi <= -80) and not (BLOCK_NON_2_4_G and band != "2.4 GHz"):
             print(f"{truncated_ssid:<23} {band:<7}  {bssid}  ch={channel:<2} {rssi:>4} dBm  {rssi_string}")
 
-    print(f"  dir: {heading:.0f}°" if heading is not None else "  ** no compass **")
+    print(f"==> Heading direction: {heading:.0f}°" if heading is not None else "  ** no compass **")
 
 
 def oled_print(draw, font, image, oled_display, data, heading):
@@ -699,11 +698,11 @@ def main():
                     if any(v > -80.0 for v in info["rssi_history"])
                 )
 
+                print(f"\n{'Only showing networks with >1-bar & 2.4GHz' if BLOCK_0_BAR else 'Only showing 2.4GHz networks'}")
                 print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Networks, only {above_80_rssi} above -80 dBm (>1-bar)")
                 print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"  Updates: {duration * 1000:.1f} msec, {1.0 / duration:.0f} Hz")
-                print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C")
-                print(f"{'Only showing networks with >1-bar & 2.4GHz' if BLOCK_0_BAR else 'Only showing 2.4GHz networks'}\n")
+                print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C\n")
 
             if button2_pressed:
                 button2_pressed = False
