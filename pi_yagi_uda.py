@@ -3,7 +3,7 @@
 pi_yagi_uda.py
 
 On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
-and RX Bitrate of a targeted network on interface wlan0.
+and RX Bitrate of a targeted network on interface wlan0. Only measures RSSI on available 2.4GHz Wi-Fi's (not 5GHz or 6GHz)
 When paired with a Yagi-Uda directional antenna and an LIS3MDL magnetometer,
 signal strength is mapped with physical headings to locate the Wi-Fi signal source.
 The code automatically handles connection drops and resumes polling upon reconnect.
