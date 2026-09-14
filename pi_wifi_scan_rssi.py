@@ -228,56 +228,58 @@ def e_ink_print(draw, font, image, epd_display, data, heading):
     refresh_e_ink_display(epd_display, draw, image, partial=True)
 
 
-def lcd_print(lcd, disp_0, disp_1, disp_2, data, heading):
-    """ Print for LCD display """
+def lcd_display(lcd, disp_0, disp_1, disp_2, data, heading):
+    """Print scan results across the triple LCD HAT displays."""
+    time_str = datetime.now().strftime("%H:%M:%S")
+    heading_str = f"{heading:.0f}°" if heading is not None else "? °"
+    dir_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
 
-    # Screen 0: Interactive menu option to Plot RSSI?
+    # Screen 0: Interactive Menu Option - left-most display
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270(text="Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="green")
-    lcd.print_270(text="RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="green")
+    lcd.print_270("Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="green")
+    lcd.print_270("RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="green")
     disp_0.ShowImage(image0)
 
-    # Screen 1: Current Heading & time
+    # Screen 1: Heading & Clock - right-most display
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    if heading is not None:
-        lcd.print_270(text=f"{heading:.0f}°", pos=(132, 0), image=image1, font=lcd.font0_28pt, color="yellow")
-    else:
-        lcd.print_270(text=f"? °", pos=(132, 0), image=image1, font=lcd.font0_28pt, color="yellow")
-    lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
-                  color="yellow")
+    lcd.print_270(f"heading=", pos=(132, 0), image=image1, font=lcd.font0_16pt, color="yellow")
+    lcd.print_270(heading_str, pos=(104, 10), image=image1, font=lcd.font0_28pt, color="yellow")
+    lcd.print_270(time_str, pos=(2, 0), image=image1, font=lcd.font0_20pt, color="yellow")
     disp_1.ShowImage(image1)
 
+    # Screen 2: Wi-Fi RSSI Table - Center display
     image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
-    if heading is not None:
-        lcd.print_270(text=f"dir: {heading:.0f}°", pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-    else:
-        lcd.print_270(text=f"no compass", pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-    lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(240, 200), image=image2, font=lcd.font0_20pt,
-                  color="yellow")
 
-    ssid_trim_length = 9
+    # Header & Telemetry
+    lcd.print_270(dir_str, pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
+    lcd.print_270(time_str, pos=(240, 200), image=image2, font=lcd.font0_20pt, color="yellow")
+
     y = 210
-    lcd.print_270(text="SSID", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="blue")
-    lcd.print_270(text="dBm", pos=(y, 8 * 14 + 17), image=image2, font=lcd.font0_20pt, color="blue")
-    lcd.print_270(text="bar", pos=(y, 12 * 14 + 9), image=image2, font=lcd.font0_20pt, color="blue")
-    lcd.print_270(text="ch", pos=(y, 15 * 14 + 3), image=image2, font=lcd.font0_20pt, color="blue")
+    headers = [("SSID", 2, lcd.font0_24pt), ("dBm", 129, lcd.font0_20pt),
+               ("bar", 177, lcd.font0_20pt), ("ch", 213, lcd.font0_20pt)]
+    for label, x, font in headers:
+        lcd.print_270(label, pos=(y, x), image=image2, font=font, color="blue")
+
     y -= 24
 
+    # Show Network table in Rows
     for net in (data or []):
-        ssid = (net.ssid() or "<hidden>")
         rssi = net.rssi_value()
         band = map_band_to_string(net)
-        channel = net.channel() if hasattr(net, 'channel') else "??"
-        num_bars = rssi_to_bars(rssi)
-        bar_string = ("*" * num_bars).ljust(4)
-        bssid = net.bssid() or "Unknown"
-        truncated_ssid = ssid[:ssid_trim_length] + "." if len(ssid) > ssid_trim_length else ssid
 
-        if not (BLOCK_0_BAR and rssi <= -80) and not (BLOCK_NON_2_4_G and band != "2.4 GHz"):
-            lcd.print_270(text=f"{truncated_ssid:<10}", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="white")
-            lcd.print_270(text=f"{rssi:>4}", pos=(y, 10 * 14 - 8), image=image2, font=lcd.font0_24pt, color="yellow")
-            lcd.print_270(text=f"{bar_string}", pos=(y, 13 * 14 - 6), image=image2, font=lcd.font0_20pt, color="white")
-            lcd.print_270(text=f"{channel:>2}", pos=(y, 15 * 14 + 3), image=image2, font=lcd.font0_24pt, color="white")
+        if (BLOCK_0_BAR and rssi <= -80) or (BLOCK_NON_2_4_G and band != "2.4 GHz"):
+            continue
+
+        ssid = net.ssid() or "<hidden>"
+        truncated_ssid = ssid[:9] + "." if len(ssid) > 9 else ssid
+        channel = net.channel() if hasattr(net, 'channel') else "??"
+        bar_string = ("*" * rssi_to_bars(rssi)).ljust(4)
+
+        # Draw row elements
+        lcd.print_270(f"{truncated_ssid:<10}", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="white")
+        lcd.print_270(f"{rssi:>4}", pos=(y, 132), image=image2, font=lcd.font0_24pt, color="yellow")
+        lcd.print_270(bar_string, pos=(y, 176), image=image2, font=lcd.font0_20pt, color="white")
+        lcd.print_270(f"{channel:>2}", pos=(y, 213), image=image2, font=lcd.font0_24pt, color="white")
 
         y -= 24
 
@@ -398,7 +400,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
     print(f"Saved csv: {csv_file}")
 
-    # Create pngs
+    # Create png's
     start_time = time.time()
     polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
@@ -486,14 +488,14 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
     hi_rez_active = False
     i = 1
 
-    # Screen 0 - Menu options
+    # Screen 0 - Menu options - Left-most screen
     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
     lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     lcd.print_270(text=" ~20s !", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     disp_0.ShowImage(image0)
 
-    # Screen 1 - Metrics: Peak RSSI & Peak degree
+    # Screen 1 - Metrics: Peak RSSI & Peak degree right-most screen
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     lcd.print_270(text="Peak", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
     rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
@@ -519,7 +521,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
             # heading = get_compass_heading(lis3mdl)
             heading = 37 + i
 
-            # Screen 2: plot radar
+            # Screen 2: plot radar - large center screen
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
             disp2_draw = ImageDraw.Draw(image2)
 
@@ -582,7 +584,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                     lcd_image = lcd_image.rotate(270)
                     disp_2.ShowImage(lcd_image)
 
-                    # Screen 0: Menu for return to scan or return to Lo-Rez plots
+                    # Screen 0: Menu for return to scan or return to Lo-Rez plots - left-nost screen
                     image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
                     lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
                     lcd.print_270(text="Back", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
@@ -685,7 +687,7 @@ def main():
                 if e_ink_detected:
                     e_ink_print(epd_draw, epd_font, epd_image, epd_display, wifi_data, heading)
                 if lcd_detected:
-                    lcd_print(lcd, disp_0, disp_1, disp_2, wifi_data, heading)
+                    lcd_display(lcd, disp_0, disp_1, disp_2, wifi_data, heading)
 
                 duration = time.time() - last_update
                 last_update = time.time()
