@@ -111,14 +111,14 @@ USE_MONO_TYPE = False
 USE_ASYNC_METRICS = True
 metrics_lock = threading.Lock()  # Protects SimpleNamespace data transitions
 
-TARGET_SSID = "ABox-PDX"
+TARGET_SSID = "ABox-PDX"  # CHANNEL=11
 # TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
 # TODO #2 Try shell-fi with static-IP for faster connection wifi_utils.py
-# TARGET_SSID = "shell-fi"  #
-TARGET_CHANNEL = 11  # Set to None, if not target channel
+# TARGET_SSID = "shell-fi"  # CHANNEL=11
+TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
 
 URL_STRING = "http://192.168.4.1/download"
-DESTINATION_STRING = "/home/pi-admin/downloads"
+DESTINATION_STRING = os.path.expanduser("~/downloads")
 LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
 
 try_connect = False
@@ -246,7 +246,7 @@ def init_i2c():
         Frequency Max: Magnetometer 400K, SSD1305 display has 1M
         Can not set frequency in Python for Pi Zero
     """
-    i2c1 = busio.I2C(board.SCL, board.SDA)  # can't set frequency in Python on Pi Zer
+    i2c1 = busio.I2C(board.SCL, board.SDA)  # can't set frequency in Python on Pi Zero
     oled_detected, lis_detected = scan_i2c_bus(i2c1)
     print(f"{oled_detected=} + {lis_detected=}")
     return i2c1, oled_detected, lis_detected

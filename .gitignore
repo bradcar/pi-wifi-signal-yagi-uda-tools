@@ -1,3 +1,6 @@
+#
+references/
+
 # PyCharm and IDE files
 .idea/
 *.iws

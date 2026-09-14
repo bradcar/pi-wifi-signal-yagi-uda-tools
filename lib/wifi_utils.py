@@ -185,6 +185,18 @@ def query_wifi():
                 if match:
                     tx_bitrate = float(match.group(1))
 
+    except subprocess.CalledProcessError as e:
+        # Check if the process died due to Ctrl+C (SIGINT)
+        if e.returncode == -2 or e.returncode == 130:
+            logger.debug("query_wifi: 'iw' command interrupted by user (SIGINT)")
+        else:
+            logger.warning(f"query_wifi: 'iw' exited with status {e.returncode}")
+        return None, None, None, None, None, is_new_rssi
+
+    except KeyboardInterrupt:
+        # Ensure Ctrl-C propagates up gracefully without traceback logging
+        raise
+
     except Exception as e:
         logger.exception(e)
         return None, None, None, None, None, is_new_rssi

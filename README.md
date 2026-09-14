@@ -21,9 +21,9 @@ Quality or Tx bitrates on unconnected networks. For connected network use: pi_wi
 
 ### Usage:
   in terminal, python3 mac_wifi_scan_rssi.py
-  can also run in pycharm
+  can also run from PyCharm
 
-### Sample output pi_wifi_scan_rssi.py
+### Sample console output pi_wifi_scan_rssi.py
 
     SSID                    Band    BSSID             RSSI      Bars
     ------------------------------------------------------------------

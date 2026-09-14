@@ -1,3 +1,8 @@
+"""
+dowload_file_utils.py
+
+
+"""
 import os
 import urllib.request
 import urllib.error
@@ -11,11 +16,28 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
 
     5 second timeout
     """
-    if not os.path.exists(destination_directory):
-        os.makedirs(destination_directory)
+    # Expand user shortcuts ('~/')
+    destination_directory = os.path.expanduser(destination_directory)
+
+    # Ensure destination directory exists
+    try:
+        os.makedirs(destination_directory, exist_ok=True)
+    except PermissionError:
+        print(f"download_file ERROR: Permission denied creating directory: '{destination_directory}'")
+        return False, None
+    except OSError as e:
+        print(f"download_file ERROR: Unable to create directory '{destination_directory}': {e}")
+        return False, None
+
+    # Verify write permissions before opening connection
+    if not os.access(destination_directory, os.W_OK):
+        print(f"download_file ERROR: Directory exists but is not writable: '{destination_directory}'")
+        return False, None
 
     timeout = 5
     print(f"download_file: Download from {url_string}, timeout = {timeout} secs")
+
+    local_filename = None
     try:
         with urllib.request.urlopen(url_string, timeout=timeout) as response:
             if response.status == 200:
@@ -47,15 +69,22 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
                     print(f"download_file: Expected File Size: {expected_size} bytes")
 
                 total_bytes_received = 0
+                download_complete = False
 
-                # Chunked stream write
-                with open(local_filename, 'wb') as local_file:
-                    while True:
-                        chunk = response.read(4096)
-                        if not chunk:
-                            break
-                        local_file.write(chunk)
-                        total_bytes_received += len(chunk)
+                # Chunked stream write with cleanup protection
+                try:
+                    with open(local_filename, 'wb') as local_file:
+                        while True:
+                            chunk = response.read(4096)
+                            if not chunk:
+                                break
+                            local_file.write(chunk)
+                            total_bytes_received += len(chunk)
+                    download_complete = True
+                finally:
+                    # Remove incomplete file if an exception aborted write before loop finished
+                    if not download_complete and local_filename and os.path.exists(local_filename):
+                        os.remove(local_filename)
 
                 # Catch signal loss drop-offs mid-stream
                 if expected_size and total_bytes_received != expected_size:
@@ -74,6 +103,9 @@ def download_file(url_string, destination_directory="/home/pi/downloads"):
 
     except urllib.error.URLError as e:
         print(f"download_file: NETWORK ERROR: Could not reach download webpage: {e.reason}\n")
+        return False, None
+    except PermissionError:
+        print(f"download_file ERROR: Permission denied writing file to '{local_filename}'\n")
         return False, None
     except Exception as e:
         print(f"download_file: ERROR during transfer: {e}\n")

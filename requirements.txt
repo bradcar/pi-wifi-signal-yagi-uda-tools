@@ -1,0 +1,26 @@
+# Python dependencies
+# run in the directory: ~/pi-wifi-signal-yagi-uda-tools   with:
+#   /home/pi-admin/.virtualenvs/altimeter_gps_pi_zero/bin/pip install -r requirements.txt
+
+# Math & Plotting
+matplotlib
+numpy
+
+# Display & sensor
+Pillow
+adafruit-circuitpython-ssd1305
+adafruit-circuitpython-epd
+
+# Sensors: Magnetometer
+adafruit-circuitpython-lis3mdl
+
+# Hardware, I2C & Board Interfaces
+Adafruit-Blinka
+rpi-lgpio
+python-periphery
+gpiozero
+spidev
+
+# System & Utilities
+#pip install -r requirements.txt
+python-dotenv
