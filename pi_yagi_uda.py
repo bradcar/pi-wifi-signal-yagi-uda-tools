@@ -22,7 +22,8 @@ Operational Modes:
       - Wi-Fi Metric Updates : ~31 Hz (32 ms period) on Pi Zero 2 W.
 
 Display Layouts & Hardware Mapping:
-    * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
+    * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom).
+      https://www.waveshare.com/zero-lcd-hat-a.htm
       - Left Display  (disp_0): 160px x  80px (12,800 px)
       - Center Display(disp_1): 240px x 240px (57,600 px)
       - Right Display (disp_2): 160px x  80px (12,800 px)
@@ -38,7 +39,7 @@ Display Layouts & Hardware Mapping:
         * Forces disconnect and reverts interface to Scan Mode (`nmcli connection down`).
 
 Sensors & Antenna Integration:
-    * Configuration and Wi-Fi credentials loaded via `python-dotenv`.
+    * Configuration and Wi-Fi credentials loaded with python-dotenv.
     * Magnetometer (LIS3MDL): Tracks compass heading (0.0° – 359.9°).
       - Calibration uses `lis3mdl_calibration_parameters.py` using raw output from
         `hard_only_calibrate_lis3mdl_test.py`.
@@ -51,7 +52,7 @@ Sensors & Antenna Integration:
     - (fallback lower rez, not used) 40 vertices every 9 degrees (360/9)
 
 Metrics Data Structure:
-    State maintained via `metrics = types.SimpleNamespace(...)` containing:
+    State maintained with `metrics = types.SimpleNamespace(...)` containing:
         - is_connected (bool)        : Link status to TARGET_SSID.
         - rssi (int | None)          : Signal strength in dBm.
         - quality (int | None)       : Link quality percentage (0–100%).
@@ -69,7 +70,7 @@ Metrics Data Structure:
         2. Connected Mode Lifecycle (is_connected == True):
             - BACKGROUND THREAD: Owns exclusive mutation rights for metrics
               (rssi, quality, rx_rate, tx_rate, bssid, is_new_rssi). It polls the hardware interface
-              via `handle_connected_mode()` and flushes state safely down to the metrics namespace.
+              with `handle_connected_mode()` and flushes state safely down to the metrics namespace.
             - MAIN THREAD: runs in READ-ONLY pass-through mode for network metrics.
               It handles button modes and display.
             - EXCEPTION: If a hardware interrupt occurs (or Button0 long_press), the Main Thread
@@ -81,10 +82,10 @@ Metrics Data Structure:
 
 Hardware Pinouts:
     Component               Interface / Pins    Details
-    Magnetometer (LIS3MDL)	I2C1 (SDA / SCL)    I2C Address: 0x1C (or 0x1E)
+    Magnetometer (LIS3MDL)  I2C1 (SDA / SCL)    I2C Address: 0x1C (or 0x1E)
     Triple LCD Hat(ST7789)  SPI + GPIO          Disp 0, Disp 1, Disp 2, and has GPIO 25,26 on Hat
     Buttons	(on external)   GPIO 6, 25, 26      Pulled up with hardware debouncing via gpiozero
-    Old: OLED (SSD1305)	I2C1 (SDA / SCL)        Display I2C Address: 0x3C
+    legacy OLED (SSD1305)   I2C1 (SDA / SCL)    Display I2C Address: 0x3C
 
 External Directional Antenna - Yagi Uda - Pi Zero 2 W Modifications
     Pi Zero 2 W must be modified to attach an external antenna like a Yagi-Uda Antenna.
