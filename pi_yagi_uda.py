@@ -137,7 +137,6 @@ TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 TODO fix heading with Magentometer data
 TODO uncomment logging code to Pi Zero flash
 TODO uncomment saving Actual RSSI to heading, instead of fake testing code
-TODO add small rectangle around RSSI point at peak value at compass heading at top of display
 """
 import os
 import subprocess
