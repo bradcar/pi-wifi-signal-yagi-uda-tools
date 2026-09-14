@@ -1,5 +1,5 @@
 """
-General Utils for Waveshare multi-display LCD setups (ST7789 Drivers)
+General Utils for WaveShare multi-display LCD setups (ST7789 Drivers)
 Handles initialization, drawing parameters, and full RGB color rendering.
 
 Left Display:   160px x  80px (12,800 px)
@@ -7,7 +7,7 @@ Center display: 240px x 240px (57,600 px)
 Right display:  160px x  80px (12,800 px)
 
 Hardware Initialization
-    init_lcd_display():Inits Waveshare LCD 3 Screens (center: 240px x 240px, two: 160px x  80px)
+    init_lcd_display():Inits WaveShare LCD 3 Screens (center: 240px x 240px, two: 160px x  80px)
     create_lcd_display_canvases(): Create 3 Canvases one for each Screen.
 
 Canvas Management
@@ -158,6 +158,7 @@ def display_2_splash_lcd(disp_2, splash_image_file=None):
      radiant-ether-913.jpg
 
     Args:
+        disp_2:
         splash_image_file:
     """
     lib_dir = os.path.dirname(os.path.abspath(__file__))
@@ -259,9 +260,11 @@ def draw_directional_arrow(draw, direction: str, pos: tuple, fill_color="white")
 
     :param draw: PIL ImageDraw object.
     :param direction: "up", "down", "left", or "right"
-    :param x_pos: Leftmost X-coordinate for arrow
-    :param y_pos: Topmost Y-coordinate for arrow
+    :param pos: (x, y) position, x_pos: Left-most X-coordinate for an arrow, y_pos: Top-most Y-coordinate for an arrow.
     :param fill_color: Arrow Color string or pixel value.
+
+    Args:
+        pos:
     """
     direction_select = direction.lower()
     if direction_select not in DIRECTION_MAP:

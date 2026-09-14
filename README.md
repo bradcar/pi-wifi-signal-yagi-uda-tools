@@ -1,7 +1,7 @@
 
-# WiFi Signal Tools for Pi Zero 2 W
+# Wi-Fi Signal Tools for Pi Zero 2 W
 
-Four tools for measuring WiFi signals. Preliminary work in progress!
+Four tools for measuring Wi-Fi signals. Preliminary work in progress!
 
 1) pi_wifi_scan_rssi.py - scans all 2.4 GHz networks getting rssi signal strength
 2) pi_yagi_uda.py - measurs signal strength of connected network using directional Yagi-Uda Antenna and IMU.
@@ -12,7 +12,7 @@ Four tools for measuring WiFi signals. Preliminary work in progress!
 
 ## pi_wifi_scan_rssi.py 
 
-Scans and only measures RSSI on available 2.4GHz WiFis (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
+Scans and only measures RSSI on available 2.4GHz Wi-Fi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
 Scans repeatedly, sorted by strongest RSSI first.
 
 Quality or Tx bitrates on unconnected networks. For connected network use: pi_wifi_rssi_quality_txrate.py
@@ -53,7 +53,7 @@ Reads metrics continuously to signal strength changes.
 in terminal, python3 pi_wifi_rssi_quality_txrate.py
 can also run in pycharm
 
-Also a Curses version:
+There is also a Curses version:
 pi_wifi_rssi_quality_txrate_curses.py
 
 ### Sample output pi_wifi_rssi_quality_txrate.py
@@ -73,7 +73,7 @@ When paired with a Yagi-Uda directional antenna and an LIS3MDL magnetometer,
 signal strength is mapped with physical headings to locate the Wi-Fi signal source.
 
 The code automatically handles connection drops and resumes polling upon reconnect.
-When there is sufficient signal strength when connected a the file on a specifiec webpage can be downloaded.
+When there is sufficient signal strength when connected, an option to download file on a specifiec webpage can be downloaded.
 
 ### Power draw
 Scanniing mode: 0.3a, 1.5w
