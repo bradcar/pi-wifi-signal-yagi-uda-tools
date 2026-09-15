@@ -16,3 +16,4 @@ __pycache__/
 
 # my backup directory
 backup/
+/legacy_lib/

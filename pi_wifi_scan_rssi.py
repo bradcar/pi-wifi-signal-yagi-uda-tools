@@ -9,6 +9,8 @@ Display Layouts & Hardware Mapping:
       - Left Display  (disp_0): 160px x  80px (12,800 px)
       - Center Display(disp_1): 240px x 240px (57,600 px)
       - Right Display (disp_2): 160px x  80px (12,800 px)
+    * OLED display are slow
+    * E-Ink has 2-3 sec full refresh which is way too slow.
 
 Features
     * Scans all Wi-Fi's and collects strength at direction
@@ -31,7 +33,6 @@ Usage:
 TODOs:
 TODO REMOVE heading=0 WHEN MAGNETOMETER IS INSTALLED
 TODO REMOVE For testing: Make Random index of no magnetometer
-TODO DO NOT HARDCODE e_ink_detected
 TODO Fix hardcoded heading = 37° when add Magnetometer !!!!
 
 """
@@ -50,7 +51,6 @@ from busio import I2C
 from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
-from lib.e_ink_utils import init_e_ink_display, refresh_e_ink_display, blank_canvas_e_ink
 from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
@@ -172,10 +172,11 @@ def console_print(data, heading):
         if not (BLOCK_0_BAR and rssi <= -80) and not (BLOCK_NON_2_4_G and band != "2.4 GHz"):
             print(f"{truncated_ssid:<23} {band:<7}  {bssid}  ch={channel:<2} {rssi:>4} dBm  {rssi_string}")
 
-    print(f"==> Heading direction: {heading:.0f}°" if heading is not None else "  ** no compass **")
+    print(f"==> Heading direction: {heading:.0f}°" if heading is not None else " ** no compass **")
 
 
-def oled_print(draw, font, image, oled_display, data, heading):
+def oled_display_update(draw, font, image, oled_display, data, heading):
+    """ Legacy OLED display - unfortunately refresh too slow."""
     clear_display_oled(oled_display, draw, image)
 
     if heading is not None:
@@ -200,35 +201,7 @@ def oled_print(draw, font, image, oled_display, data, heading):
     oled_display.show()
 
 
-def e_ink_print(draw, font, image, epd_display, data, heading):
-    """ Print for E-ink display """
-    blank_canvas_e_ink(draw)
-
-    if heading is not None:
-        draw.text((1, 2), f"dir: {heading:.0f}°", font=font, fill=255)
-    else:
-        draw.text((1, 2), f"no compass", font=font, fill=255)
-
-    draw.text((195, 2), f"{datetime.now().strftime('%H:%M:%S')}", font=font, fill=255)
-
-    y = 22
-    for net in (data or [])[:3]:
-        ssid = (net.ssid() or "<hidden>")[:11]
-        rssi = net.rssi_value()
-        num_bars = rssi_to_bars(rssi)
-        bar_string = ("*" * num_bars).ljust(4)
-        bssid = net.bssid() or "Unknown"
-
-        draw.text((2, y), f"{ssid:<14}", font=font, fill=255)
-        draw.text((10 * 8, y), f"{rssi:>4} dbm", font=font, fill=255)
-        draw.text((17 * 8 + 4, y), f"{bar_string}", font=font, fill=255)
-        draw.text((23 * 8, y), f"{bssid}", font=font, fill=255)
-        y += 16
-
-    refresh_e_ink_display(epd_display, draw, image, partial=True)
-
-
-def lcd_display(lcd, disp_0, disp_1, disp_2, data, heading):
+def lcd_display_update(lcd, disp_0, disp_1, disp_2, data, heading):
     """Print scan results across the triple LCD HAT displays."""
     time_str = datetime.now().strftime("%H:%M:%S")
     heading_str = f"{heading:.0f}°" if heading is not None else "? °"
@@ -622,15 +595,8 @@ def main():
     if oled_detected:
         oled_display, draw, font, image = init_oled_display(i2c1, use_mono_type=False)
 
-    # TODO DO NOT HARDCODE e_ink_detected
-    e_ink_detected = False
-
-    epd_display, epd_draw, epd_font, epd_image = None, None, None, None
-    if e_ink_detected:
-        epd_display, epd_draw, epd_font, epd_image = init_e_ink_display()
-
     lcd_detected = False
-    if not (oled_detected or e_ink_detected):
+    if not oled_detected:
         lcd_detected = True
         disp_0, disp_1, disp_2 = create_lcd_display_canvases("radiant-ether-913.jpg")
 
@@ -684,11 +650,9 @@ def main():
 
                 console_print(wifi_data, heading)
                 if oled_detected:
-                    oled_print(draw, font, image, oled_display, wifi_data, heading)
-                if e_ink_detected:
-                    e_ink_print(epd_draw, epd_font, epd_image, epd_display, wifi_data, heading)
+                    oled_display_update(draw, font, image, oled_display, wifi_data, heading)
                 if lcd_detected:
-                    lcd_display(lcd, disp_0, disp_1, disp_2, wifi_data, heading)
+                    lcd_display_update(lcd, disp_0, disp_1, disp_2, wifi_data, heading)
 
                 duration = time.time() - last_update
                 last_update = time.time()
