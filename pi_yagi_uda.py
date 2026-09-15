@@ -95,7 +95,13 @@ External Directional Antenna - Yagi Uda - Pi Zero 2 W Modifications
         https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s   (great peal trace back idea)
         https://www.briandorey.com/post/raspberry-pi-zero-2-w-external-antenna-mod  (maybe beter on uFL soldering?)
 
-Legacty OLED Display:
+    Yagi-Uda - gain What the highest gain
+     - 25.0 dbi Kaunosta (25°)- Amazon 2nd buy
+     - 18.5 dbi Techtoo (28° vert to 30° horz)- Amazon 1st buy
+     - 14.5 dBi for Pole (30°) $148 https://www.fairviewmicrowave.com/product/single-antenna-14.5-dbi-gain-n-fm51ya1003.html
+     - 12.5 dBi for stainless steel (40°): $108 https://www.fairviewmicrowave.com/product/single-antenna-12-dbi-gain-n-fm51ya1004.html
+
+Legacy OLED Display:
     Metrics are printed to console and shown on the OLED display.
     The OLED display on the left has 96px for text:
      - 3 lines of text with 16 chars (4 lines looks bad)
@@ -169,10 +175,10 @@ USE_MONO_TYPE = False
 USE_ASYNC_METRICS = True
 metrics_lock = threading.Lock()  # Protects SimpleNamespace data transitions
 
-TARGET_SSID = "ABox-PDX"  # CHANNEL=11
+#TARGET_SSID = "ABox-PDX"  # CHANNEL=11
 # TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
 # TODO #2 Try shell-fi with static-IP for faster connection wifi_utils.py
-# TARGET_SSID = "shell-fi"  # CHANNEL=11
+TARGET_SSID = "shell-fi"  # CHANNEL=11
 TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
 
 URL_STRING = "http://192.168.4.1/download"
