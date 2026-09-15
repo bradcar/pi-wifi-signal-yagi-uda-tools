@@ -27,7 +27,7 @@ Display Layouts & Hardware Mapping:
       - Left Display  (disp_0): 160px x  80px (12,800 px)
       - Center Display(disp_1): 240px x 240px (57,600 px)
       - Right Display (disp_2): 160px x  80px (12,800 px)
-    * Button Mapping - Displaty buttons next to left display (gpiozero with active on Pi pull-ups):
+    * Button Mapping - Display buttons next to left display (gpiozero with active on Pi pull-ups):
       - External trigger Button 0 (GPIO 6)  : Primary trigger (Supports short/long press detection)
       - Top Button 2 (GPIO 26) : Connection mode toggle (Scan vs. Connected)
       - Botton Button 1 (GPIO 25) : Manual file download trigger
@@ -139,6 +139,11 @@ PyCharm Remote Deployment Notes:
    - Excluded Paths: Exclude `.venv` from local/remote deployment sync options.
 ================================================================================
 
+Power Draw:
+    Scanning:  0.29a, 1.49w, 5.22v
+    Connected: 0.31a, 1.62w, 5.22v
+    Idle:      0.15a, 0.77w, 5.22v
+
 TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 TODO fix heading with Magentometer data
 TODO uncomment logging code to Pi Zero flash
@@ -165,6 +170,7 @@ from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics, a
 from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
+from lib.oled_pi_yagi_uda import display_metrics_oled
 from lib.oled_rssi_radar_utils import display_radar_oled
 from lib.pi_zero_utils import pico_temperature, timeout
 from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
@@ -338,46 +344,6 @@ def change_connection(action: Literal["up", "down"]) -> bool:
     # Connect using passwords in .env
     print(f"Profile '{TARGET_SSID}' failed. Trying to reconnect...")
     return connect_ssid(TARGET_SSID)
-
-
-def display_metrics_oled(draw, font, rssi, ssid: str, rx_rate, heading: float, download_count, connected: bool = True):
-    left_indent = 0
-    direction_str = get_compass_8pt_string(heading) if heading is not None else ""
-    heading_str = f"{heading:>3.0f}°" if heading is not None else "???°"
-
-    # if rssi is not set, display out of range messages
-    if rssi is None:
-        line1 = f"target: {TARGET_SSID}"
-        line2 = "out of range scan"
-        line3 = f"{heading_str} {direction_str:<2}"
-
-    # Update metrics for Connect Mode or Scan Mode
-    else:
-        if connected:
-            line1 = f"SSID = {ssid}"
-            # If connected, show Mb/s, else print "linked"
-            rate_str = f"{rx_rate:.0f} mb/s" if rx_rate is not None else "linked"
-            line2 = f"{rssi} dbm  {rate_str}"
-
-            # Notify if download is possible based on -70 dBm rule
-            if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                line3 = f"{heading_str} {direction_str:<2} ..dload {download_count}?"
-            else:
-                line3 = f"{heading_str} {direction_str:<2}"
-        else:
-            line1 = f"ssid   {ssid}"
-            line2 = f"{rssi} dbm ...Scan"
-
-            # test if connection available
-            if rssi >= RSSI_CONNECT_THRESHOLD:
-                line3 = f"{heading_str} {direction_str:<2} .connect?"
-            else:
-                line3 = f"{heading_str} {direction_str:<2}"
-
-    # Write text to OLED
-    draw.text((left_indent, 0), line1, font=font, fill=1)
-    draw.text((left_indent, 10), line2, font=font, fill=1)
-    draw.text((left_indent, 20), line3, font=font, fill=1)
 
 
 def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_connect):
