@@ -1,14 +1,48 @@
-# pi_wifi_rssi_quality_rxrate_curses.py
+#
 """
-Simple terminal output using curses to overwrite results to show continuous updates
-of RSSI, Quality, RX_bitrate(download from AP) with update duration in msec, frequency and current datetime.
-Also prints out the name of the en0 Wifi network it is monitoring.
+pi_wifi_rssi_quality_rxrate_curses.py
+
+On Raspberry Pi Zero 2 W running Linux, continuously measures real-time RSSI,
+Link Quality, and RX Bitrate (download rate from the AP) for the currently connected
+wlan0 network. Utilizes Python's ncurses library (`curses`) to perform in-place terminal
+screen updates without scrolling.  Companion code to: pi_wifi_rssi_quality_rxrate.py
+
+Operational Modes:
+    * Full-Screen Curses Terminal Mode:
+      - Uses `curses` to create a clean, fixed-position terminal dashboard with a hidden cursor.
+      - Polls network metrics on wlan0 via system utilities (`iw` / `/proc/net/wireless`).
+      - Overwrites telemetry fields in place to present continuously refreshed RSSI (dBm),
+        Link Quality (%), and RX Rate (Mb/s).
+      - Tracks iteration duration (msec) and update frequency (Hz).
+      - Polling Cadence: ~10 Hz (100 ms sleep cycle) on Pi Zero 2 W.
+
+Display Layouts & Hardware Mapping:
+    * Curses Terminal Dashboard (Standard Terminal / SSH Session):
+      - Line 1 : Header displaying target SSID network name
+      - Line 3 : RSSI strength in dBm with visual bar indicator
+      - Line 4 : Link Quality percentage and text rating
+      - Line 5 : RX Rate (download speed from AP in Mb/s)
+      - Line 7 : Polling loop performance metrics (msec / Hz)
+      - Line 8 : System clock timestamp (YYYY-MM-DD HH:MM:SS)
+
+Features:
+    * Continuous real-time Wi-Fi telemetry for the active connection.
+    * In-place continuous terminal UI updates via `curses`.
+    * Non-blocking execution with automatic terminal state setup/teardown via `curses.wrapper`.
+    * Tracks RX Bitrate and download rate from AP.
+    * High-frequency telemetry updates for real-time physical antenna alignment.
+
+Sensors & Antenna Integration:
+    * BSSID tracking to maintain telemetry targeting on the active Access Point.
 
 Usage:
-  in terminal:  python3 pi_wifi_rssi_quality_rxrate_curses.py
+    Terminal : python3 pi_wifi_rssi_quality_rxrate_curses.py
+    IDE      : Run in interactive terminal window / PyCharm Terminal
 
-Sample output:
-
+Notes:
+    * Requires an active, connected Wi-Fi network on wlan0 (`is_connected == True`).
+    * For non-curses standard console output, use: pi_wifi_rssi_quality_rxrate.py
+    * For scanning unconnected/surrounding 2.4GHz Wi-Fi networks, use: pi-wifi-scan_rssi.py
 """
 import curses
 import time
