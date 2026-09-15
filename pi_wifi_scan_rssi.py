@@ -1,27 +1,42 @@
-# pi-wifi-scan_rssi.py
+#
 """
-Pi hardware only measures RSSI on 2.4GHz WiFi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
-Scans repeatedly, sorted by strongest RSSI first.
+pi-wifi-scan_rssi.py
 
+Runs on Raspberry Pi Zero 2 W in Linux. Repeatedly scans all available 2.4GHz Wi-Fi
+networks (not 5GHz or 6GHz) and sorts them by strongest RSSI first. When paired with an
+LIS3MDL magnetometer, 360° polar plots are constructed to map signal strength against
+physical headings for spatial Wi-Fi signal tracking. Pi Zeros only probe 2.4 GHz.
+
+Operational Modes:
+    * Scan Mode (Default / Menu Selection):
+      - Scans for Wi-Fi networks via Linux wpa_supplicant / system utilities.
+        - Unfortunately, No Quality nor RX bitrates on unconnected networks.
+        - For connected network use: pi_wifi_rssi_quality_rxrate.py
+      - Tracks 360° RSSI history across all discovered BSSIDs.
+      - Displays interactive table on the WaveShare Triple LCD Display.
+      - Polling Cadence: ~1 Hz (940 ms period) on Pi Zero 2 W.
+    * Polar Radar Plot Mode (Lo-Rez Real-Time Visualizer):
+      - Live rendering of 360° polar RSSI strength distribution for a targeted BSSID.
+      - Automatically identifies peak(s) signal directions. Uses red arc to highlight multiple peaks with same value.
+      - Display Updates: Real-time polar graph rendering on 240x240 center display.
+    * High-Resolution Export Mode (Hi-Rez Matplotlib Plotter):
+      - Generates auto-scaled, publication-quality 1° polar plots via Matplotlib.
+      - Automatically exports raw 360° degree-by-dBm telemetry to structured CSV files.
+      - Render Time: ~20 seconds per high-resolution file generation.
+      - Creates pdf.
 
 Display Layouts & Hardware Mapping:
     * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
       - Left Display  (disp_0): 160px x  80px (12,800 px)
       - Center Display(disp_1): 240px x 240px (57,600 px)
       - Right Display (disp_2): 160px x  80px (12,800 px)
-    * OLED display are slow
-    * E-Ink has 2-3 sec full refresh which is way too slow.
+    * Button Mapping - Display buttons next to left display (gpiozero with active on Pi pull-ups):
+      - On-screen metric extraction for peak RSSI, peak angle, and signal cluster counting.
+      - Legacy SSD1305 OLED display support (monochrome fallback).
 
-Features
-    * Scans all Wi-Fi's and collects strength at direction
-    * Pi Zero 2W scan perioid 940ms (~1 Hz)
-    * Displays 360° polar plot of RSSI data for each Wi-FI, fast best every 5° plot
-    * Can Create Hi-Resolution .png of selected Wi-Fi's every 1° plot
-    * Outputs csv of 360° data for each Wi-Fi
-    * Displays channel used by each
-
-Unfortunately, No Quality nor RX bitrates on unconnected networks.
-For connected network use: pi_wifi_rssi_quality_rxrate.py
+Sensors & Integration:
+    * LIS3MDL 3-axis I2C magnetometer for compass headings for external direction antenna.
+    * Temperature telemetry monitoring via system calls to protect Pi Zero 2 W thermal limits.
 
 NOTES:
   1) Python MUST be enabled in System Settings > Privacy & Security> Location Services.
@@ -29,6 +44,15 @@ NOTES:
 Usage:
   in terminal, python3 mac_wifi_scan_rssi.py
   can also run in PyCharm
+
+Power Draw:
+    Scanning:    0.25a, 1.31w, 5.22v
+    Radar Graph: 0.29a, 1.51w, 5.22v
+    Idle:        0.15a, 0.77w, 5.22v
+
+Legacy Displays:
+    * OLED display are slow, (monochrome).
+    * E-Ink B&W has 2-3 sec full refresh which is way too slow.
 
 TODOs:
 TODO REMOVE heading=0 WHEN MAGNETOMETER IS INSTALLED
