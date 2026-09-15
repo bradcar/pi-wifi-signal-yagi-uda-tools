@@ -3,12 +3,89 @@
 
 Four tools for measuring Wi-Fi signals. Preliminary work in progress!
 
-1) pi_wifi_scan_rssi.py - scans all 2.4 GHz networks getting rssi signal strength
-2) pi_yagi_uda.py - measurs signal strength of connected network using directional Yagi-Uda Antenna and IMU.
+our Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
 
-3) pi_wifi_rssi_quality_txrate.py - get quality of the connected network
-   1) Note: macOS measures SNR & Noise and not quality and TxRate
-4) pi_wifi_rssi_quality_txrate_curses.py - Curses version of above
+### LCD Display Tools:
+1. **`pi_wifi_scan_rssi.py`** – Scans all surrounding 2.4GHz Wi-Fi networks, ranks them by RSSI strength, builds 360° directional signal profiles, and generates polar radar plots.
+2. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings.
+
+### Console-Only Tools:
+3. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
+4. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
+
+---
+
+## Hardware Setup & Pin Mapping
+
+* **Board:** Raspberry Pi Zero 2 W (Linux)
+* **Display:** [WaveShare Triple LCD Display HAT](https://www.waveshare.com/zero-lcd-hat-a.htm) (ST7789 Drivers, rotated 180° / USB at bottom)
+  * Left Display (`disp_0`): 160px × 80px (Menu Controls)
+  * Center Display (`disp_1`): 240px × 240px (Radar Plotter & Network Table)
+  * Right Display (`disp_2`): 160px × 80px (Telemetry & Clock)
+* **Sensors & Antenna:**
+  * **LIS3MDL** 3-Axis I2C Magnetometer (for 360° compass headings)
+  * 2.4GHz Directional Yagi-Uda Antenna
+* **Button Controls (gpiozero with Pi internal pull-ups):**
+  * `GPIO 26` (Top Button 2) : Scroll / Next in Menu | Toggle Scan/Connected Modes
+  * `GPIO 25` (Bottom Button 1) : Select BSSID | Toggle Hi-Rez Plot Generation
+  * `GPIO 6` (External Trigger Button 0) : Short press (Connect/Download) | Long press (Disconnect)
+
+---
+
+## pi_yagi_uda.py
+
+Targeted directional tracking integrating the Yagi-Uda antenna and LIS3MDL magnetometer.
+Automatically manages network state (nmcli) to toggle between unauthenticated scanning and high-speed multi-threaded connected polling.
+Includes payload download capability when link budget is sufficient.
+
+The code automatically handles connection drops and resumes polling upon reconnect.
+When there is sufficient signal strength when connected, an option to download file on a specifiec webpage can be downloaded.
+
+Operational Modes:
+* Scan Mode (is_connected == False): Low-frequency pings via nmcli/iw (~5 Hz update rate).
+* Connected Mode (is_connected == True): Multi-threaded direct network interface polling (~31 Hz metric updates, ~9 Hz UI updates).
+
+### Power draw
+* Scanning:  0.29a, 1.49w, 5.22v
+* Connected: 0.31a, 1.62w, 5.22v
+* Idle:      0.15a, 0.77w, 5.22v
+
+### Usage:
+in terminal, python3 pi_yagi-uda.py
+can also run in PyCharm
+
+### Sample console output pi_yagi_uda.py
+There are two modes with different information possible:
+```
+** Scanning your-network (channel=11) RSSI: -56 dBm
+Bars:      3 bars
+Compass Heading: 291° W
+Pi Zero 2W temp: 42.9°C
+Display Updates:   208.4 msec, 5 Hz
+Radar Updates:     208.4 msec, 5 Hz
+Clock: 2026-09-14 10:14:12
+```
+
+```
+** Connected your-network (channel = 11) RSSI: -23 dBm
+Bars:    4 bars
+Quality: 100%  Excellent
+RX Rate: 72.2 Mb/s
+-> download possible, trigger with button1
+Compass Heading: 332° NW
+Pi Zero 2W temp: 42.9°C
+Display Updates:   112.6 msec, 9 Hz
+Radar Updates:      36.2 msec, 28 Hz
+Clock: 2026-09-14 10:14:20
+```
+
+Configuration & Notes
+
+Permissions: Ensure system utilities have setuid permissions for non-root execution:
+
+```sudo chmod u+s /usr/sbin/iwlist```
+
+
 
 ## pi_wifi_scan_rssi.py 
 
@@ -18,7 +95,9 @@ Scans repeatedly, sorted by strongest RSSI first.
 Quality or Tx bitrates on unconnected networks. For connected network use: pi_wifi_rssi_quality_txrate.py
 
 ### Power draw
-0.16a @ 5.22v (0.82w)
+* Scanning Mode   : 0.25A, 1.31W @ 5.22V
+* Radar Graph UI  : 0.29A, 1.51W @ 5.22V
+* Idle            : 0.15A, 0.77W @ 5.22V
 
 ### Usage:
   in terminal, python3 mac_wifi_scan_rssi.py
@@ -65,51 +144,7 @@ pi_wifi_rssi_quality_txrate_curses.py
     Updates:  15.8 msec, 63 Hz
     Clock: 2026-05-23 09:36:26
 
-## pi_yagi_uda.py
 
-On Raspberry Pi Zero 2 W, the code repeatedly measures the RSSI, Link Quality,
-and RX Bitrate of a targeted network on interface wlan0. Only measures RSSI on available 2.4GHz Wi-Fi's (not 5GHz or 6GHz)
-When paired with a Yagi-Uda directional antenna and an LIS3MDL magnetometer,
-signal strength is mapped with physical headings to locate the Wi-Fi signal source.
-
-The code automatically handles connection drops and resumes polling upon reconnect.
-When there is sufficient signal strength when connected, an option to download file on a specifiec webpage can be downloaded.
-
-### Power draw
-Scanniing mode: 0.3a, 1.5w
-
-Connected Mode: 0.35a, 1.6w
-
-Idle: 0.2a 0.76w
-
-### Usage:
-in terminal, python3 pi_yagi-uda.py
-can also run in PyCharm
-
-### Sample console output pi_yagi_uda.py
-There are two modes with different information possible:
-```
-** Scanning your-network (channel=11) RSSI: -56 dBm
-Bars:      3 bars
-Compass Heading: 291° W
-Pi Zero 2W temp: 42.9°C
-Display Updates:   208.4 msec, 5 Hz
-Radar Updates:     208.4 msec, 5 Hz
-Clock: 2026-09-14 10:14:12
-```
-
-```
-** Connected your-network (channel = 11) RSSI: -23 dBm
-Bars:    4 bars
-Quality: 100%  Excellent
-RX Rate: 72.2 Mb/s
--> download possible, trigger with button1
-Compass Heading: 332° NW
-Pi Zero 2W temp: 42.9°C
-Display Updates:   112.6 msec, 9 Hz
-Radar Updates:      36.2 msec, 28 Hz
-Clock: 2026-09-14 10:14:20
-```
 
 ### NOTES
 
@@ -121,18 +156,7 @@ Clock: 2026-09-14 10:14:20
    2. Verify the permissions changed successfully
    ls -l /usr/sbin/iwlist
 
-
-### Turning on gadget-mode on existing Raspberry Pi headless
-
-1. Verify that you are running Raspberry Pi OS Trixie:
-cat /etc/os-release
-→ Confirm that VERSION_CODENAME=trixie.
-
-2. Install and enable gadget mode:
-   1. sudo apt update
-   2. sudo apt install rpi-usb-gadget
-   3. sudo rpi-usb-gadget on
-   4. sudo reboot
+      
 
 
 ### PyCharm Remote Deployment Reset (running out of /tmp issue)
