@@ -92,7 +92,7 @@ Permissions: Ensure system utilities have setuid permissions for non-root execut
 Scans and only measures RSSI on available 2.4GHz Wi-Fi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
 Scans repeatedly, sorted by strongest RSSI first.
 
-Quality or Tx bitrates on unconnected networks. For connected network use: pi_wifi_rssi_quality_txrate.py
+Quality or RX bitrates (download from AP) on unconnected networks. For connected network use: pi_wifi_rssi_quality_rxrate.py
 
 ### Power draw
 * Scanning Mode   : 0.25A, 1.31W @ 5.22V
@@ -117,10 +117,10 @@ Quality or Tx bitrates on unconnected networks. For connected network use: pi_wi
       Clock: 2026-05-22 23:08:38, Update every 0.84 secs
       Blocked <1-bar and only shows 2.4GHz on Zero 2 W
 
-## pi_wifi_rssi_quality_txrate.py
+## pi_wifi_rssi_quality_rxrate.py
 
 On Raspberry Pi Zero 2 W, repeatedly measure and print RSSI, Link Quality,
-and Tx Bit Rate of the currently connected network on interface wlan0.
+and RX Bit Rate of the currently connected network on interface wlan0.
 
 Prototype for tracking signal vectors using a directional Yagi_Uda antenna.
 Reads metrics continuously to signal strength changes.
@@ -129,18 +129,18 @@ Reads metrics continuously to signal strength changes.
 0.21a @ 5.22v (1.2w)
 
 ### Usage:
-in terminal, python3 pi_wifi_rssi_quality_txrate.py
+in terminal, python3 pi_wifi_rssi_quality_rxrate.py
 can also run in pycharm
 
 There is also a Curses version:
-pi_wifi_rssi_quality_txrate_curses.py
+pi_wifi_rssi_quality_rxrate_curses.py
 
-### Sample output pi_wifi_rssi_quality_txrate.py
+### Sample output pi_wifi_rssi_quality_rxrate.py
     WiFi Signal Monitor (Pi Zero): ABox-PDX
     SSID:    ABox-PDX
     RSSI:    -19 dBm  4 bars
     Link Q:  70/70, Perfect Link
-    Tx Rate: 72.2 Mb/s
+    RX Rate: 72.2 Mb/s
     Updates:  15.8 msec, 63 Hz
     Clock: 2026-05-23 09:36:26
 
