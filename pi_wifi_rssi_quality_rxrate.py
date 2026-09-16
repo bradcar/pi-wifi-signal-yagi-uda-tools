@@ -51,7 +51,7 @@ def print_metrics(quality, rssi, ssid, rx_rate):
 
     if rssi is not None:
         print(f"RSSI:    {rssi:>3} dBm  {rssi_string}")
-        print(f"Link Q:  {f'{quality:>2}/70' if quality is not None else 'n/a'}    {quality_string}")
+        print(f"Link Q:  {f'{quality:>2}%' if quality is not None else 'n/a'}    {quality_string}")
         print(f"RX Rate: {f'{rx_rate:.1f} Mb/s' if rx_rate is not None else 'n/a'}")
     else:
         print("RSSI:    n/a")
