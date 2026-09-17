@@ -163,7 +163,7 @@ def update_bssid_map(data, heading, bssid_map):
             bssid_map[bssid]["rssi_history"][random_degree] = fake_rssi
 
 
-def prepare_and_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40, file_name="plot.png"):
+def prepare_and_polar_plot(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40, file_name="plot.png"):
     rssi_array = np.array(bssid_info["rssi_history"])
     degrees = np.arange(360)
 
@@ -400,7 +400,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
 
     # Create png's
     start_time = time.time()
-    polar_plot_image = prepare_and_plot(bssid, info, heading, file_name=str(png_file))
+    polar_plot_image = prepare_and_polar_plot(bssid, info, heading, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
     print(f"Plot file written: {png_file}")
 
