@@ -1,4 +1,6 @@
 """
+lcd_st7789_utils.py
+
 General Utils for WaveShare multi-display LCD setups (ST7789 Drivers)
 Handles initialization, drawing parameters, and full RGB color rendering.
 
@@ -51,6 +53,47 @@ Add LCD st7789 to user code:
     def main():
     global button1_pressed, button2_pressed
 
+NOTICE WAVE SHARE NUMBERS THE DISPLAYS DIFFERENTLY in the table below:
+left Display    WS = Disp1   pi_wifi_scan_rssi: Screen 0: Interactive Menu Option
+Center Display  WS = Disp0   pi_wifi_scan_rssi: Screen 2: Wi-Fi RSSI Table
+Right Display   WS = Disp2   pi_wifi_scan_rssi: Screen 1: Heading & Clock
+
+Other GPIO
+GPIO 25, 26 Buttons
+GPIO 2 SDA - I2C
+GPIO 3 SCL - I2C
+GPIO 6 - trigger
+
+WaveShare Defintions
+    Signal	Board Pin No.	Broadcom GPIO	Function / Assignment
+VCC	3.3V	—	3.3V Power
+GND	GND	—	Ground
+MOSI1	Pin 38	GPIO 20	SPI1 MOSI (center display)
+MOSI0	Pin 19	GPIO 10	SPI0 MOSI (left/right displays)
+SCLK1	Pin 40	GPIO 21	SSPI1 SCLK (center display)
+SCLK0	Pin 23	GPIO 11	SPI0 SCLK (left/right displays)
+CS0	Pin 12	GPIO 18	SPI1 Chip Select 0 (1.3" Main Screen 0)
+CS1	Pin 24	GPIO 8	SPI0 Chip Select 1 (0.96" Screen 1)
+CS2	Pin 26	GPIO 7	SPI0 Chip Select 2 (0.96" Screen 2)
+DC0	Pin 15	GPIO 22	Data/Command Control (1.3" Main Screen 0)
+DC1	Pin 7	GPIO 4	Data/Command Control (0.96" Screen 1)
+DC2	Pin 29	GPIO 5	Data/Command Control (0.96" Screen 2)
+RST0	Pin 13	GPIO 27	HHardware Reset (1.3" Main Screen 0)
+RST1	Pin 18	GPIO 24	Hardware Reset (0.96" Screen 1)
+RST2	Pin 16	GPIO 23	Hardware Reset (0.96" Screen 2)
+BL0	Pin 35	GPIO 19	Backlight PWM/Control (1.3" Main Screen 0)
+BL1	Pin 33	GPIO 13	Backlight PWM/Control (0.96" Screen 1)
+BL2	Pin 32	GPIO 12	Backlight PWM/Control (0.96" Screen 2)
+KEY1	Pin 22	GPIO 25	Bottom User Button 1
+KEY2	Pin 37	GPIO 26	Top User Button 2
+
+Free pins:
+GPIO 9 (Physical Pin 21 / SPI0 MISO) — Free (SPI0 is transmit-only for these LCDs, so MISO isn't used by the HAT).
+GPIO 14 (Physical Pin 8 / UART TX) — Free GPIO or Serial TX.
+GPIO 15 (Physical Pin 10 / UART RX) — Free GPIO or Serial RX.
+GPIO 16 (Physical Pin 36) — Free general-purpose GPIO.
+GPIO 17 (Physical Pin 11) — Free general-purpose GPIO.
+
 """
 import os
 import spidev as SPI
@@ -63,9 +106,9 @@ from vendor.waveshare_lcd import LCD_1inch3
 
 # Global hardware pin designations for displays
 LCD_CONFIGS = {
-    0: {"type": "0inch96", "bus": 0, "device": 0, "rst": 24, "dc": 4, "bl": 13},
-    1: {"type": "0inch96", "bus": 0, "device": 1, "rst": 23, "dc": 5, "bl": 12},
-    2: {"type": "1inch3", "bus": 1, "device": 0, "rst": 27, "dc": 22, "bl": 19}
+    0: {"type": "0inch96", "bus": 0, "device": 0, "rst": 24, "dc": 4, "bl": 13},  # Left (160x80), SPI0 CE0
+    1: {"type": "0inch96", "bus": 0, "device": 1, "rst": 23, "dc": 5, "bl": 12},  # Right (160x80), SPI0 CE1
+    2: {"type": "1inch3", "bus": 1, "device": 0, "rst": 27, "dc": 22, "bl": 19}   # Center (240x240), SPI1 CE0
 }
 
 base_font00 = ImageFont.truetype("assets/Font/Font00.ttf", 30)
