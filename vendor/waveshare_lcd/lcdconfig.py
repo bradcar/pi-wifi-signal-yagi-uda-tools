@@ -35,32 +35,34 @@ import logging
 import numpy as np
 from gpiozero import *
 
+
 class RaspberryPi:
-    def __init__(self,spi=spidev.SpiDev(0,0),spi_freq=40000000,rst = 22,dc = 23,bl = 19,bl_freq=1000,i2c=None,i2c_freq=100000):     
-        self.np=np
+    def __init__(self, spi=spidev.SpiDev(0, 0), spi_freq=40000000, rst=22, dc=23, bl=19, bl_freq=1000, i2c=None,
+                 i2c_freq=100000):
+        self.np = np
         self.INPUT = False
         self.OUTPUT = True
-        
-        self.SPEED  =spi_freq
-        self.BL_freq=bl_freq
-        
-        #Initialize GPIO
-        self.RST_PIN= self.gpio_mode(rst,self.OUTPUT)
-        self.DC_PIN = self.gpio_mode(dc,self.OUTPUT)
-        self.BL_PIN = self.gpio_pwm(bl)
-        #self.no_cs = True
 
-        #Initialize SPI
+        self.SPEED = spi_freq
+        self.BL_freq = bl_freq
+
+        # Initialize GPIO
+        self.RST_PIN = self.gpio_mode(rst, self.OUTPUT)
+        self.DC_PIN = self.gpio_mode(dc, self.OUTPUT)
+        self.BL_PIN = self.gpio_pwm(bl)
+        # self.no_cs = True
+
+        # Initialize SPI
         self.SPI = spi
-        if self.SPI!=None :
+        if self.SPI != None:
             self.SPI.max_speed_hz = spi_freq
             self.SPI.mode = 0b00
 
-    def gpio_mode(self,Pin,Mode,pull_up = None,active_state = True):
+    def gpio_mode(self, Pin, Mode, pull_up=None, active_state=True):
         if Mode:
-            return DigitalOutputDevice(Pin,active_high = True,initial_value =False)
+            return DigitalOutputDevice(Pin, active_high=True, initial_value=False)
         else:
-            return DigitalInputDevice(Pin,pull_up=pull_up,active_state=active_state)
+            return DigitalInputDevice(Pin, pull_up=pull_up, active_state=active_state)
 
     def digital_write(self, pin, value):
         if value:
@@ -74,34 +76,35 @@ class RaspberryPi:
     def delay_ms(self, delaytime):
         time.sleep(delaytime / 1000.0)
 
-    def gpio_pwm(self,Pin):
-        return PWMOutputDevice(Pin,frequency = self.BL_freq)
-        
+    def gpio_pwm(self, Pin):
+        return PWMOutputDevice(Pin, frequency=self.BL_freq)
+
     def spi_writebyte(self, data):
-        if self.SPI!=None :
+        if self.SPI != None:
             self.SPI.writebytes(data)
+
     def bl_DutyCycle(self, duty):
         # self._pwm.ChangeDutyCycle(duty)
         self.BL_PIN.value = duty / 100
         # os.system("gpio -g pwm 13 " + str(int(duty * 10.23)) )
-        
-    def bl_Frequency(self,freq):
+
+    def bl_Frequency(self, freq):
         self.BL_PIN.frequency = freq
-           
+
     def module_init(self):
-        if self.SPI!=None :
-            self.SPI.max_speed_hz = self.SPEED        
-            self.SPI.mode = 0b00     
+        if self.SPI != None:
+            self.SPI.max_speed_hz = self.SPEED
+            self.SPI.mode = 0b00
         return 0
 
     def module_exit(self):
         logging.debug("spi end")
-        if self.SPI!=None :
+        if self.SPI != None:
             self.SPI.close()
-        
+
         logging.debug("gpio cleanup...")
         self.digital_write(self.RST_PIN, 1)
-        self.digital_write(self.DC_PIN, 0)   
+        self.digital_write(self.DC_PIN, 0)
         self.BL_PIN.close()
         time.sleep(0.001)
 
