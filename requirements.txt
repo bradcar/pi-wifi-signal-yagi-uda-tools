@@ -16,7 +16,7 @@ adafruit-circuitpython-lis3mdl
 
 # Hardware, I2C & Board Interfaces
 Adafruit-Blinka
-rpi-lgpio
+#rpi-lgpio
 python-periphery
 gpiozero
 spidev
