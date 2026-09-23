@@ -28,8 +28,8 @@ Operational Modes:
 Display Layouts & Hardware Mapping:
     * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
       - Left Display  (disp_0): 160px x  80px (12,800 px)
-      - Center Display(disp_1): 240px x 240px (57,600 px)
-      - Right Display (disp_2): 160px x  80px (12,800 px)
+      - Center Display(disp_2): 240px x 240px (57,600 px)
+      - Right Display (disp_1): 160px x  80px (12,800 px)
     * Button Mapping - Display buttons next to left display (gpiozero with active on Pi pull-ups):
       - On-screen metric extraction for peak RSSI, peak angle, and signal cluster counting.
       - Legacy SSD1305 OLED display support (monochrome fallback).
@@ -51,8 +51,44 @@ Power Draw:
     Idle:        0.15a, 0.77w, 5.22v
 
 Legacy Displays:
-    * OLED display are slow, (monochrome).
+    * OLED monochrome display are slow.
     * E-Ink B&W has 2-3 sec full refresh which is way too slow.
+
+Other GPIO
+GPIO 25, 26 Buttons
+GPIO 2 SDA - I2C
+GPIO 3 SCL - I2C
+GPIO 6 - trigger
+
+WaveShare Defintions
+    Signal	Board Pin No.	Broadcom GPIO	Function / Assignment
+VCC	3.3V	—	3.3V Power
+GND	GND	—	Ground
+MOSI1	Pin 38	GPIO 20	SPI1 MOSI (center display)
+MOSI0	Pin 19	GPIO 10	SPI0 MOSI (left/right displays)
+SCLK1	Pin 40	GPIO 21	SSPI1 SCLK (center display)
+SCLK0	Pin 23	GPIO 11	SPI0 SCLK (left/right displays)
+CS0	Pin 12	GPIO 18	SPI1 Chip Select 0 (1.3" Main Screen 0)
+CS1	Pin 24	GPIO 8	SPI0 Chip Select 1 (0.96" Screen 1)
+CS2	Pin 26	GPIO 7	SPI0 Chip Select 2 (0.96" Screen 2)
+DC0	Pin 15	GPIO 22	Data/Command Control (1.3" Main Screen 0)
+DC1	Pin 7	GPIO 4	Data/Command Control (0.96" Screen 1)
+DC2	Pin 29	GPIO 5	Data/Command Control (0.96" Screen 2)
+RST0	Pin 13	GPIO 27	HHardware Reset (1.3" Main Screen 0)
+RST1	Pin 18	GPIO 24	Hardware Reset (0.96" Screen 1)
+RST2	Pin 16	GPIO 23	Hardware Reset (0.96" Screen 2)
+BL0	Pin 35	GPIO 19	Backlight PWM/Control (1.3" Main Screen 0)
+BL1	Pin 33	GPIO 13	Backlight PWM/Control (0.96" Screen 1)
+BL2	Pin 32	GPIO 12	Backlight PWM/Control (0.96" Screen 2)
+KEY1	Pin 22	GPIO 25	Bottom User Button 1
+KEY2	Pin 37	GPIO 26	Top User Button 2
+
+Free pins:
+GPIO 9 (Physical Pin 21 / SPI0 MISO) — Free (SPI0 is transmit-only for these LCDs, so MISO isn't used by the HAT).
+GPIO 14 (Physical Pin 8 / UART TX) — Free GPIO or Serial TX.
+GPIO 15 (Physical Pin 10 / UART RX) — Free GPIO or Serial RX.
+GPIO 16 (Physical Pin 36) — Free general-purpose GPIO.
+GPIO 17 (Physical Pin 11) — Free general-purpose GPIO.
 
 TODOs:
 TODO REMOVE heading=0 WHEN MAGNETOMETER IS INSTALLED
@@ -84,29 +120,31 @@ from lib.matplot_rssi_radar_utils import plot_rssi_polar
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
     channel_to_frequency, trigger_background_scan
 
+
 DEBUG = False
 BLOCK_0_BAR = True
 BLOCK_NON_2_4_G = True  # Pi Zero 2 W shows only 2.4 GHz
 
 button1_pressed = False
 button2_pressed = False
-button1 = Button(25, pull_up=True, bounce_time=0.1)
-button2 = Button(26, pull_up=True, bounce_time=0.1)
-
+button1 = None
+button2 = None
 
 def button1_callback():
     global button1_pressed
     button1_pressed = True
 
-
 def button2_callback():
     global button2_pressed
     button2_pressed = True
 
-
-button1.when_pressed = button1_callback
-button2.when_pressed = button2_callback
-print("Button 1 & 2 Listeners Active (GPIO 25 & 26) for Press")
+def init_buttons():
+    global button1, button2
+    button1 = Button(25, pull_up=True, bounce_time=0.1)
+    button2 = Button(26, pull_up=True, bounce_time=0.1)
+    button1.when_pressed = button1_callback
+    button2.when_pressed = button2_callback
+    print("Button 1 & 2 Listeners Active (GPIO 25 & 26) for Press")
 
 
 def init_i2c() -> tuple[bool, I2C, bool]:
@@ -201,86 +239,94 @@ def console_print(data, heading):
 
 def oled_display_update(draw, font, image, oled_display, data, heading):
     """ Legacy OLED display - unfortunately refresh too slow."""
-    clear_display_oled(oled_display, draw, image)
+    if oled_display is None:
+        return
 
-    if heading is not None:
-        draw.text((0, 0), f"dir: {heading:.0f}°", font=font, fill=1)
-    else:
-        draw.text((0, 0), f"no compass", font=font, fill=1)
-    draw.text((86, 0), f"{datetime.now().strftime('%H:%M:%S')}", font=font, fill=1)
+    try:
+        clear_display_oled(oled_display, draw, image)
 
-    y = 8
-    for net in (data or [])[:3]:
-        ssid = (net.ssid() or "<hidden>")[:10]
-        rssi = net.rssi_value()
-        num_bars = rssi_to_bars(rssi)
-        bar_string = ("*" * num_bars).ljust(4)
+        if heading is not None:
+            draw.text((0, 0), f"dir: {heading:.0f}°", font=font, fill=1)
+        else:
+            draw.text((0, 0), f"no compass", font=font, fill=1)
+        draw.text((86, 0), f"{datetime.now().strftime('%H:%M:%S')}", font=font, fill=1)
 
-        draw.text((0, y), f"{ssid:<10}", font=font, fill=1)
-        draw.text((7 * 8 + 1, y), f"{rssi:>4} dbm", font=font, fill=1)
-        draw.text((12 * 8 + 4, y), f"{bar_string}", font=font, fill=1)
-        y += 8
+        y = 8
+        for net in (data or [])[:3]:
+            ssid = (net.ssid() or "<hidden>")[:10]
+            rssi = net.rssi_value()
+            num_bars = rssi_to_bars(rssi)
+            bar_string = ("*" * num_bars).ljust(4)
 
-    oled_display.image(image)
-    oled_display.show()
+            draw.text((0, y), f"{ssid:<10}", font=font, fill=1)
+            draw.text((7 * 8 + 1, y), f"{rssi:>4} dbm", font=font, fill=1)
+            draw.text((12 * 8 + 4, y), f"{bar_string}", font=font, fill=1)
+            y += 8
+
+        oled_display.image(image)
+        oled_display.show()
+    except Exception as e:
+        print(f"OLED write error: {e}")
 
 
-def lcd_display_update(lcd, disp_0, disp_1, disp_2, data, heading):
+def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
     """Print scan results across the triple LCD HAT displays."""
-    time_str = datetime.now().strftime("%H:%M:%S")
-    heading_str = f"{heading:.0f}°" if heading is not None else "? °"
-    dir_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
+    if not (disp_0 and disp_1 and disp_2):
+        return
 
-    # Screen 0: Interactive Menu Option - left-most display
-    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270("Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="yellow")
-    lcd.print_270("RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="yellow")
-    disp_0.ShowImage(image0)
+    try:
+        time_str = datetime.now().strftime("%H:%M:%S")
+        heading_str = f"{heading:.0f}°" if heading is not None else "? °"
+        dir_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
 
-    # Screen 1: Heading & Clock - right-most display
-    image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    lcd.print_270(f"heading=", pos=(132, 0), image=image1, font=lcd.font0_16pt, color="yellow")
-    lcd.print_270(heading_str, pos=(104, 10), image=image1, font=lcd.font0_28pt, color="yellow")
-    lcd.print_270(time_str, pos=(2, 0), image=image1, font=lcd.font0_20pt, color="yellow")
-    disp_1.ShowImage(image1)
+        # Screen 0: Interactive Menu Option
+        image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+        lcd.print_270("Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="yellow")
+        lcd.print_270("RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="yellow")
+        disp_0.ShowImage(image0)
 
-    # Screen 2: Wi-Fi RSSI Table - Center display
-    image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
+        # Screen 1: Heading & Clock
+        image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
+        lcd.print_270(f"heading=", pos=(132, 0), image=image1, font=lcd.font0_16pt, color="yellow")
+        lcd.print_270(heading_str, pos=(104, 10), image=image1, font=lcd.font0_28pt, color="yellow")
+        lcd.print_270(time_str, pos=(2, 0), image=image1, font=lcd.font0_20pt, color="yellow")
+        disp_1.ShowImage(image1)
 
-    # Header & Telemetry
-    lcd.print_270(dir_str, pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-    lcd.print_270(time_str, pos=(240, 200), image=image2, font=lcd.font0_20pt, color="yellow")
+        # Screen 2: Wi-Fi RSSI Table
+        image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
+        lcd.print_270(dir_str, pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
+        lcd.print_270(time_str, pos=(240, 200), image=image2, font=lcd.font0_20pt, color="yellow")
 
-    y = 210
-    headers = [("SSID", 2, lcd.font0_24pt), ("dBm", 129, lcd.font0_20pt),
-               ("bar", 177, lcd.font0_20pt), ("ch", 213, lcd.font0_20pt)]
-    for label, x, font in headers:
-        lcd.print_270(label, pos=(y, x), image=image2, font=font, color="blue")
-
-    y -= 24
-
-    # Show Network table in Rows
-    for net in (data or []):
-        rssi = net.rssi_value()
-        band = map_band_to_string(net)
-
-        if (BLOCK_0_BAR and rssi <= -80) or (BLOCK_NON_2_4_G and band != "2.4 GHz"):
-            continue
-
-        ssid = net.ssid() or "<hidden>"
-        truncated_ssid = ssid[:9] + "." if len(ssid) > 9 else ssid
-        channel = net.channel() if hasattr(net, 'channel') else "??"
-        bar_string = ("*" * rssi_to_bars(rssi)).ljust(4)
-
-        # Draw row elements
-        lcd.print_270(f"{truncated_ssid:<10}", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="white")
-        lcd.print_270(f"{rssi:>4}", pos=(y, 132), image=image2, font=lcd.font0_24pt, color="yellow")
-        lcd.print_270(bar_string, pos=(y, 176), image=image2, font=lcd.font0_20pt, color="white")
-        lcd.print_270(f"{channel:>2}", pos=(y, 213), image=image2, font=lcd.font0_24pt, color="white")
+        y = 210
+        headers = [("SSID", 2, lcd.font0_24pt), ("dBm", 129, lcd.font0_20pt),
+                   ("bar", 177, lcd.font0_20pt), ("ch", 213, lcd.font0_20pt)]
+        for label, x, font in headers:
+            lcd.print_270(label, pos=(y, x), image=image2, font=font, color="blue")
 
         y -= 24
 
-    disp_2.ShowImage(image2)
+        for net in (data or []):
+            rssi = net.rssi_value()
+            band = map_band_to_string(net)
+
+            if (BLOCK_0_BAR and rssi <= -80) or (BLOCK_NON_2_4_G and band != "2.4 GHz"):
+                continue
+
+            ssid = net.ssid() or "<hidden>"
+            truncated_ssid = ssid[:9] + "." if len(ssid) > 9 else ssid
+            channel = net.channel() if hasattr(net, 'channel') else "??"
+            bar_string = ("*" * rssi_to_bars(rssi)).ljust(4)
+
+            lcd.print_270(f"{truncated_ssid:<10}", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="white")
+            lcd.print_270(f"{rssi:>4}", pos=(y, 132), image=image2, font=lcd.font0_24pt, color="yellow")
+            lcd.print_270(bar_string, pos=(y, 176), image=image2, font=lcd.font0_20pt, color="white")
+            lcd.print_270(f"{channel:>2}", pos=(y, 213), image=image2, font=lcd.font0_24pt, color="white")
+
+            y -= 24
+
+        disp_2.ShowImage(image2)
+    except Exception as e:
+        print(f"Display write error (LCD ignored): {e}")
 
 
 def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
@@ -617,12 +663,28 @@ def main():
 
     oled_display, draw, font, image = None, None, None, None
     if oled_detected:
-        oled_display, draw, font, image = init_oled_display(i2c1, use_mono_type=False)
+        try:
+            oled_display, draw, font, image = init_oled_display(i2c1, use_mono_type=False)
+        except Exception as e:
+            print(f"Warning: Failed to initialize OLED display: {e}")
+            oled_detected = False
 
     lcd_detected = False
-    if not oled_detected:
-        lcd_detected = True
+    disp_0, disp_1, disp_2 = None, None, None
+
+    try:
         disp_0, disp_1, disp_2 = create_lcd_display_canvases("radiant-ether-913.jpg")
+        lcd_detected = True
+        print("Triple LCD Display initialized.")
+    except Exception as e:
+        print(f"Warning: LCD hardware not connected or failed to initialize: {e}")
+        lcd_detected = False
+
+    # 2. Initialize GPIO Buttons SECOND (after LCD claims SPI/GPIO pins)
+    init_buttons()
+
+    if not oled_detected and not lcd_detected:
+        print("--> Running in Headless / Console-Only Mode <--")
 
     lis3mdl = None
     if lis3mdl_detected:
@@ -631,10 +693,13 @@ def main():
     # Fill Wi-Fi cache once before starting
     print("Pre-warming Wi-Fi cache...")
     trigger_background_scan(wifi_interface)
-    if oled_detected:
-        draw.text((0, 0), "Warming Wi-Fi cache", font=font, fill=1)
-        oled_display.image(image)
-        oled_display.show()
+    if oled_detected and oled_display and draw:
+        try:
+            draw.text((0, 0), "Warming Wi-Fi cache", font=font, fill=1)
+            oled_display.image(image)
+            oled_display.show()
+        except Exception:
+            pass
 
     try:
 
@@ -676,7 +741,7 @@ def main():
                 if oled_detected:
                     oled_display_update(draw, font, image, oled_display, wifi_data, heading)
                 if lcd_detected:
-                    lcd_display_update(lcd, disp_0, disp_1, disp_2, wifi_data, heading)
+                    lcd_display_update(disp_0, disp_1, disp_2, wifi_data, heading)
 
                 duration = time.time() - last_update
                 last_update = time.time()
@@ -695,12 +760,12 @@ def main():
             if button2_pressed:
                 button2_pressed = False
                 if lcd_detected:
-                    # Select which SSID to plot
                     target_bssid, menu_ssid = lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map)
                     if target_bssid:
                         print(f"Starting Radar Plot Mode for: {target_bssid}")
                         plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl)
-
+                else:
+                    print("Button pressed, but no LCD display is active.")
 
     except KeyboardInterrupt:
         print("\nSaving plots...")
