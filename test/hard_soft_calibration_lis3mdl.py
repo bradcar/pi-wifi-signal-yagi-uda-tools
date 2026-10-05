@@ -25,6 +25,7 @@ magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
 
 PLOT_FILE_NAME = "calibration_plot"
 CALIBRATION_FILE_NAME = "calibration_values"
+PARAMETER_FILE_NAME = "calibration_parameters"
 
 
 def create_output_directory(dir_name="calibration_output_files"):
@@ -88,9 +89,7 @@ def fit_ellipsoid_and_compute_matrices(samples):
     """Computes 3D Hard-Iron Offsets and 3x3 Soft-Iron Matrix from collected points."""
     n = len(samples)
     if n < 50:
-        raise ValueError(
-            "Not enough samples collected for reliable calibration."
-        )
+        raise ValueError("Not enough samples collected for reliable calibration.")
 
     xs = [p[0] for p in samples]
     ys = [p[1] for p in samples]
@@ -126,15 +125,9 @@ def fit_ellipsoid_and_compute_matrices(samples):
     cov_xz = sum(c[0] * c[2] for c in centered) / n
     cov_yz = sum(c[1] * c[2] for c in centered) / n
 
-    soft_xy = (
-        -cov_xy / math.sqrt(var_x * var_y) if (var_x * var_y) > 0 else 0.0
-    )
-    soft_xz = (
-        -cov_xz / math.sqrt(var_x * var_z) if (var_x * var_z) > 0 else 0.0
-    )
-    soft_yz = (
-        -cov_yz / math.sqrt(var_y * var_z) if (var_y * var_z) > 0 else 0.0
-    )
+    soft_xy = (-cov_xy / math.sqrt(var_x * var_y) if (var_x * var_y) > 0 else 0.0)
+    soft_xz = (-cov_xz / math.sqrt(var_x * var_z) if (var_x * var_z) > 0 else 0.0)
+    soft_yz = (-cov_yz / math.sqrt(var_y * var_z) if (var_y * var_z) > 0 else 0.0)
 
     soft_iron_matrix = [
         [round(scale_x, 4), round(soft_xy * 0.1, 4), round(soft_xz * 0.1, 4)],
@@ -192,13 +185,12 @@ def plot_calibration(calibration_file, plot_filename):
     mz = [2.0 * (z - mag_min[2]) / span_z - 1.0 for z in rz]
 
     fig = plt.figure(figsize=(12, 5))
-    print(f"Magnetometer Calibration Results")
     fig.suptitle("Magnetometer Calibration Results", fontsize=14, fontweight="bold")
 
     # Create subplot for Raw Ellipsoid
     ax1 = fig.add_subplot(121, projection="3d")
     ax1.scatter(rx, ry, rz, c=rz, cmap="coolwarm", s=15, alpha=0.8)
-    print("Create subplot for BEFORE: Raw Magnetometer Data")
+    print("\nCreate subplot for BEFORE: Raw Magnetometer Data")
     ax1.set_title("BEFORE: Raw Magnetometer Data")
 
     # Force equal aspect ratio on raw plot so distortion is visually obvious
@@ -226,8 +218,8 @@ def plot_calibration(calibration_file, plot_filename):
     ax2.set_box_aspect([1, 1, 1])
 
     plt.tight_layout()
-    plt.savefig(filename, dpi=150)
-    print(f"\n Saved calibration plot to {plot_filename}")
+    plt.savefig(plot_filename, dpi=150)
+    print(f"\nSaved calibration plot to {plot_filename}")
 
     # Display the plot
     plt.show()
@@ -237,9 +229,9 @@ def plot_calibration(calibration_file, plot_filename):
 def print_and_save_parameters(mag_min, mag_max, matrix, filepath):
     """Formats calibration parameters, prints them to the console, and writes them to a file."""
     output_lines = [
-        "\n================================================================",
-        "Calibration Complete!",
-        "Copy and paste these declarations into your parameter file:\n",
+        "\n#================================================================",
+        "#Calibration Complete!",
+        "#Copy and paste these declarations into your parameter file:\n",
         "# Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:",
         f"HARD_IRON_CALIBRATED_MAG_MIN = [{mag_min[0]:.4f}, {mag_min[1]:.4f}, {mag_min[2]:.4f}]",
         f"HARD_IRON_CALIBRATED_MAG_MAX = [{mag_max[0]:.4f}, {mag_max[1]:.4f}, {mag_max[2]:.4f}]\n",
@@ -272,14 +264,12 @@ def main():
     raw_samples = collect_samples(runtime_seconds=120)
     offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
 
-    print("\n\n")
-    print("================================================================")
-    print("================================================================")
-    print("\n\n")
+    print("\n")
 
     # create output directory and timestamp for output files
     output_dir = create_output_directory()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    print(f"\nSaving calibration data in directory ./{output_dir}, files will append {timestamp} string")
 
     # Print Results Formatted for Direct Copy-Paste
     param_file = os.path.join(output_dir, f"{PARAMETER_FILE_NAME}_{timestamp}.py")
