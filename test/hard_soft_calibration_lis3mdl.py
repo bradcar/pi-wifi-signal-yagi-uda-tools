@@ -6,11 +6,13 @@ Collects 3D magnetometer data points over a timed window, fits an ellipsoid,
 and outputs copy-pasteable hard-iron offsets and a 3x3 soft-iron transformation matrix.
 """
 
-import time
-import math
 import board
-import adafruit_lis3mdl
+import math
+import os
+import time
+from datetime import datetime
 
+import adafruit_lis3mdl
 import matplotlib
 
 matplotlib.use("Agg")  # Non-interactive backend (works over SSH without GUI)
@@ -19,6 +21,15 @@ import matplotlib.pyplot as plt
 # Initialize Sensor
 i2c = board.I2C()
 magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
+
+PLOT_FILE_NAME = "calibration_plot"
+CALIBRATION_VALUES = "calibration_values"
+
+
+def create_output_directory(dir_name="calibration_output_files"):
+    """Creates the calibration output directory if it does not exist and returns its path."""
+    os.makedirs(dir_name, exist_ok=True)
+    return dir_name
 
 
 def collect_samples(runtime_seconds=60, sample_delay=0.05):
@@ -141,11 +152,9 @@ def fit_ellipsoid_and_compute_matrices(samples):
     return hard_iron_offsets, soft_iron_matrix, min_vals, max_vals
 
 
-def plot_and_save_calibration(
-    samples, mag_min, mag_max, filename="calibration_plot-v2.png"
-):
-
+def plot_calibration(samples, mag_min, mag_max, filename):
     print(f"Plotting calibration plot to {filename}, samples: {len(samples)}")
+
     # Generates 3D before/after calibration plot and saves it to a file.
     rx = [p[0] for p in samples]
     ry = [p[1] for p in samples]
@@ -164,38 +173,44 @@ def plot_and_save_calibration(
     print(f"Magnetometer Calibration Results")
     fig.suptitle("Magnetometer Calibration Results", fontsize=14, fontweight="bold")
 
-    # Raw Ellipsoid
+    # Create subplot for Raw Ellipsoid
     ax1 = fig.add_subplot(121, projection="3d")
-    ax1.scatter(rx, ry, rz, c=rz, cmap="coolwarm", s=15, alpha=0.7)
-    print("BEFORE: Raw Magnetometer Data")
+    ax1.scatter(rx, ry, rz, c=rz, cmap="coolwarm", s=15, alpha=0.8)
+    print("Create subplot for BEFORE: Raw Magnetometer Data")
     ax1.set_title("BEFORE: Raw Magnetometer Data")
 
     # Force equal aspect ratio on raw plot so distortion is visually obvious
-    max_range = max(max(rx) - min(rx), max(ry) - min(ry), max(rz) - min(rz)) / 2.0
-    mid_x = (max(rx) + min(rx)) / 2.0
-    mid_y = (max(ry) + min(ry)) / 2.0
-    mid_z = (max(rz) + min(rz)) / 2.0
-    ax1.set_xlim(mid_x - max_range, mid_x + max_range)
-    ax1.set_ylim(mid_y - max_range, mid_y + max_range)
-    ax1.set_zlim(mid_z - max_range, mid_z + max_range)
+    all_vals = rx + ry + rz
+    min_val, max_val = min(all_vals), max(all_vals)
+    padding = (max_val - min_val) * 0.05 if max_val != min_val else 1.0
+
+    ax1.set_xlim(min_val - padding, max_val + padding)
+    ax1.set_ylim(min_val - padding, max_val + padding)
+    ax1.set_zlim(min_val - padding, max_val + padding)
+    ax1.set_box_aspect([1, 1, 1])
+
     ax1.set_xlabel("X (µT)")
     ax1.set_ylabel("Y (µT)")
     ax1.set_zlabel("Z (µT)")
 
-    # Calibrated Unit Sphere
+    # Create subplot for Raw Ellipsoid
     ax2 = fig.add_subplot(122, projection="3d")
-    ax2.scatter(mx, my, mz, c=mz, cmap="viridis", s=15, alpha=0.7)
-    print("AFTER: Normalized Calibrated Sphere")
+    ax2.scatter(mx, my, mz, c=mz, cmap="viridis", s=15, alpha=0.8)
+    print("Create subplot for AFTER: Normalized Calibrated Sphere")
     ax2.set_title("AFTER: Normalized Calibrated Sphere")
     ax2.set_xlim(-1.1, 1.1)
     ax2.set_ylim(-1.1, 1.1)
     ax2.set_zlim(-1.1, 1.1)
+    ax2.set_box_aspect([1, 1, 1])
 
     plt.tight_layout()
     plt.savefig(filename, dpi=150)
     print(f"\n Saved calibration plot to {filename}")
+
+    # Display the plot
     plt.show()
     plt.close(fig)
+
 
 def main():
     # Execution
@@ -228,7 +243,13 @@ def main():
     print("================================================================")
     print("\n\n")
 
-    plot_and_save_calibration(raw_samples, mag_min, mag_max)
+    # plot calibration ellipsoid and corrected sphere as subplots in a plot
+    output_dir = create_output_directory()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    plot_file = os.path.join(output_dir, f"{PLOT_FILE_NAME}_{timestamp}.png")
+
+    plot_calibration(raw_samples, mag_min, mag_max, plot_file)
+
 
 if __name__ == "__main__":
     main()
