@@ -7,6 +7,7 @@ and outputs copy-pasteable hard-iron offsets and a 3x3 soft-iron transformation 
 """
 
 import board
+import json
 import math
 import os
 import time
@@ -23,7 +24,7 @@ i2c = board.I2C()
 magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
 
 PLOT_FILE_NAME = "calibration_plot"
-CALIBRATION_VALUES = "calibration_values"
+CALIBRATION_FILE_NAME = "calibration_values"
 
 
 def create_output_directory(dir_name="calibration_output_files"):
@@ -152,8 +153,29 @@ def fit_ellipsoid_and_compute_matrices(samples):
     return hard_iron_offsets, soft_iron_matrix, min_vals, max_vals
 
 
-def plot_calibration(samples, mag_min, mag_max, filename):
-    print(f"Plotting calibration plot to {filename}, samples: {len(samples)}")
+def save_calibration_data(raw_samples, mag_min, mag_max, filename):
+    """Saves raw_samples, mag_min, and mag_max into a JSON calibration file."""
+    data = {
+        "raw_samples": raw_samples,
+        "mag_min": mag_min,
+        "mag_max": mag_max,
+    }
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+    print(f"Saved calibration data to {filename}")
+
+
+def load_calibration_data(filename):
+    """Loads raw_samples, mag_min, and mag_max from a JSON calibration file."""
+    with open(filename, "r") as f:
+        data = json.load(f)
+    print(f"Loaded calibration data from {filename}")
+    return data["raw_samples"], data["mag_min"], data["mag_max"]
+
+
+def plot_calibration(calibration_file, plot_filename):
+    # Reads samples and min/max bounds directly from the saved calibration file
+    samples, mag_min, mag_max = load_calibration_data(calibration_file)
 
     # Generates 3D before/after calibration plot and saves it to a file.
     rx = [p[0] for p in samples]
@@ -193,7 +215,7 @@ def plot_calibration(samples, mag_min, mag_max, filename):
     ax1.set_ylabel("Y (µT)")
     ax1.set_zlabel("Z (µT)")
 
-    # Create subplot for Raw Ellipsoid
+    # Create subplot for Calibrated Sphere
     ax2 = fig.add_subplot(122, projection="3d")
     ax2.scatter(mx, my, mz, c=mz, cmap="viridis", s=15, alpha=0.8)
     print("Create subplot for AFTER: Normalized Calibrated Sphere")
@@ -205,7 +227,7 @@ def plot_calibration(samples, mag_min, mag_max, filename):
 
     plt.tight_layout()
     plt.savefig(filename, dpi=150)
-    print(f"\n Saved calibration plot to {filename}")
+    print(f"\n Saved calibration plot to {plot_filename}")
 
     # Display the plot
     plt.show()
@@ -243,12 +265,17 @@ def main():
     print("================================================================")
     print("\n\n")
 
-    # plot calibration ellipsoid and corrected sphere as subplots in a plot
+    # create output directory and timestamp for output files
     output_dir = create_output_directory()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    plot_file = os.path.join(output_dir, f"{PLOT_FILE_NAME}_{timestamp}.png")
 
-    plot_calibration(raw_samples, mag_min, mag_max, plot_file)
+    # Save calibration data to file
+    calibration_file = os.path.join(output_dir, f"{CALIBRATION_FILE_NAME}_{timestamp}.json")
+    save_calibration_data(raw_samples, mag_min, mag_max, calibration_file)
+
+    # Plot using the stored calibration file
+    plot_file = os.path.join(output_dir, f"{PLOT_FILE_NAME}_{timestamp}.png")
+    plot_calibration(calibration_file, plot_file)
 
 
 if __name__ == "__main__":
