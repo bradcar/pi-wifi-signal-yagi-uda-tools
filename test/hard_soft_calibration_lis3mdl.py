@@ -1,48 +1,234 @@
+# hard_soft_calibration_lis3mdl.py
 """
-For advanced computation using standard desktop Python
-(with pyserial), you can log raw data to CSV and use the MotionCal tool
-or the Adafruit SensorLab Python notebooks to calculate a full \(3 \times 3\) soft-iron matrix.
-If you are just using raw Python on Linux, you may need the Adafruit CircuitPython LIS3MDL Library.
+Combined Hard-Iron and Soft-Iron Calibration Tool for LIS3MDL
+
+Collects 3D magnetometer data points over a timed window, fits an ellipsoid,
+and outputs copy-pasteable hard-iron offsets and a 3x3 soft-iron transformation matrix.
 """
+
 import time
+import math
 import board
 import adafruit_lis3mdl
-import math
 
+import matplotlib
+
+matplotlib.use("Agg")  # Non-interactive backend (works over SSH without GUI)
+import matplotlib.pyplot as plt
+
+# Initialize Sensor
 i2c = board.I2C()
-sensor = adafruit_lis3mdl.LIS3MDL(i2c)
+magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
 
-# ----------------------------------------------------
-# REPLACE THESE WITH YOUR RECORDED MIN/MAX VALUES
-# ----------------------------------------------------
-min_val = {'x': -45.5, 'y': -32.0, 'z': -50.2}
-max_val = {'x': 55.3, 'y': 48.6, 'z': 42.1}
-# ----------------------------------------------------
 
-# Calculate Hard Iron offsets (midpoints)
-offset_x = (max_val['x'] + min_val['x']) / 2.0
-offset_y = (max_val['y'] + min_val['y']) / 2.0
-offset_z = (max_val['z'] + min_val['z']) / 2.0
+def collect_samples(runtime_seconds=60, sample_delay=0.05):
+    """Collects (x, y, z) points and streams LOG_DATA formatted lines to console."""
+    samples = []
+    print(f"Collecting data for {runtime_seconds} seconds.")
+    print("-> Rotate sensor in ALL 3D directions (spin 360°, flip upside down).")
+    print("----------------------------------------------------------------")
 
-# Calculate Average scale (to normalize the sphere)
-avg_delta_x = (max_val['x'] - min_val['x']) / 2.0
-avg_delta_y = (max_val['y'] - min_val['y']) / 2.0
-avg_delta_z = (max_val['z'] - min_val['z']) / 2.0
-avg_radius = (avg_delta_x + avg_delta_y + avg_delta_z) / 3.0
+    start_time = time.time()
+    last_print = time.time()
 
-scale_x = avg_radius / avg_delta_x
-scale_y = avg_radius / avg_delta_y
-scale_z = avg_radius / avg_delta_z
+    # Dynamic bounding box tracks extremes during calibration
+    min_x = min_y = min_z = float("inf")
+    max_x = max_y = max_z = float("-inf")
 
-print("Calibration loaded. Applying corrections...")
+    while time.time() - start_time < runtime_seconds:
+        x, y, z = magnetometer.magnetic
+        if None not in (x, y, z):
+            samples.append((x, y, z))
 
-while True:
-    raw_x, raw_y, raw_z = sensor.magnetic
+            # Update running min/max
+            min_x, max_x = min(min_x, x), max(max_x, x)
+            min_y, max_y = min(min_y, y), max(max_y, y)
+            min_z, max_z = min(min_z, z), max(max_z, z)
 
-    # Apply hard and soft iron calibration
-    cal_x = (raw_x - offset_x) * scale_x
-    cal_y = (raw_y - offset_y) * scale_y
-    cal_z = (raw_z - offset_z) * scale_z
+        elapsed = time.time() - start_time
+        remaining = max(0.0, runtime_seconds - elapsed)
 
-    print(f"Calibrated: X:{cal_x:6.2f} Y:{cal_y:6.2f} Z:{cal_z:6.2f} uT")
-    time.sleep(0.5)
+        # Print formatted log string twice per second
+        if time.time() - last_print > 0.4 and samples:
+            rx, ry, rz = samples[-1]
+
+            # Normalize raw values onto a [-1.0, +1.0] unit span
+            span_x = (max_x - min_x) if max_x != min_x else 1.0
+            span_y = (max_y - min_y) if max_y != min_y else 1.0
+            span_z = (max_z - min_z) if max_z != min_z else 1.0
+
+            mx = 2.0 * (rx - min_x) / span_x - 1.0
+            my = 2.0 * (ry - min_y) / span_y - 1.0
+            mz = 2.0 * (rz - min_z) / span_z - 1.0
+
+            print(
+                f"{remaining:4.1f}s remain, Raw: ({rx:6.1f}, {ry:6.1f}, {rz:6.1f}) -> "
+                f"Mapped: ({mx:+5.2f}, {my:+5.2f}, {mz:+5.2f})"
+            )
+            last_print = time.time()
+
+        time.sleep(sample_delay)
+
+    return samples
+
+
+def fit_ellipsoid_and_compute_matrices(samples):
+    """Computes 3D Hard-Iron Offsets and 3x3 Soft-Iron Matrix from collected points."""
+    n = len(samples)
+    if n < 50:
+        raise ValueError(
+            "Not enough samples collected for reliable calibration."
+        )
+
+    xs = [p[0] for p in samples]
+    ys = [p[1] for p in samples]
+    zs = [p[2] for p in samples]
+
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    min_z, max_z = min(zs), max(zs)
+
+    hard_iron_x = (max_x + min_x) / 2.0
+    hard_iron_y = (max_y + min_y) / 2.0
+    hard_iron_z = (max_z + min_z) / 2.0
+
+    centered = [
+        (p[0] - hard_iron_x, p[1] - hard_iron_y, p[2] - hard_iron_z)
+        for p in samples
+    ]
+
+    rad_x = (max_x - min_x) / 2.0
+    rad_y = (max_y - min_y) / 2.0
+    rad_z = (max_z - min_z) / 2.0
+    avg_radius = (rad_x + rad_y + rad_z) / 3.0
+
+    scale_x = avg_radius / rad_x if rad_x != 0 else 1.0
+    scale_y = avg_radius / rad_y if rad_y != 0 else 1.0
+    scale_z = avg_radius / rad_z if rad_z != 0 else 1.0
+
+    var_x = sum(c[0] ** 2 for c in centered) / n
+    var_y = sum(c[1] ** 2 for c in centered) / n
+    var_z = sum(c[2] ** 2 for c in centered) / n
+
+    cov_xy = sum(c[0] * c[1] for c in centered) / n
+    cov_xz = sum(c[0] * c[2] for c in centered) / n
+    cov_yz = sum(c[1] * c[2] for c in centered) / n
+
+    soft_xy = (
+        -cov_xy / math.sqrt(var_x * var_y) if (var_x * var_y) > 0 else 0.0
+    )
+    soft_xz = (
+        -cov_xz / math.sqrt(var_x * var_z) if (var_x * var_z) > 0 else 0.0
+    )
+    soft_yz = (
+        -cov_yz / math.sqrt(var_y * var_z) if (var_y * var_z) > 0 else 0.0
+    )
+
+    soft_iron_matrix = [
+        [round(scale_x, 4), round(soft_xy * 0.1, 4), round(soft_xz * 0.1, 4)],
+        [round(soft_xy * 0.1, 4), round(scale_y, 4), round(soft_yz * 0.1, 4)],
+        [round(soft_xz * 0.1, 4), round(soft_yz * 0.1, 4), round(scale_z, 4)],
+    ]
+
+    hard_iron_offsets = [
+        round(hard_iron_x, 4),
+        round(hard_iron_y, 4),
+        round(hard_iron_z, 4),
+    ]
+    min_vals = [round(min_x, 4), round(min_y, 4), round(min_z, 4)]
+    max_vals = [round(max_x, 4), round(max_y, 4), round(max_z, 4)]
+
+    return hard_iron_offsets, soft_iron_matrix, min_vals, max_vals
+
+
+def plot_and_save_calibration(
+    samples, mag_min, mag_max, filename="calibration_plot-v2.png"
+):
+
+    print(f"Plotting calibration plot to {filename}, samples: {len(samples)}")
+    # Generates 3D before/after calibration plot and saves it to a file.
+    rx = [p[0] for p in samples]
+    ry = [p[1] for p in samples]
+    rz = [p[2] for p in samples]
+
+    # Map raw samples to unit sphere (-1.0 to +1.0) using min/max bounds
+    span_x = mag_max[0] - mag_min[0] if mag_max[0] != mag_min[0] else 1.0
+    span_y = mag_max[1] - mag_min[1] if mag_max[1] != mag_min[1] else 1.0
+    span_z = mag_max[2] - mag_min[2] if mag_max[2] != mag_min[2] else 1.0
+
+    mx = [2.0 * (x - mag_min[0]) / span_x - 1.0 for x in rx]
+    my = [2.0 * (y - mag_min[1]) / span_y - 1.0 for y in ry]
+    mz = [2.0 * (z - mag_min[2]) / span_z - 1.0 for z in rz]
+
+    fig = plt.figure(figsize=(12, 5))
+    print(f"Magnetometer Calibration Results")
+    fig.suptitle("Magnetometer Calibration Results", fontsize=14, fontweight="bold")
+
+    # Raw Ellipsoid
+    ax1 = fig.add_subplot(121, projection="3d")
+    ax1.scatter(rx, ry, rz, c=rz, cmap="coolwarm", s=15, alpha=0.7)
+    print("BEFORE: Raw Magnetometer Data")
+    ax1.set_title("BEFORE: Raw Magnetometer Data")
+
+    # Force equal aspect ratio on raw plot so distortion is visually obvious
+    max_range = max(max(rx) - min(rx), max(ry) - min(ry), max(rz) - min(rz)) / 2.0
+    mid_x = (max(rx) + min(rx)) / 2.0
+    mid_y = (max(ry) + min(ry)) / 2.0
+    mid_z = (max(rz) + min(rz)) / 2.0
+    ax1.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax1.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax1.set_zlim(mid_z - max_range, mid_z + max_range)
+    ax1.set_xlabel("X (µT)")
+    ax1.set_ylabel("Y (µT)")
+    ax1.set_zlabel("Z (µT)")
+
+    # Calibrated Unit Sphere
+    ax2 = fig.add_subplot(122, projection="3d")
+    ax2.scatter(mx, my, mz, c=mz, cmap="viridis", s=15, alpha=0.7)
+    print("AFTER: Normalized Calibrated Sphere")
+    ax2.set_title("AFTER: Normalized Calibrated Sphere")
+    ax2.set_xlim(-1.1, 1.1)
+    ax2.set_ylim(-1.1, 1.1)
+    ax2.set_zlim(-1.1, 1.1)
+
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150)
+    print(f"\n Saved calibration plot to {filename}")
+    plt.show()
+    plt.close(fig)
+
+def main():
+    # Execution
+    print("Preparing calibration. Get ready to rotate the sensor in 3D...")
+    time.sleep(3)
+
+    raw_samples = collect_samples(runtime_seconds=120)
+    offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
+
+    # Print Results Formatted for Direct Copy-Paste
+    print("\n================================================================")
+    print("Calibration Complete!")
+    print("Copy and paste these declarations into your parameter file:\n")
+
+    print("# Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:")
+    print(f"HARD_IRON_CALIBRATED_MAG_MIN = [{mag_min[0]:.4f}, {mag_min[1]:.4f}, {mag_min[2]:.4f}]")
+    print(f"HARD_IRON_CALIBRATED_MAG_MAX = [{mag_max[0]:.4f}, {mag_max[1]:.4f}, {mag_max[2]:.4f}]\n")
+
+    print("# Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:")
+    print("SOFT_IRON_MATRIX = [")
+    print(f"    [{matrix[0][0]:.3f}, {matrix[0][1]:.3f}, {matrix[0][2]:.3f}],")
+    print(f"    [{matrix[1][0]:.3f}, {matrix[1][1]:.3f}, {matrix[1][2]:.3f}],")
+    print(f"    [{matrix[2][0]:.3f}, {matrix[2][1]:.3f}, {matrix[2][2]:.3f}]")
+    print("]")
+
+    print("\n\n")
+    print("================================================================")
+    print("================================================================")
+    print("================================================================")
+    print("================================================================")
+    print("\n\n")
+
+    plot_and_save_calibration(raw_samples, mag_min, mag_max)
+
+if __name__ == "__main__":
+    main()
