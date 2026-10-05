@@ -15,29 +15,35 @@ Creates
 
  References:
      https://www.nxp.com/docs/en/application-note/AN4246.pdf
+
+  home Portland
+    Latitude: 	45° 29' 49" N
+    Longitude: 	122° 44' 46" W
+    2026-09-25 	14° 30' E  ± 0° 22'  changing by  0° 7' W per year
 """
 # Magnetic Declination (in degrees for geographic/true North conversion)
 # Positive for East (+), Negative for West (-)
-# Hawthorne Nevada
+# Hawthorne Nevada: shell line
 # https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml?
-# 38° 31' 29" N, 118° 37' 25" W
+# 38° 32' 33.36" N, 118° 37' 11.76" W, 4223ft
+# 38.54260° N, 118.61993° W
 # 12° 11' E
 LOCAL_MAGNETIC_DECLINATION = 12 + (11 / 60)  # East is positive
 
 # Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:
-CALIBRATED_MAG_MIN = [-78.8951, 12.6863, -86.4221]
-CALIBRATED_MAG_MAX = [-3.7416, 97.0038, -2.2508]
+HARD_IRON_CALIBRATED_MAG_MIN = [-92.5022, 11.4586, -89.5060]
+HARD_IRON_CALIBRATED_MAG_MAX = [-3.9462, 98.9769, 3.5516]
 
-# Soft-iron:  Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
+# Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
 SOFT_IRON_MATRIX = [
-    [0.993, 0.040, -0.002],
-    [0.040, 1.003, -0.009],
-    [-0.002, -0.009, 1.006]
+    [1.013, 0.003, -0.006],
+    [0.003, 1.025, -0.001],
+    [-0.006, -0.001, 0.964]
 ]
 
-X_OFFSET = (CALIBRATED_MAG_MAX[0] + CALIBRATED_MAG_MIN[0]) / 2.0
-Y_OFFSET = (CALIBRATED_MAG_MAX[1] + CALIBRATED_MAG_MIN[1]) / 2.0
-Z_OFFSET = (CALIBRATED_MAG_MAX[2] + CALIBRATED_MAG_MIN[2]) / 2.0
-X_SCALE = (CALIBRATED_MAG_MAX[0] - CALIBRATED_MAG_MIN[0]) / 2.0
-Y_SCALE = (CALIBRATED_MAG_MAX[1] - CALIBRATED_MAG_MIN[1]) / 2.0
-Z_SCALE = (CALIBRATED_MAG_MAX[2] - CALIBRATED_MAG_MIN[2]) / 2.0
+X_OFFSET = (HARD_IRON_CALIBRATED_MAG_MAX[0] + HARD_IRON_CALIBRATED_MAG_MIN[0]) / 2.0
+Y_OFFSET = (HARD_IRON_CALIBRATED_MAG_MAX[1] + HARD_IRON_CALIBRATED_MAG_MIN[1]) / 2.0
+Z_OFFSET = (HARD_IRON_CALIBRATED_MAG_MAX[2] + HARD_IRON_CALIBRATED_MAG_MIN[2]) / 2.0
+X_SCALE = (HARD_IRON_CALIBRATED_MAG_MAX[0] - HARD_IRON_CALIBRATED_MAG_MIN[0]) / 2.0
+Y_SCALE = (HARD_IRON_CALIBRATED_MAG_MAX[1] - HARD_IRON_CALIBRATED_MAG_MIN[1]) / 2.0
+Z_SCALE = (HARD_IRON_CALIBRATED_MAG_MAX[2] - HARD_IRON_CALIBRATED_MAG_MIN[2]) / 2.0

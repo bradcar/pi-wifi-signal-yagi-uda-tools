@@ -145,11 +145,11 @@ def get_compass_heading_hard_soft_corrections(sensor, magnetic_declination: floa
         heading = -1.0 * math.degrees(math.atan2(cal_data[0], cal_data[1]))
 
         # Apply magnetic declination
-        if mag_decl is not None:
+        if magnetic_declination is not None:
             heading += magnetic_declination
 
         # Normalize  to 0.0 <= heading < 360.0, clean up negative floating-point artifacts (-0.0 -> 0.0)
-        heading = heading_deg % 360.0
+        heading = heading % 360.0
         if heading < 0:
             heading += 360.0
 

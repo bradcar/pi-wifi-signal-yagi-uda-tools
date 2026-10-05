@@ -23,7 +23,7 @@ Operational Modes:
       - Generates auto-scaled, publication-quality 1° polar plots via Matplotlib.
       - Automatically exports raw 360° degree-by-dBm telemetry to structured CSV files.
       - Render Time: ~20 seconds per high-resolution file generation.
-      - Creates pdf.
+      - Creates .pdf
 
 Display Layouts & Hardware Mapping:
     * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom):
@@ -36,7 +36,11 @@ Display Layouts & Hardware Mapping:
 
 Sensors & Integration:
     * LIS3MDL 3-axis I2C magnetometer for compass headings for external direction antenna.
-    * Temperature telemetry monitoring via system calls to protect Pi Zero 2 W thermal limits.
+      - Red - 3v3  (Pin 1)
+      - Blue - SDA
+      - Yellow - SCL
+      - Black - Gnd  (Pin 1)
+    * On-chip Temperature monitoring to protect Pi Zero 2 W against thermal limits.
 
 NOTES:
   1) Python MUST be enabled in System Settings > Privacy & Security> Location Services.
@@ -54,16 +58,18 @@ Legacy Displays:
     * OLED monochrome display are slow.
     * E-Ink B&W has 2-3 sec full refresh which is way too slow.
 
-Other GPIO
-GPIO 25, 26 Buttons
-GPIO 2 SDA - I2C
-GPIO 3 SCL - I2C
+Other GPIO (
+pin 1 - GPIO 1 3v3 (Red)
+pin 3 - GPIO 2 SDA - I2C (Blue)
+pin 5 - GPIO 3 SCL - I2C (Yellow)
+pin 7 - GND	—	(Black)
 GPIO 6 - trigger
+GPIO 25, 26 Buttons
 
 WaveShare Defintions
     Signal	Board Pin No.	Broadcom GPIO	Function / Assignment
-VCC	3.3V	—	3.3V Power
-GND	GND	—	Ground
+VCC pin 1   3.3V	—	3.3V Power
+GND	pin 7   GND	—	Ground
 MOSI1	Pin 38	GPIO 20	SPI1 MOSI (center display)
 MOSI0	Pin 19	GPIO 10	SPI0 MOSI (left/right displays)
 SCLK1	Pin 40	GPIO 21	SSPI1 SCLK (center display)
@@ -113,7 +119,7 @@ from gpiozero import Button
 import lib.lcd_st7789_utils as lcd
 from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
-from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading
+from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading, get_compass_heading_hard_soft_corrections
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
 from lib.pi_zero_utils import pico_temperature, timeout
 from lib.matplot_rssi_radar_utils import plot_rssi_polar
@@ -560,10 +566,11 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
 
         # Lo-Rez RADAR plot
         if not hi_rez_active:
+            heading = get_compass_heading_hard_soft_corrections(lis3mdl)
             # TODO implement compass, remove i
-            i += 1
-            # heading = get_compass_heading(lis3mdl)
-            heading = 37 + i
+            # i += 1
+            # # heading = get_compass_heading(lis3mdl)
+            # heading = 37 + i
 
             # Screen 2: plot radar - large center screen
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
@@ -684,7 +691,7 @@ def main():
     init_buttons()
 
     if not oled_detected and not lcd_detected:
-        print("--> Running in Headless / Console-Only Mode <--")
+        print("\n -- Running in Console-Only Mode --")
 
     lis3mdl = None
     if lis3mdl_detected:
@@ -730,10 +737,10 @@ def main():
 
             success = bool(wifi_data)
             if success:
-                heading = get_compass_heading(lis3mdl)
+                heading = get_compass_heading_hard_soft_corrections(lis3mdl)
 
                 # TODO ****** Fix when add Magnetometer !!!!
-                heading = 37
+                #heading = 37
 
                 update_bssid_map(wifi_data, heading, bssid_map)
 
