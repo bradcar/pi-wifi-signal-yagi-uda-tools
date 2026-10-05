@@ -24,7 +24,7 @@ Creates
     Longitude: 	122° 44' 46" W
     2026-09-25 	14° 30' E  ± 0° 22'  changing by  0° 7' W per year
 """
-# Magnetic Declination (in degrees, Positive for East (+), Negative for West (-))
+# Magnetic Declination degrees, Positive(+) for East, Negative(-) for West
 
 # Hawthorne Nevada: shell line
 #   38° 32' 33.36" N, 118° 37' 11.76" W, 4223ft
