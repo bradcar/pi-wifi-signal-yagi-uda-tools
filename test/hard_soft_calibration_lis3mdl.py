@@ -234,33 +234,45 @@ def plot_calibration(calibration_file, plot_filename):
     plt.close(fig)
 
 
+def print_and_save_parameters(mag_min, mag_max, matrix, filepath):
+    """Formats calibration parameters, prints them to the console, and writes them to a file."""
+    output_lines = [
+        "\n================================================================",
+        "Calibration Complete!",
+        "Copy and paste these declarations into your parameter file:\n",
+        "# Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:",
+        f"HARD_IRON_CALIBRATED_MAG_MIN = [{mag_min[0]:.4f}, {mag_min[1]:.4f}, {mag_min[2]:.4f}]",
+        f"HARD_IRON_CALIBRATED_MAG_MAX = [{mag_max[0]:.4f}, {mag_max[1]:.4f}, {mag_max[2]:.4f}]\n",
+        "# Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:",
+        "SOFT_IRON_MATRIX = [",
+        f"    [{matrix[0][0]:.3f}, {matrix[0][1]:.3f}, {matrix[0][2]:.3f}],",
+        f"    [{matrix[1][0]:.3f}, {matrix[1][1]:.3f}, {matrix[1][2]:.3f}],",
+        f"    [{matrix[2][0]:.3f}, {matrix[2][1]:.3f}, {matrix[2][2]:.3f}]",
+        "]",
+    ]
+
+    formatted_text = "\n".join(output_lines)
+
+    # Print to console
+    print(formatted_text)
+
+    # Save to parameter text file
+    with open(filepath, "w") as f:
+        f.write(formatted_text + "\n")
+
+    print(f"\nSaved calibration parameters to {filepath}")
+
+
 def main():
     # Execution
     print("Preparing calibration. Get ready to rotate the sensor in 3D...")
     time.sleep(3)
 
+    # Collect samples and fit data
     raw_samples = collect_samples(runtime_seconds=120)
     offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
 
-    # Print Results Formatted for Direct Copy-Paste
-    print("\n================================================================")
-    print("Calibration Complete!")
-    print("Copy and paste these declarations into your parameter file:\n")
-
-    print("# Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:")
-    print(f"HARD_IRON_CALIBRATED_MAG_MIN = [{mag_min[0]:.4f}, {mag_min[1]:.4f}, {mag_min[2]:.4f}]")
-    print(f"HARD_IRON_CALIBRATED_MAG_MAX = [{mag_max[0]:.4f}, {mag_max[1]:.4f}, {mag_max[2]:.4f}]\n")
-
-    print("# Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:")
-    print("SOFT_IRON_MATRIX = [")
-    print(f"    [{matrix[0][0]:.3f}, {matrix[0][1]:.3f}, {matrix[0][2]:.3f}],")
-    print(f"    [{matrix[1][0]:.3f}, {matrix[1][1]:.3f}, {matrix[1][2]:.3f}],")
-    print(f"    [{matrix[2][0]:.3f}, {matrix[2][1]:.3f}, {matrix[2][2]:.3f}]")
-    print("]")
-
     print("\n\n")
-    print("================================================================")
-    print("================================================================")
     print("================================================================")
     print("================================================================")
     print("\n\n")
@@ -268,6 +280,10 @@ def main():
     # create output directory and timestamp for output files
     output_dir = create_output_directory()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Print Results Formatted for Direct Copy-Paste
+    param_file = os.path.join(output_dir, f"{PARAMETER_FILE_NAME}_{timestamp}.py")
+    print_and_save_parameters(mag_min, mag_max, matrix, param_file)
 
     # Save calibration data to file
     calibration_file = os.path.join(output_dir, f"{CALIBRATION_FILE_NAME}_{timestamp}.json")
