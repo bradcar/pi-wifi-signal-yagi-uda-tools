@@ -22,25 +22,31 @@ Creates
     2026-09-25 	14° 30' E  ± 0° 22'  changing by  0° 7' W per year
 """
 # Magnetic Declination (in degrees for geographic/true North conversion)
-# Positive for East (+), Negative for West (-)
-# Hawthorne Nevada: shell line
 # https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml?
+# Positive for East (+), Negative for West (-)
+
+# Hawthorne Nevada: shell line
 # 38° 32' 33.36" N, 118° 37' 11.76" W, 4223ft
 # 38.54260° N, 118.61993° W
-# 12° 11' E
-LOCAL_MAGNETIC_DECLINATION = 12 + (11 / 60)  # East is positive
+# Declination: 12° 11' E
+
+# Portland, Oregon
+# 45° 29' 49" N, 122° 44' 46" W
+# Declination: 14° 30' E
+LOCAL_MAGNETIC_DECLINATION = 14 + (30 / 60)  # East is positive
 
 # Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:
-HARD_IRON_CALIBRATED_MAG_MIN = [-92.5022, 11.4586, -89.5060]
-HARD_IRON_CALIBRATED_MAG_MAX = [-3.9462, 98.9769, 3.5516]
+HARD_IRON_CALIBRATED_MAG_MIN = [-96.3315, 4.3262, -95.7469]
+HARD_IRON_CALIBRATED_MAG_MAX = [5.2470, 104.9401, 6.4309]
 
 # Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
 SOFT_IRON_MATRIX = [
-    [1.013, 0.003, -0.006],
-    [0.003, 1.025, -0.001],
-    [-0.006, -0.001, 0.964]
+    [0.999, 0.012, 0.001],
+    [0.012, 1.008, 0.002],
+    [0.001, 0.002, 0.993]
 ]
 
+# Calculate offsets & scales
 X_OFFSET = (HARD_IRON_CALIBRATED_MAG_MAX[0] + HARD_IRON_CALIBRATED_MAG_MIN[0]) / 2.0
 Y_OFFSET = (HARD_IRON_CALIBRATED_MAG_MAX[1] + HARD_IRON_CALIBRATED_MAG_MIN[1]) / 2.0
 Z_OFFSET = (HARD_IRON_CALIBRATED_MAG_MAX[2] + HARD_IRON_CALIBRATED_MAG_MIN[2]) / 2.0
