@@ -14,25 +14,26 @@ Creates
  * offsets based on calibration constants - true magnetic midpoint offset for X and Y
 
  References:
-     https://www.nxp.com/docs/en/application-note/AN4246.pdf
+    Magnetic declination
+        https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml?
+    Hard/soft iron calibration
+        https://www.nxp.com/docs/en/application-note/AN4246.pdf
 
   home Portland
     Latitude: 	45° 29' 49" N
     Longitude: 	122° 44' 46" W
     2026-09-25 	14° 30' E  ± 0° 22'  changing by  0° 7' W per year
 """
-# Magnetic Declination (in degrees for geographic/true North conversion)
-# https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml?
-# Positive for East (+), Negative for West (-)
+# Magnetic Declination (in degrees, Positive for East (+), Negative for West (-))
 
 # Hawthorne Nevada: shell line
-# 38° 32' 33.36" N, 118° 37' 11.76" W, 4223ft
-# 38.54260° N, 118.61993° W
-# Declination: 12° 11' E
+#   38° 32' 33.36" N, 118° 37' 11.76" W, 4223ft
+#   38.54260° N, 118.61993° W
+#   Declination: 12° 11' E
 
 # Portland, Oregon
-# 45° 29' 49" N, 122° 44' 46" W
-# Declination: 14° 30' E
+#   45° 29' 49" N, 122° 44' 46" W
+#   Declination: 14° 30' E
 LOCAL_MAGNETIC_DECLINATION = 14 + (30 / 60)  # East is positive
 
 # Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:

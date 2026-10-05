@@ -19,7 +19,7 @@ import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend (works over SSH without GUI)
 import matplotlib.pyplot as plt
 
-# Initialize Sensor
+# Initialize magnetometer sensor
 i2c = board.I2C()
 magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
 
@@ -256,8 +256,7 @@ def print_and_save_parameters(mag_min, mag_max, matrix, filepath):
 
 
 def main():
-    # Execution
-    print("Preparing calibration. Get ready to rotate the sensor in 3D...")
+    print("Preparing calibration. Get ready to rotate the sensor in 3D...(sleep for 3 seconds)")
     time.sleep(3)
 
     # Collect samples and fit data
@@ -266,7 +265,7 @@ def main():
 
     print("\n")
 
-    # create output directory and timestamp for output files
+    # Create output directory and timestamp for output files
     output_dir = create_output_directory()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     print(f"\nSaving calibration data in directory ./{output_dir}, files will append {timestamp} string")
