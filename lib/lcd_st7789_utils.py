@@ -104,14 +104,21 @@ sys.path.append("..")
 from vendor.waveshare_lcd import LCD_0inch96
 from vendor.waveshare_lcd import LCD_1inch3
 
-# Global hardware pin designations for displays
+
+# Global hardware pin designations for displays, 40_000_000 freq from Waveshare Demo
 LCD_CONFIGS = {
-    0: {"type": "0inch96", "bus": 0, "device": 0, "rst": 24, "dc": 4, "bl": 13},  # Left (160x80), SPI0 CE0
-    1: {"type": "0inch96", "bus": 0, "device": 1, "rst": 23, "dc": 5, "bl": 12},  # Right (160x80), SPI0 CE1
-    2: {"type": "1inch3", "bus": 1, "device": 0, "rst": 27, "dc": 22, "bl": 19}   # Center (240x240), SPI1 CE0
+    0: {"type": "0inch96", "bus": 0, "device": 0, "rst": 24, "dc": 4, "bl": 13, "freq": 40000000},  # Left (160x80), SPI0 CE0
+    1: {"type": "0inch96", "bus": 0, "device": 1, "rst": 23, "dc": 5, "bl": 12, "freq": 40000000},  # Right (160x80), SPI0 CE1
+    2: {"type": "1inch3", "bus": 1, "device": 0, "rst": 27, "dc": 22, "bl": 19, "freq": 40000000}   # Center (240x240), SPI1 CE0
 }
 
-base_font00 = ImageFont.truetype("assets/Font/Font00.ttf", 30)
+# Dynamically resolve project root relative to lib/ directory
+LIB_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(LIB_DIR)
+FONT_PATH = os.path.join(PROJECT_ROOT, "assets", "Font", "Font00.ttf")
+
+# Load base font using absolute path
+base_font00 = ImageFont.truetype(FONT_PATH, 30)
 
 font0_50pt = base_font00.font_variant(size=50)
 font0_34pt = base_font00.font_variant(size=34)
@@ -154,18 +161,22 @@ def init_lcd_display(index: int):
 
     cfg = LCD_CONFIGS[index]
     spi_device = SPI.SpiDev(cfg["bus"], cfg["device"])
+    spi_device.max_speed_hz = cfg["freq"]
+    spi_device.mode = 0b00
 
     # Initialize the correct display class
     if cfg["type"] == "0inch96":
         display = LCD_0inch96.LCD_0inch96(
-            spi=spi_device, spi_freq=60000000,
+            spi=spi_device, spi_freq=cfg["freq"],
+            rst=cfg["rst"], dc=cfg["dc"], bl=cfg["bl"]
+        )
+    elif cfg["type"] == "1inch3":
+        display = LCD_1inch3.LCD_1inch3(
+            spi=spi_device, spi_freq=cfg["freq"],
             rst=cfg["rst"], dc=cfg["dc"], bl=cfg["bl"]
         )
     else:
-        display = LCD_1inch3.LCD_1inch3(
-            spi=spi_device, spi_freq=60000000,
-            rst=cfg["rst"], dc=cfg["dc"], bl=cfg["bl"]
-        )
+        raise ValueError(f"Display type {cfg['type']} is not defined.")
 
     display.Init()
     display.clear()
@@ -174,15 +185,19 @@ def init_lcd_display(index: int):
     return display, image
 
 
-def create_lcd_display_canvases(splash_file_name):
+def create_lcd_display_canvases(splash_file_name=None):
+    """Initializes all 3 screens and pushes initial black canvases + splash image."""
     disp_0, _ = init_lcd_display(0)
     disp_1, _ = init_lcd_display(1)
     disp_2, _ = init_lcd_display(2)
-    startup_0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    startup_1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
+
+    startup_0 = Image.new("RGB", (disp_0.width, disp_0.height), "BLACK")
+    startup_1 = Image.new("RGB", (disp_1.width, disp_1.height), "BLACK")
     disp_0.ShowImage(startup_0)
     disp_1.ShowImage(startup_1)
+
     display_2_splash_lcd(disp_2, splash_image_file=splash_file_name)
+
     return disp_0, disp_1, disp_2
 
 
@@ -194,7 +209,7 @@ def clear_canvas(image):
 
 
 def display_2_splash_lcd(disp_2, splash_image_file=None):
-    """ Splash art jpg on display 2
+    """ Splash art jpg on display 2. If splash_image_file is None show red screen
 
      radiant-ether-098.jpg
      radiant-ether-368.jpg
@@ -216,7 +231,9 @@ def display_2_splash_lcd(disp_2, splash_image_file=None):
         rotated_radar = radar_image.rotate(270)
         disp_2.ShowImage(rotated_radar)
     except IOError:
-        print(f"Wallpaper '{splash_image_file}' not found at project root. Skipping splash on Display 2 LCD")
+        print(f"Wallpaper '{splash_image_file}' not found. Drawing fallback frame.")
+        fallback = Image.new("RGB", (disp_2.width, disp_2.height), "RED")
+        disp_2.ShowImage(fallback)
 
 
 def print_270(text: str, pos: tuple, image, font, color):
