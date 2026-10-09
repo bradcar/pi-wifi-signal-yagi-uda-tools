@@ -1,9 +1,13 @@
 # hard_soft_calibration_lis3mdl.py
 """
-Combined Hard-Iron and Soft-Iron Calibration Tool for LIS3MDL
+3D Combined Hard-Iron and Soft-Iron Calibration Tool for LIS3MDL,
 
-Collects 3D magnetometer data points over a timed window, fits an ellipsoid,
-and outputs copy-pasteable hard-iron offsets and a 3x3 soft-iron transformation matrix.
+To be used as electronic compasses, magnetometers need to be calibrated in their final device.
+The calibration process corrects for local magnetic fields and field distortions due to nearby conductors and
+ferrous materials.
+
+Collects 3D magnetometer data points over a timed window (typically 30 seconds to 120 seconds), fits an ellipsoid,
+and outputs copy-paste-able hard-iron offsets and a 3x3 soft-iron transformation matrix.
 """
 
 import board
@@ -15,6 +19,7 @@ from datetime import datetime
 
 import adafruit_lis3mdl
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")  # Non-interactive backend (works over SSH without GUI)
 import matplotlib.pyplot as plt
@@ -130,9 +135,9 @@ def fit_ellipsoid_and_compute_matrices(samples):
     soft_yz = (-cov_yz / math.sqrt(var_y * var_z) if (var_y * var_z) > 0 else 0.0)
 
     soft_iron_matrix = [
-        [round(scale_x, 4), round(soft_xy * 0.1, 4), round(soft_xz * 0.1, 4)],
-        [round(soft_xy * 0.1, 4), round(scale_y, 4), round(soft_yz * 0.1, 4)],
-        [round(soft_xz * 0.1, 4), round(soft_yz * 0.1, 4), round(scale_z, 4)],
+        [round(scale_x, 4), round(soft_xy, 4), round(soft_xz, 4)],
+        [round(soft_xy, 4), round(scale_y, 4), round(soft_yz, 4)],
+        [round(soft_xz, 4), round(soft_yz, 4), round(scale_z, 4)],
     ]
 
     hard_iron_offsets = [
@@ -194,13 +199,19 @@ def plot_calibration(calibration_file, plot_filename):
     ax1.set_title("BEFORE: Raw Magnetometer Data")
 
     # Force equal aspect ratio on raw plot so distortion is visually obvious
-    all_vals = rx + ry + rz
-    min_val, max_val = min(all_vals), max(all_vals)
-    padding = (max_val - min_val) * 0.05 if max_val != min_val else 1.0
+    span_rx = max(rx) - min(rx)
+    span_ry = max(ry) - min(ry)
+    span_rz = max(rz) - min(rz)
+    max_range = max(span_rx, span_ry, span_rz) / 2.0
 
-    ax1.set_xlim(min_val - padding, max_val + padding)
-    ax1.set_ylim(min_val - padding, max_val + padding)
-    ax1.set_zlim(min_val - padding, max_val + padding)
+    # Individual midpoints preserve local coordinate shifts
+    mid_x = (max(rx) + min(rx)) / 2.0
+    mid_y = (max(ry) + min(ry)) / 2.0
+    mid_z = (max(rz) + min(rz)) / 2.0
+
+    ax1.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax1.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax1.set_zlim(mid_z - max_range, mid_z + max_range)
     ax1.set_box_aspect([1, 1, 1])
 
     ax1.set_xlabel("X (µT)")
@@ -220,9 +231,6 @@ def plot_calibration(calibration_file, plot_filename):
     plt.tight_layout()
     plt.savefig(plot_filename, dpi=150)
     print(f"\nSaved calibration plot to {plot_filename}")
-
-    # Display the plot
-    plt.show()
     plt.close(fig)
 
 
@@ -231,7 +239,7 @@ def print_and_save_parameters(mag_min, mag_max, matrix, filepath):
     output_lines = [
         "\n#================================================================",
         "#Calibration Complete!",
-        "#Copy and paste these declarations into your parameter file:\n",
+        "# Copy and paste these declarations into the code that uses the LIS3MDL:\n",
         "# Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:",
         f"HARD_IRON_CALIBRATED_MAG_MIN = [{mag_min[0]:.4f}, {mag_min[1]:.4f}, {mag_min[2]:.4f}]",
         f"HARD_IRON_CALIBRATED_MAG_MAX = [{mag_max[0]:.4f}, {mag_max[1]:.4f}, {mag_max[2]:.4f}]\n",
@@ -255,15 +263,60 @@ def print_and_save_parameters(mag_min, mag_max, matrix, filepath):
     print(f"\nSaved calibration parameters to {filepath}")
 
 
+def evaluate_calibration_quality(calibrated_samples, target_radius=1.0):
+    """Calculates radial error, RMSE, oblateness (flattening), and fractional anisotropy.
+
+    :param calibrated_samples: Nx3 array or list of (x, y, z) transformed
+    points.
+    :param target_radius: Expected magnitude (1.0 for unit sphere).
+    """
+    pts = np.array(calibrated_samples)
+
+    # Calculate Magnitudes (Radii) for each sample point
+    radii = np.linalg.norm(pts, axis=1)
+
+    # Goodness Metrics (Radial Residuals)
+    mape = np.mean(np.abs(radii - target_radius) / target_radius) * 100.0
+    rmse = np.sqrt(np.mean((radii - target_radius) ** 2))
+    nrmse = rmse / target_radius
+
+    # Shape / Oblateness Metrics via Principal Covariance Eigenvalues
+    cov_matrix = np.cov(pts.T)
+    eigenvalues = np.sort(np.linalg.eigvalsh(cov_matrix))[::-1]  # Sort descending
+
+    a, b, c = np.sqrt(np.maximum(eigenvalues, 1e-12))
+
+    flattening = (a - c) / a if a > 0 else 0.0
+
+    mean_lambda = np.mean(eigenvalues)
+    fa = np.sqrt(1.5) * (
+            np.sqrt(np.sum((eigenvalues - mean_lambda) ** 2))
+            / np.sqrt(np.sum(eigenvalues ** 2))
+    )
+
+    print("\n=== Calibration Quality Metrics ===")
+    print(f"Mean Absolute Percentage Error (MAPE) : {mape:.2f}%")
+    print(f"Normalized RMSE (NRMSE)               : {nrmse:.4f}")
+    print(f"Semi-Axes Ratio (c/a)                 : {c / a:.4f} (Target: 1.0000)")
+    print(f"Oblateness / Flattening (f)           : {flattening:.4f} (Target: 0.0000)")
+    print(f"Fractional Anisotropy (FA)            : {fa:.4f} (Target: 0.0000)\n")
+
+    return {
+        "mape": mape,
+        "nrmse": nrmse,
+        "flattening": flattening,
+        "fa": fa,
+    }
+
+
 def main():
     print("Preparing calibration. Get ready to rotate the sensor in 3D...(sleep for 3 seconds)")
-    time.sleep(3)
+    time.sleep(5)
 
-    # Collect samples and fit data
-    raw_samples = collect_samples(runtime_seconds=120)
+    # Collect samples and fit data, recommend 120 seconds collection_seconds
+    collection_seconds = 120
+    raw_samples = collect_samples(runtime_seconds=collection_seconds)
     offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
-
-    print("\n")
 
     # Create output directory and timestamp for output files
     output_dir = create_output_directory()
@@ -277,6 +330,28 @@ def main():
     # Save calibration data to file
     calibration_file = os.path.join(output_dir, f"{CALIBRATION_FILE_NAME}_{timestamp}.json")
     save_calibration_data(raw_samples, mag_min, mag_max, calibration_file)
+
+    # Compute target average radius in uT from raw bounding limits
+    target_r = ((mag_max[0] - mag_min[0])
+                + (mag_max[1] - mag_min[1])
+                + (mag_max[2] - mag_min[2])
+                ) / 6.0
+
+    # Apply hard/soft-iron matrix AND normalize down to unit sphere (R = 1.0)
+    calibrated_samples = []
+    for rx, ry, rz in raw_samples:
+        cx = rx - offsets[0]
+        cy = ry - offsets[1]
+        cz = rz - offsets[2]
+        mx = matrix[0][0] * cx + matrix[0][1] * cy + matrix[0][2] * cz
+        my = matrix[1][0] * cx + matrix[1][1] * cy + matrix[1][2] * cz
+        mz = matrix[2][0] * cx + matrix[2][1] * cy + matrix[2][2] * cz
+
+        # Divide by target_r so point magnitudes evaluate cleanly around 1.0
+        calibrated_samples.append((mx / target_r, my / target_r, mz / target_r))
+
+    # Evaluate Calibration Quality
+    evaluate_calibration_quality(calibrated_samples, target_radius=1.0)
 
     # Plot using the stored calibration file
     plot_file = os.path.join(output_dir, f"{PLOT_FILE_NAME}_{timestamp}.png")
