@@ -37,14 +37,14 @@ Creates
 LOCAL_MAGNETIC_DECLINATION = 14 + (30 / 60)  # East is positive
 
 # Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:
-HARD_IRON_CALIBRATED_MAG_MIN = [-96.3315, 4.3262, -95.7469]
-HARD_IRON_CALIBRATED_MAG_MAX = [5.2470, 104.9401, 6.4309]
+HARD_IRON_CALIBRATED_MAG_MIN = [-92.0199, 1.5639, -93.0868]
+HARD_IRON_CALIBRATED_MAG_MAX = [7.9070, 101.2716, 7.2347]
 
 # Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
 SOFT_IRON_MATRIX = [
-    [0.999, 0.012, 0.001],
-    [0.012, 1.008, 0.002],
-    [0.001, 0.002, 0.993]
+    [1.001, 0.070, -0.176],
+    [0.070, 1.003, 0.118],
+    [-0.176, 0.118, 0.997]
 ]
 
 # Calculate offsets & scales
