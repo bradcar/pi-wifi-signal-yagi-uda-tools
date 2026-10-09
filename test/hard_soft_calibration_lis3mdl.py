@@ -90,8 +90,69 @@ def collect_samples(runtime_seconds=60, sample_delay=0.05):
     return samples
 
 
+def fit_ellipsoid_and_compute_matrices_least_squares(samples, target_radius=1.0):
+    """
+    Computes 3D Hard-Iron Offsets, 3x3 Soft-Iron Matrix, and min/max bounds
+    using Algebraic Least-Squares Ellipsoid Fitting.
+    """
+    n = len(samples)
+    if n < 50:
+        raise ValueError("Not enough samples collected for reliable calibration.")
+
+    P = np.array(samples, dtype=np.float64)
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+
+    # Calculate min/max bounds across original raw axes
+    min_x, max_x = float(np.min(x)), float(np.max(x))
+    min_y, max_y = float(np.min(y)), float(np.max(y))
+    min_z, max_z = float(np.min(z)), float(np.max(z))
+
+    # Design matrix D for implicit quadratic surface: D * v = 1
+    D = np.column_stack([
+        x**2, y**2, z**2,
+        2*x*y, 2*x*z, 2*y*z,
+        2*x, 2*y, 2*z
+    ])
+
+    # Solve linear least squares
+    v, _, _, _ = np.linalg.lstsq(D, np.ones(len(P)), rcond=None)
+
+    # Form symmetric quadric matrix
+    Q_full = np.array([
+        [v[0], v[3], v[4], v[6]],
+        [v[3], v[1], v[5], v[7]],
+        [v[4], v[5], v[2], v[8]],
+        [v[6], v[7], v[8], -1.0]
+    ])
+
+    # Extract quadric center (Hard-Iron Offsets)
+    Q = Q_full[:3, :3]
+    u = Q_full[:3, 3]
+    b = -np.linalg.solve(Q, u)
+
+    # Calculate scaling factor to normalize to target radius
+    scale_sq = np.abs(b.T @ Q @ b - Q_full[3, 3])
+    Q_normalized = Q / scale_sq
+
+    # Symmetric matrix square root for Soft-Iron Matrix A
+    evals, evecs = np.linalg.eigh(Q_normalized)
+    A = evecs @ np.diag(np.sqrt(np.maximum(evals, 1e-9))) @ evecs.T * target_radius
+
+    # Format output matrices to standard Python lists rounded to 4 decimals
+    hard_iron_offsets = [round(val, 4) for val in b.tolist()]
+    soft_iron_matrix = [[round(val, 4) for val in row] for row in A.tolist()]
+    min_vals = [round(min_x, 4), round(min_y, 4), round(min_z, 4)]
+    max_vals = [round(max_x, 4), round(max_y, 4), round(max_z, 4)]
+
+    return hard_iron_offsets, soft_iron_matrix, min_vals, max_vals
+
+
 def fit_ellipsoid_and_compute_matrices(samples):
-    """Computes 3D Hard-Iron Offsets and 3x3 Soft-Iron Matrix from collected points."""
+    """
+    Computes 3D Hard-Iron Offsets and 3x3 Soft-Iron Matrix from collected points.
+
+    Warning: Too sensitive to outliers.
+    """
     n = len(samples)
     if n < 50:
         raise ValueError("Not enough samples collected for reliable calibration.")
@@ -316,7 +377,10 @@ def main():
     # Collect samples and fit data, recommend 120 seconds collection_seconds
     collection_seconds = 120
     raw_samples = collect_samples(runtime_seconds=collection_seconds)
-    offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
+    
+    # Comment out previous fitting for better fit method
+    # offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
+    offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices_least_squares(raw_samples)
 
     # Create output directory and timestamp for output files
     output_dir = create_output_directory()
