@@ -145,7 +145,6 @@ Power Draw:
     Idle:      0.15a, 0.77w, 5.22v
 
 TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
-TODO fix heading with Magentometer data
 TODO uncomment logging code to Pi Zero flash
 TODO uncomment saving Actual RSSI to heading, instead of fake testing code
 """
@@ -599,14 +598,11 @@ def update_rssi_heading_history(metrics):
     if metrics.rssi is None:
         return
 
-    # if metrics.heading is not None:
-    #     metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
-    # else:
-    #     # show circular rssi if no known heading
-    #     metrics.rssi_heading_history[:] = [rssi] * 360
-
-    # TODO REMOVE this testing-only code: make random heading
-    metrics.rssi_heading_history = fake_rssi_history_fill(metrics.rssi, metrics.rssi_heading_history)
+    if metrics.heading is not None:
+        metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
+    else:
+        # show circular rssi if no known heading
+        metrics.rssi_heading_history[:] = [rssi] * 360
 
 
 def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_count):
@@ -727,8 +723,8 @@ def main():
         temp_duration = 0.0
         metrics.heading = get_compass_heading(lis3mdl)
 
-        # todo remove fake sweep initialization
-        sweep_degree = 290
+        # Set initial heading state directly from LIS3MDL magnetometer
+        hw_heading = get_compass_heading(lis3mdl) if lis3mdl else 0.0
 
         loop_counter = 0
         while True:
@@ -810,8 +806,13 @@ def main():
                         if metrics.is_new_rssi:
                             update_rssi_heading_history(metrics)
 
-            # todo remove fake sweeping
-            metrics.heading, sweep_degree = fake_heading_sweep(sweep_degree)
+            # Get fresh magnetometer hardware data at the beginning of the evaluation loop
+            hw_heading = get_compass_heading(lis3mdl)
+
+            with metrics_lock:
+                is_currently_connected = metrics.is_connected
+                if hw_heading is not None:
+                    metrics.heading = hw_heading
 
             # Handle Displays and Outputs
             with metrics_lock:
