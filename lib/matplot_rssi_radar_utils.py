@@ -92,7 +92,7 @@ def peaks_arc_calc(degrees, peak_rssi: float):
 
 
 
-def plot_rssi_polar(degrees, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
+def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
     # Create a 2D array matrix: Column 0 = degree, Column 1 = rssi
     history_array = np.column_stack((degrees, rssi))
 
