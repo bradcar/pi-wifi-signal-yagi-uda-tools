@@ -1,8 +1,7 @@
 from lib.lis3mdl_utils import get_compass_8pt_string
-from pi_yagi_uda import TARGET_SSID, RSSI_DOWNLOAD_THRESHOLD, RSSI_CONNECT_THRESHOLD
 
-
-def display_metrics_oled(draw, font, rssi, ssid: str, rx_rate, heading: float, download_count, connected: bool = True):
+def display_metrics_oled(draw, font, oled, image, rssi, heading, quality, rx_rate, connected,
+                         target_ssid="shell-fi", connect_thresh=-80, download_thresh=-75):
     left_indent = 0
     direction_str = get_compass_8pt_string(heading) if heading is not None else ""
     heading_str = f"{heading:>3.0f}°" if heading is not None else "???°"
