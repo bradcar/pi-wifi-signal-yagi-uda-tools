@@ -42,9 +42,9 @@ HARD_IRON_CALIBRATED_MAG_MAX = [7.9070, 101.2716, 7.2347]
 
 # Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
 SOFT_IRON_MATRIX = [
-    [1.001, 0.070, -0.176],
-    [0.070, 1.003, 0.118],
-    [-0.176, 0.118, 0.997]
+    [1.007, 0.043, -0.004],
+    [0.043, 1.015, 0.002],
+    [-0.004, 0.002, 1.011]
 ]
 
 # Calculate offsets & scales

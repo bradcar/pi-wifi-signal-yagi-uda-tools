@@ -8,6 +8,30 @@ ferrous materials.
 
 Collects 3D magnetometer data points over a timed window (typically 30 seconds to 120 seconds), fits an ellipsoid,
 and outputs copy-paste-able hard-iron offsets and a 3x3 soft-iron transformation matrix.
+
+If no magnetometer this code will load test data (test.json) and perform calculation on that stored data
+
+Sample Output:
+# Hard-iron: Calibration constants from hard_only_calibrate_lis3mdl_test.py:
+HARD_IRON_CALIBRATED_MAG_MIN = [-92.0199, 1.5639, -93.0868]
+HARD_IRON_CALIBRATED_MAG_MAX = [7.9070, 101.2716, 7.2347]
+
+# Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
+SOFT_IRON_MATRIX = [
+    [1.007, 0.043, -0.004],
+    [0.043, 1.015, 0.002],
+    [-0.004, 0.002, 1.011]
+]
+
+Saved calibration parameters to calibration_output_files/better-fitcalibration_parameters_20260924_022846.py
+
+=== Calibration Quality Metrics ===
+Mean Absolute Percentage Error (MAPE) : 0.71%
+Normalized RMSE (NRMSE)               : 0.0093
+Semi-Axes Ratio (c/a)                 : 0.6459 (Target: 1.0000)
+Oblateness / Flattening (f)           : 0.3541 (Target: 0.0000)
+Fractional Anisotropy (FA)            : 0.3843 (Target: 0.0000)
+
 """
 
 import board
@@ -23,10 +47,6 @@ import numpy as np
 
 matplotlib.use("Agg")  # Non-interactive backend (works over SSH without GUI)
 import matplotlib.pyplot as plt
-
-# Initialize magnetometer sensor
-i2c = board.I2C()
-magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
 
 PLOT_FILE_NAME = "calibration_plot"
 CALIBRATION_FILE_NAME = "calibration_values"
@@ -90,60 +110,153 @@ def collect_samples(runtime_seconds=60, sample_delay=0.05):
     return samples
 
 
-def fit_ellipsoid_and_compute_matrices_least_squares(samples, target_radius=1.0):
+def get_mag_max_min(raw_samples):
+    min_x, max_x = min(s[0] for s in raw_samples), max(s[0] for s in raw_samples)
+    min_y, max_y = min(s[1] for s in raw_samples), max(s[1] for s in raw_samples)
+    min_z, max_z = min(s[2] for s in raw_samples), max(s[2] for s in raw_samples)
+    mag_min = [min_x, min_y, min_z]
+    mag_max = [max_x, max_y, max_z]
+    return mag_max, mag_min
+
+
+def fit_ellipsoid_and_compute_matrices_least_squares(raw_samples, target_radius=1.0):
     """
-    Computes 3D Hard-Iron Offsets, 3x3 Soft-Iron Matrix, and min/max bounds
-    using Algebraic Least-Squares Ellipsoid Fitting.
+    Fit an ellipsoid to 3D magnetometer samples using least squares
+    and calculate the hard-iron offsets and soft-iron correction matrix.
+
+    The calibrated samples are transformed to a sphere with radius
+    target_radius.
+
+    Args:
+        raw_samples: Iterable of (x, y, z) magnetometer samples.
+        target_radius: Desired calibrated sphere radius. Use 1.0 for
+            unit-sphere output or a reference field magnitude for
+            calibrated output in physical units.
+
+    Returns:
+        offsets: (3,) hard-iron offset vector.
+        A: (3, 3) soft-iron correction matrix, including target_radius.
+        mag_min: (3,) raw sample minima.
+        mag_max: (3,) raw sample maxima.
+
+    Raises:
+        ValueError: If the data or fitted ellipsoid is invalid.
+        numpy.linalg.LinAlgError: If a required linear solve fails.
     """
-    n = len(samples)
-    if n < 50:
-        raise ValueError("Not enough samples collected for reliable calibration.")
+    P = np.asarray(raw_samples, dtype=np.float64)
 
-    P = np.array(samples, dtype=np.float64)
-    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+    if P.ndim != 2 or P.shape[1] != 3:
+        raise ValueError("raw_samples must be an array of shape (N, 3).")
 
-    # Calculate min/max bounds across original raw axes
-    min_x, max_x = float(np.min(x)), float(np.max(x))
-    min_y, max_y = float(np.min(y)), float(np.max(y))
-    min_z, max_z = float(np.min(z)), float(np.max(z))
+    if P.shape[0] < 9:
+        raise ValueError("Require a least 9 samples are required to fit an ellipsoid.")
 
-    # Design matrix D for implicit quadratic surface: D * v = 1
-    D = np.column_stack([
-        x**2, y**2, z**2,
-        2*x*y, 2*x*z, 2*y*z,
-        2*x, 2*y, 2*z
-    ])
+    if not np.all(np.isfinite(P)):
+        raise ValueError("raw_samples contains NaN or infinite values.")
 
-    # Solve linear least squares
-    v, _, _, _ = np.linalg.lstsq(D, np.ones(len(P)), rcond=None)
+    if not np.isfinite(target_radius) or target_radius <= 0.0:
+        raise ValueError("target_radius must be finite and positive.")
 
-    # Form symmetric quadric matrix
-    Q_full = np.array([
-        [v[0], v[3], v[4], v[6]],
-        [v[3], v[1], v[5], v[7]],
-        [v[4], v[5], v[2], v[8]],
-        [v[6], v[7], v[8], -1.0]
-    ])
+    mag_min = P.min(axis=0)
+    mag_max = P.max(axis=0)
 
-    # Extract quadric center (Hard-Iron Offsets)
-    Q = Q_full[:3, :3]
-    u = Q_full[:3, 3]
-    b = -np.linalg.solve(Q, u)
+    # Center and scale the data to improve numerical conditioning.
+    offset_shift = (mag_max + mag_min) / 2.0
+    scale_factor = (mag_max - mag_min) / 2.0
 
-    # Calculate scaling factor to normalize to target radius
-    scale_sq = np.abs(b.T @ Q @ b - Q_full[3, 3])
-    Q_normalized = Q / scale_sq
+    if np.any(scale_factor <= 0.0):
+        raise ValueError("Samples do not span all three axes.")
 
-    # Symmetric matrix square root for Soft-Iron Matrix A
-    evals, evecs = np.linalg.eigh(Q_normalized)
-    A = evecs @ np.diag(np.sqrt(np.maximum(evals, 1e-9))) @ evecs.T * target_radius
+    X = (P - offset_shift) / scale_factor
+    xs, ys, zs = X.T
 
-    # Format output matrices to standard Python lists rounded to 4 decimals
-    hard_iron_offsets = [round(val, 4) for val in b.tolist()]
-    soft_iron_matrix = [[round(val, 4) for val in row] for row in A.tolist()]
-    min_vals = [round(min_x, 4), round(min_y, 4), round(min_z, 4)]
-    max_vals = [round(max_x, 4), round(max_y, 4), round(max_z, 4)]
+    # Fit: A*x² + B*y² + C*z² + 2D*xy + 2E*xz + 2F*yz + 2G*x + 2H*y + 2I*z = 1
+    Dmat = np.column_stack((
+        xs * xs,
+        ys * ys,
+        zs * zs,
+        2.0 * xs * ys,
+        2.0 * xs * zs,
+        2.0 * ys * zs,
+        2.0 * xs,
+        2.0 * ys,
+        2.0 * zs,
+    ))
 
+    rhs = np.ones(P.shape[0], dtype=np.float64)
+
+    params, _, rank, _ = np.linalg.lstsq(Dmat, rhs, rcond=None)
+
+    if rank < 9:
+        raise ValueError("Ellipsoid fit is underdetermined, expand range of 3D orientations.")
+
+    A_s, B_s, C_s, D_s, E_s, F_s, G_s, H_s, I_s = params
+
+    Q_s = np.array([
+        [A_s, D_s, E_s],
+        [D_s, B_s, F_s],
+        [E_s, F_s, C_s],
+    ], dtype=np.float64)
+
+    u_s = np.array([G_s, H_s, I_s], dtype=np.float64)
+
+    # Reject singular or non-finite quadratic forms.
+    if not np.all(np.isfinite(Q_s)) or not np.all(np.isfinite(u_s)):
+        raise ValueError("Least-squares fit produced infinite coefficients.")
+
+    try:
+        center_s = -np.linalg.solve(Q_s, u_s)
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("Ellipsoid fit is singular. Collect better-distributed samples.") from exc
+
+    # Translate the center back to the original measurement coordinates.
+    offsets = center_s * scale_factor + offset_shift
+
+    # At the fitted center, the translated quadratic form equals val.
+    val = float(center_s @ Q_s @ center_s + 1.0)
+
+    if not np.isfinite(val) or val <= 0.0:
+        raise ValueError("Invalid ellipsoid fit: non-positive or non-finite radius scale.")
+
+    # Convert the quadratic form from scaled coordinates to raw coordinates.
+    S_inv = np.diag(1.0 / scale_factor)
+    Q = S_inv @ Q_s @ S_inv
+    Q_norm = Q / val
+
+    # Valid ellipsoid must have a positive-definite shape matrix.
+    evals, evecs = np.linalg.eigh(Q_norm)
+
+    if not np.all(np.isfinite(evals)):
+        raise ValueError("Invalid ellipsoid fit: infinite eigenvalues.")
+
+    if np.any(evals <= 0.0):
+        raise ValueError(
+            "Invalid ellipsoid fit: shape matrix is not positive definite, collect better-distributed 3D samples.")
+
+    condition_number = float(evals.max() / evals.min())
+
+    if not np.isfinite(condition_number) or condition_number > 1e6:
+        raise ValueError(
+            "Poorly conditioned ellipsoid fit "
+            f"(condition number={condition_number:.3g}). "
+            "Check sample coverage and outliers."
+        )
+
+    # Construct the symmetric square root of the shape matrix.
+    # This transforms the fitted ellipsoid into a sphere of target_radius.
+    A = (
+                evecs
+                @ np.diag(np.sqrt(evals))
+                @ evecs.T
+        ) * target_radius
+
+    # Remove tiny floating-point asymmetry.
+    A = (A + A.T) / 2.0
+
+    hard_iron_offsets = offsets.round(4).tolist()
+    soft_iron_matrix = A.round(4).tolist()
+    min_vals = mag_min.round(4).tolist()
+    max_vals = mag_max.round(4).tolist()
     return hard_iron_offsets, soft_iron_matrix, min_vals, max_vals
 
 
@@ -225,6 +338,21 @@ def save_calibration_data(raw_samples, mag_min, mag_max, filename):
 
 
 def load_calibration_data(filename):
+    """
+    Reads raw_samples, mag_min, and mag_max from a JSON calibration file.
+    Returns: samples, mag_min, mag_max
+    """
+    with open(filename, "r") as f:
+        data = json.load(f)
+
+    samples = data["raw_samples"]
+    mag_min = data["mag_min"]
+    mag_max = data["mag_max"]
+
+    return samples, mag_min, mag_max
+
+
+def load_calibration_data(filename):
     """Loads raw_samples, mag_min, and mag_max from a JSON calibration file."""
     with open(filename, "r") as f:
         data = json.load(f)
@@ -236,19 +364,19 @@ def plot_calibration(calibration_file, plot_filename):
     # Reads samples and min/max bounds directly from the saved calibration file
     samples, mag_min, mag_max = load_calibration_data(calibration_file)
 
-    # Generates 3D before/after calibration plot and saves it to a file.
-    rx = [p[0] for p in samples]
-    ry = [p[1] for p in samples]
-    rz = [p[2] for p in samples]
+    P = np.array(samples, dtype=np.float64)
+    rx, ry, rz = P[:, 0], P[:, 1], P[:, 2]
 
-    # Map raw samples to unit sphere (-1.0 to +1.0) using min/max bounds
-    span_x = mag_max[0] - mag_min[0] if mag_max[0] != mag_min[0] else 1.0
-    span_y = mag_max[1] - mag_min[1] if mag_max[1] != mag_min[1] else 1.0
-    span_z = mag_max[2] - mag_min[2] if mag_max[2] != mag_min[2] else 1.0
+    # Calculate target field radius from file bounds
+    target_r = ((mag_max[0] - mag_min[0]) + (mag_max[1] - mag_min[1])  + (mag_max[2] - mag_min[2])) / 6.0
 
-    mx = [2.0 * (x - mag_min[0]) / span_x - 1.0 for x in rx]
-    my = [2.0 * (y - mag_min[1]) / span_y - 1.0 for y in ry]
-    mz = [2.0 * (z - mag_min[2]) / span_z - 1.0 for z in rz]
+    # Perform ellipsoid fit directly inside the plot function
+    offsets, matrix, _, _ = fit_ellipsoid_and_compute_matrices_least_squares(samples, target_radius=target_r)
+
+    # Transform raw points to normalized unit sphere
+    centered = P - np.array(offsets)
+    calibrated = (centered @ np.array(matrix).T) / target_r
+    mx, my, mz = calibrated[:, 0], calibrated[:, 1], calibrated[:, 2]
 
     fig = plt.figure(figsize=(12, 5))
     fig.suptitle("Magnetometer Calibration Results", fontsize=14, fontweight="bold")
@@ -371,47 +499,63 @@ def evaluate_calibration_quality(calibrated_samples, target_radius=1.0):
 
 
 def main():
-    print("Preparing calibration. Get ready to rotate the sensor in 3D...(sleep for 3 seconds)")
-    time.sleep(5)
-
-    # Collect samples and fit data, recommend 120 seconds collection_seconds
-    collection_seconds = 120
-    raw_samples = collect_samples(runtime_seconds=collection_seconds)
-    
-    # Comment out previous fitting for better fit method
-    # offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
-    offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices_least_squares(raw_samples)
+    # Initialize magnetometer sensor safely
+    magnetometer = None
+    try:
+        i2c = board.I2C()
+        magnetometer = adafruit_lis3mdl.LIS3MDL(i2c)
+        print("Magnetometer detected and initialized.")
+    except (OSError, ValueError, AttributeError) as e:
+        print(f"Magnetometer not available ({e}). Running in offline/file mode.")
 
     # Create output directory and timestamp for output files
     output_dir = create_output_directory()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     print(f"\nSaving calibration data in directory ./{output_dir}, files will append {timestamp} string")
 
+    if magnetometer is not None:
+        print("Preparing calibration. Get ready to rotate the sensor in 3D...(sleep for 3 seconds)")
+        time.sleep(5)
+
+        # Collect samples and fit data, recommend 120 seconds collection_seconds
+        collection_seconds = 120
+        raw_samples = collect_samples(runtime_seconds=collection_seconds)
+
+        mag_max, mag_min = get_mag_max_min(raw_samples)
+
+        # Save calibration data to file
+        calibration_file = os.path.join(output_dir, f"{CALIBRATION_FILE_NAME}_{timestamp}.json")
+        save_calibration_data(raw_samples, mag_min, mag_max, calibration_file)
+    else:
+        # TEST MODE - either try test.json on put in previous value
+        filename = os.path.join(output_dir, "test.json")
+        raw_samples, mag_min, mag_max = load_calibration_data(filename)
+        calibration_file = filename
+
+    # Comment out previous fitting for better fit method
+    # offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices(raw_samples)
+    # ellipsoid with target_radius set to true uT magnitude, Compute target field radius (average radius in uT)
+    target_r = ((mag_max[0] - mag_min[0]) + (mag_max[1] - mag_min[1]) + (mag_max[2] - mag_min[2])) / 6.0
+    offsets, matrix, mag_min, mag_max = fit_ellipsoid_and_compute_matrices_least_squares(raw_samples,
+                                                                                         target_radius=target_r)
+
     # Print Results Formatted for Direct Copy-Paste
-    param_file = os.path.join(output_dir, f"{PARAMETER_FILE_NAME}_{timestamp}.py")
+    param_file = os.path.join(output_dir, f"better-fit{PARAMETER_FILE_NAME}_{timestamp}.py")
     print_and_save_parameters(mag_min, mag_max, matrix, param_file)
 
-    # Save calibration data to file
-    calibration_file = os.path.join(output_dir, f"{CALIBRATION_FILE_NAME}_{timestamp}.json")
-    save_calibration_data(raw_samples, mag_min, mag_max, calibration_file)
-
-    # Compute target average radius in uT from raw bounding limits
-    target_r = ((mag_max[0] - mag_min[0])
-                + (mag_max[1] - mag_min[1])
-                + (mag_max[2] - mag_min[2])
-                ) / 6.0
-
-    # Apply hard/soft-iron matrix AND normalize down to unit sphere (R = 1.0)
+    # Apply transformation and normalize to unit sphere (R = 1.0)
     calibrated_samples = []
     for rx, ry, rz in raw_samples:
         cx = rx - offsets[0]
         cy = ry - offsets[1]
         cz = rz - offsets[2]
+
+        # Apply soft-iron matrix (yields calibrated uT)
         mx = matrix[0][0] * cx + matrix[0][1] * cy + matrix[0][2] * cz
         my = matrix[1][0] * cx + matrix[1][1] * cy + matrix[1][2] * cz
         mz = matrix[2][0] * cx + matrix[2][1] * cy + matrix[2][2] * cz
 
-        # Divide by target_r so point magnitudes evaluate cleanly around 1.0
+        # Normalize to unit sphere (R = 1.0) for evaluation metrics
         calibrated_samples.append((mx / target_r, my / target_r, mz / target_r))
 
     # Evaluate Calibration Quality

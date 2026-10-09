@@ -126,20 +126,21 @@ HARD_IRON_CALIBRATED_MAG_MAX = [7.9070, 101.2716, 7.2347]
 
 # Soft-iron: Calibration constants from hard_soft_calibrate_lis3mdl_test.py:
 SOFT_IRON_MATRIX = [
-    [1.001, 0.070, -0.176],
-    [0.070, 1.003, 0.118],
-    [-0.176, 0.118, 0.997]
+    [1.007, 0.043, -0.004],
+    [0.043, 1.015, 0.002],
+    [-0.004, 0.002, 1.011]
 ]
 
 Saved calibration parameters to calibration_output_files/calibration_parameters_20261007_180712.py
 Saved calibration data to calibration_output_files/calibration_values_20261007_180712.json
 
 === Calibration Quality Metrics ===
-Mean Absolute Percentage Error (MAPE) : 3.13%
-Normalized RMSE (NRMSE)               : 0.0392
-Semi-Axes Ratio (c/a)                 : 0.6279 (Target: 1.0000)
-Oblateness / Flattening (f)           : 0.3721 (Target: 0.0000)
-Fractional Anisotropy (FA)            : 0.4367 (Target: 0.0000)
+Mean Absolute Percentage Error (MAPE) : 0.71%
+Normalized RMSE (NRMSE)               : 0.0093
+Semi-Axes Ratio (c/a)                 : 0.6459 (Target: 1.0000)
+Oblateness / Flattening (f)           : 0.3541 (Target: 0.0000)
+Fractional Anisotropy (FA)            : 0.3843 (Target: 0.0000)
+
 
 Loaded calibration data from calibration_output_files/calibration_values_20261007_180712.json
 
@@ -147,6 +148,4 @@ Create subplot for BEFORE: Raw Magnetometer Data
 Create subplot for AFTER: Normalized Calibrated Sphere
 
 Saved calibration plot to calibration_output_files/calibration_plot_20261007_180712.png
-
-Process finished with exit code 0
 ```
