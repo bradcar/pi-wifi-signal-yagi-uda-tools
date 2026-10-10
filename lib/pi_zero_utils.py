@@ -22,6 +22,11 @@ def pico_temperature() -> float:
         return 0.0
 
 
+def celsius_to_fahrenheit(celsius: float) -> float:
+    fahrenheit = celsius * (9.0/5.0) + 32.0
+    return fahrenheit
+
+
 @contextmanager
 def timeout(seconds, error_message="Timed out"):
     def signal_handler(signum, frame):
