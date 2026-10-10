@@ -2,7 +2,10 @@
 """
 lcd_test.py
 
-
+Display Driver for Waveshare Triple LCD HAT (A).
+- disp_2: Center 1.3"
+- disp_0: Left   0.96"
+- disp_1: Right  0.96"
 
 """
 

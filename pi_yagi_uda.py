@@ -25,8 +25,8 @@ Display Layouts & Hardware Mapping:
     * WaveShare Triple LCD Display (ST7789 Drivers, rotated 180° / USB at bottom).
       https://www.waveshare.com/zero-lcd-hat-a.htm
       - Left Display  (disp_0): 160px x  80px (12,800 px)
-      - Center Display(disp_1): 240px x 240px (57,600 px)
-      - Right Display (disp_2): 160px x  80px (12,800 px)
+      - Center Display(disp_2): 240px x 240px (57,600 px)
+      - Right Display (disp_1): 160px x  80px (12,800 px)
     * Button Mapping - Display buttons next to left display (gpiozero with active on Pi pull-ups):
       - External trigger Button 0 (GPIO 6)  : Primary trigger (Supports short/long press detection)
       - Top Button 2 (GPIO 26) : Connection mode toggle (Scan vs. Connected)

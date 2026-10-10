@@ -5,26 +5,42 @@ Four tools for measuring Wi-Fi signals. Preliminary work in progress!
 
 our Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
 
-### LCD Display Tools:
-1. **`pi_wifi_scan_rssi.py`** – Scans all surrounding 2.4GHz Wi-Fi networks, ranks them by RSSI strength, builds 360° directional signal profiles, and generates polar radar plots.
-2. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings.
+### LCD Display Tools with directional antenna:
+1. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings.
+2. **`pi_wifi_scan_rssi.py`** – Scans all surrounding 2.4GHz Wi-Fi networks, ranks them by RSSI strength, builds 360° directional signal profiles, and generates polar radar plots.
 
 ### Console-Only Tools:
 3. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
 4. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
 
+Note: to quickly check the available wi-Fi from the console use:
+
+```$ sudo nmcli dev wifi list```
+
 ---
 
-## Hardware Setup & Pin Mapping
+## Yagi Uda directional Antenna
+Yagi Uda diredtional antenna with -30.7 dB Return, loss VSWR 1:1.06.
+* TECHTOO WiFi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
+  * Directional Antenna
+    * 30° Horizontal Beamwidth
+    * 28° Vertical Beamwidth
+* u.FL TO RP-SMA 4.1" Pigtail
+  * TE Connectivity, Part: 994-080-0001-ND
+* Adding external u.FL connector to Pi Zero 2 W
+  * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
+		* 100° C board heater
+		* 280° C hot air at low flow
 
+## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
-* **Display:** [WaveShare Triple LCD Display HAT](https://www.waveshare.com/zero-lcd-hat-a.htm) (ST7789 Drivers, rotated 180° / USB at bottom)
-  * Left Display (`disp_0`): 160px × 80px (Menu Controls)
-  * Center Display (`disp_1`): 240px × 240px (Radar Plotter & Network Table)
-  * Right Display (`disp_2`): 160px × 80px (Telemetry & Clock)
 * **Sensors & Antenna:**
-  * **LIS3MDL** 3-Axis I2C Magnetometer (for 360° compass headings)
   * 2.4GHz Directional Yagi-Uda Antenna
+  * **LIS3MDL** 3-Axis I2C Magnetometer (for 360° compass headings)
+* **Display:** [WaveShare Triple LCD Display HAT](https://www.waveshare.com/zero-lcd-hat-a.htm) (ST7789 Drivers, rotated 180° / USB at bottom)
+  * Left Display (disp_0): 160px × 80px (Menu Controls)
+  * Center Display (disp_2): 240px × 240px (Radar Plotter & Network Table)
+  * Right Display (disp_1): 160px × 80px (Telemetry & Clock)
 * **Button Controls (gpiozero with Pi internal pull-ups):**
   * `GPIO 26` (Top Button 2) : Scroll / Next in Menu | Toggle Scan/Connected Modes
   * `GPIO 25` (Bottom Button 1) : Select BSSID | Toggle Hi-Rez Plot Generation
@@ -159,9 +175,8 @@ pi_wifi_rssi_quality_rxrate_curses.py
       
 
 
-### PyCharm Remote Deployment Reset (running out of /tmp issue)
+### Analysis TECHTOO Wi-Fi Yagi Uda Antenna
 
-You may run into issues with PyCharm executing your code in a randomized `/tmp/` directory instead of running natively out of your home directory on the Pi.
-This can occur after renaming the repository.
+Analysis of TECHTOO 2.4 GHz Wi-Fi Yagi-Uda Antenna 2.4GHz with u.FL TO RP-SMA 4.1"
 
-* Follow the steps in the [PyCharm Remote Run Fix Guide](PyCharm-run-remote-temp-fix.md).
+![image](assets/images/techtoo_yagi-uda_4in1_pigtail_nanoVNA-100926.png "Yagi Uda Analysis")
