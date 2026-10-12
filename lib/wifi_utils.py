@@ -1,6 +1,6 @@
 # wifi_utils.py
 """
-Collection of utility functions for working with Pi Zero WiFi networks.
+Collection of utility functions for working with Pi Zero Wi-Fi networks.
 
 Features
     * if set up flag constant USE_PROC_NET_WIRELESS, will use fast low-level direct reads,
@@ -16,7 +16,7 @@ Features
 
 Methods & Classes:
 Classes / Data Models:
-    PiNetworkMock: Data model mimicks CoreWLAN network objects used by MacOS
+    PiNetworkMock: Data model mimicks CoreWLAN network objects used by macOS
 
 Initialization:
     init_wifi(): Validates system dependencies (iw) and checks for physical accessibility of the wlan0 interface.
@@ -62,11 +62,9 @@ import time
 
 from lib.pi_zero_utils import timeout
 
-# Fast scan only get RSSI
-USE_PROC_NET_WIRELESS = False
 
-# Fast scan but stale cached data returned quickly
-SCAN_CACHES_FAST_MODE = False
+USE_PROC_NET_WIRELESS = False  # Fast scan only provides RSSI
+SCAN_CACHES_FAST_MODE = False  # When use Scan Caches, it unfortunately returns stale data (but get it quicker :( )
 
 # Tracks (Link Quality, RSSI, Missed Beacons) to filter out results with no state change
 _last_wireless_fingerprint = None
@@ -301,7 +299,7 @@ def get_ssid():
 
 def connect_ssid(ssid):
     """
-    Connect to WiFi network with SSID selected.
+    Connect to Wi-Fi network with SSID selected.
     Fast connection skips profile generation if it already exists.
 
     CLI version for "shell-fi"
@@ -412,7 +410,7 @@ def get_password_for_ssid(ssid):
 
 def remove_ssid(ssid="shell-fi"):
     """
-    Deletes a specific WiFi connection profile from NetworkManager.
+    Deletes a specific Wi-Fi connection profile from NetworkManager.
 
     Args:
         ssid (str): The SSID profile name to remove.
@@ -485,18 +483,27 @@ def scan_target_ssid(interface, target_ssid=None, channel: int = None):
     networks = []
 
     for block in bss_blocks[1:]:
-        ssid_match = re.search(r'SSID: (.*)', block)
+        # Extract BSSID strictly from header line
+        bssid_match = re.search(r'^([0-9a-fA-F:]+)', block)
+        bssid = bssid_match.group(1) if bssid_match else "Unknown"
+
+        # Safely extract RSSI; assign None if missing or unparseable
+        rssi_match = re.search(r'^\s*signal:\s*([-0-9.]+)\s*dBm', block, re.MULTILINE)
+        if rssi_match:
+            try:
+                rssi = int(float(rssi_match.group(1)))
+            except ValueError:
+                rssi = None
+        else:
+            rssi = None
+
+        # Extract SSID safely
+        ssid_match = re.search(r'^\s*SSID:\s*(.*)', block, re.MULTILINE)
         ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
 
-        rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
-        rssi = int(float(rssi_match.group(1))) if rssi_match else -100
-
-        # If found target_ssid, return immediately
+        # If found target_ssid then return
         if target_ssid and (target_ssid in ssid):
             return rssi
-
-        bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
-        bssid = bssid_match.group(1) if bssid_match else "Unknown"
 
         band, channel = parse_band_from_cell(block)
         networks.append(PiNetworkMock(ssid, bssid, rssi, band, channel))
@@ -536,14 +543,23 @@ def scan_single_channel(interface: str, channel: int):
     networks = []
 
     for block in bss_blocks[1:]:
-        ssid_match = re.search(r'SSID: (.*)', block)
-        ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
-
-        rssi_match = re.search(r'signal: ([-0-9.]+) dBm', block)
-        rssi = int(float(rssi_match.group(1))) if rssi_match else -100
-
-        bssid_match = re.search(r'([0-9a-fA-F:]{17})', block)
+        # Extract BSSID  from header line
+        bssid_match = re.search(r'^([0-9a-fA-F:]+)', block)
         bssid = bssid_match.group(1) if bssid_match else "Unknown"
+
+        # Safely extract RSSI; None if missing
+        rssi_match = re.search(r'^\s*signal:\s*([-0-9.]+)\s*dBm', block, re.MULTILINE)
+        if rssi_match:
+            try:
+                rssi = int(float(rssi_match.group(1)))
+            except ValueError:
+                rssi = None
+        else:
+            rssi = None
+
+        # Extract SSID
+        ssid_match = re.search(r'^\s*SSID:\s*(.*)', block, re.MULTILINE)
+        ssid = ssid_match.group(1).strip() if ssid_match else ".hidden."
 
         band, parsed_ch = parse_band_from_cell(block)
 
