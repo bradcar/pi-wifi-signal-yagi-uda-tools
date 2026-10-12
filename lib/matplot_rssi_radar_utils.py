@@ -93,6 +93,13 @@ def peaks_arc_calc(degrees, peak_rssi: float):
 
 
 def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
+    """
+    plot_rssi_polar_matplotlib
+
+    Features:
+        * Puts 0 degree to north
+        * Light and dark mode
+    """
     # Create a 2D array matrix: Column 0 = degree, Column 1 = rssi
     history_array = np.column_stack((degrees, rssi))
 
@@ -103,8 +110,11 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
         peak_rssi = -99.0
         peak_degree = 0
         peak_cluster = np.array([])
+        arc_radians = np.array([])
+        arc_radii = np.array([])
     else:
         arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_data)
+        arc_radians = arc_radians - np.pi / 2
 
     print(f"Peak detected: {peak_rssi:.0f} dBm @ {peak_degree:.0f}° degrees")
 
@@ -131,12 +141,18 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
     fig.patch.set_facecolor(bg_color)
     ax.set_facecolor(panel_color)
 
+    # does not work!   ax.set_theta_zero_location('N')  # Matplotlib puts 0 degrees to east, not north
     ax.set_theta_direction(-1)
     heading = heading % 360
     ax.set_theta_offset(np.deg2rad(heading))
 
     thetaticks = np.arange(0, 360, 15)
-    ax.set_thetagrids(thetaticks, labels=[f"{x}°" for x in thetaticks])
+    # Calculate visual tick positions: shift index by -90° so 0° index lands at top
+    visual_ticks = np.deg2rad((thetaticks - 90) % 360)
+    ax.set_xticks(visual_ticks)
+    ax.set_xticklabels([f"{x}°" for x in thetaticks])
+
+    #ax.set_thetagrids(thetaticks, labels=[f"{x}°" for x in thetaticks])
 
     if not lcd_png_generate:
         font_adjust = 0
@@ -164,40 +180,58 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
 
     if peak_rssi != -99:
         max_radius_percent = 0.90
-        rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0/max_radius_percent)
-        print(f"Autoscaled Plot Range ({int(max_radius_percent*100)}%): {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
+        if peak_rssi > -45:
+            rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0/max_radius_percent)
+            print(f"Autoscaled Plot Range ({int(max_radius_percent*100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
+        else:
+            rssi_max_plot = -45
+            print(f"Static Plot Range (peak_rssi < -50):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
 
+    # Set your desired minimum dBm center floor (ex: -80 dBm)
+    rssi_min_plot = -99
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
+    # draw bar lines:
+    # 1-bar solid: -80 dB, dashed 2-bar dashed: -70 dB, 3-bar dashed : -60 dB, 4-bar Solid: -50 dB,
+    circle_theta = np.linspace(0, 2 * np.pi, 360)
+    ax.plot(circle_theta, np.full_like(circle_theta, -80), color='orange', linestyle='-', linewidth=1, zorder=3)
+    ax.plot(circle_theta, np.full_like(circle_theta, -70), color='orange', linestyle='--', linewidth=1, zorder=3)
+    ax.plot(circle_theta, np.full_like(circle_theta, -60), color='orange', linestyle='--', linewidth=1, zorder=3)
+    ax.plot(circle_theta, np.full_like(circle_theta, -50), color='orange', linestyle='-', linewidth=1, zorder=3)
+
+    # Rotate Data by -90 (CCW, -pi/2), so 0 degrees north is at top of circle
+    theta = theta - np.pi / 2
     if not lcd_png_generate:
-        ax.plot(theta, rssi, color='green', linewidth=2.0)
+        ax.plot(theta, rssi, color='green', linewidth=2.0, zorder=5)
     else:
-        ax.plot(theta, rssi, color='green', linewidth=0.7)
-    ax.fill(theta, rssi, color='green', alpha=0.7)
+        ax.plot(theta, rssi, color='green', linewidth=0.7, zorder=5)
+    ax.fill(theta, rssi, color='green', alpha=0.7, zorder=5)
 
     red_peak_text = f"(Peak: {peak_rssi:.0f}dBm @ {peak_degree:.0f}°)"
 
     if not lcd_png_generate:
-        fig.text(0.32, 0.95, "RSSI Strength", ha='center', fontsize=12, fontweight='bold')
-        fig.text(0.45, 0.95, red_peak_text, ha='left', fontsize=12, fontweight='bold', color='red')
-        fig.text(0.05, 0.03, f"{subtitle}", ha='left', fontsize=8)
+        fig.text(0.32, 0.95, "RSSI Strength", ha='center', fontsize=12, fontweight='bold', zorder=5)
+        fig.text(0.45, 0.95, red_peak_text, ha='left', fontsize=12, fontweight='bold', color='red', zorder=5)
+        fig.text(0.05, 0.03, f"{subtitle}", ha='left', fontsize=8, zorder=5)
     else:
         fig.text(0.10, 0.94, f"(Peak {peak_rssi:.0f} dBm @ {peak_degree:.0f}°)", ha='left', fontsize=11,
-                 fontweight='bold', color='red')
-        fig.text(0.01, 0.02, f"{subtitle}", ha='left', color=text_color, fontsize=9, fontweight='bold')
-        fig.text(0.8, 0.02, f"RSSI", ha='left', color=text_color, fontsize=13, fontweight='bold')
+                 fontweight='bold', color='red', zorder=5)
+        fig.text(0.01, 0.02, f"{subtitle}", ha='left', color=text_color, fontsize=9, fontweight='bold', zorder=5)
+        fig.text(0.8, 0.02, f"RSSI", ha='left', color=text_color, fontsize=13, fontweight='bold', zorder=5)
 
-    peak_rad = np.deg2rad(peak_degree)
+    # rotate peak by 90 CCW, so 0 degrees north is at top of circle
+    peak_rad = np.deg2rad(peak_degree) - np.pi / 2
+
     if peak_rssi < rssi_max_plot:
         halfway_peak = (peak_rssi - rssi_max_plot) / 2
-        ax.plot([peak_rad, peak_rad], [peak_rssi, peak_rssi - halfway_peak], color='red', linestyle='--', linewidth=2)
+        ax.plot([peak_rad, peak_rad], [peak_rssi, peak_rssi - halfway_peak], color='red', linestyle='--', linewidth=2, zorder=5)
         ax.plot([peak_rad, peak_rad], [peak_rssi - halfway_peak, rssi_max_plot], color='red', linestyle='-',
-                linewidth=4)
+                linewidth=4, zorder=5)
     else:
-        ax.plot([peak_rad, peak_rad], [rssi_min_plot, peak_rssi], color='red', linestyle='--', linewidth=1)
+        ax.plot([peak_rad, peak_rad], [rssi_min_plot, peak_rssi], color='red', linestyle='--', linewidth=1, zorder=5)
 
     if len(peak_cluster) > 1:
-        ax.plot(arc_radians, arc_radii, color='red', linewidth=1, linestyle='-')
+        ax.plot(arc_radians, arc_radii, color='red', linewidth=1, linestyle='-', zorder=5)
 
     if not lcd_png_generate:
         peak_string = f"{peak_rssi:.0f} dBm"
