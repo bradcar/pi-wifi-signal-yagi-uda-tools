@@ -165,7 +165,7 @@ from gpiozero import Button
 import lib.lcd_st7789_utils as lcd
 from lib.download_file_utils import download_file
 from lib.fake_testing_utils import fake_heading_sweep, fake_rssi_history_fill
-from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics, arrow_annotation, rotation_to_peak
+from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics, arrow_annotation, rotation_to_peak
 from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
@@ -860,7 +860,7 @@ def main():
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
 
-                display_radar_lcd(
+                display_rssi_polar_radar_lcd(
                     disp2_draw, cadence_fill, loc_heading, loc_rssi_heading_history, loc_is_connected,
                     peak_degree, peak_rssi,
                     peak_cluster, loc_rssi

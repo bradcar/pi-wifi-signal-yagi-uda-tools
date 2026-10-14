@@ -111,7 +111,7 @@ from busio import I2C
 from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
-from lib.lcd_rssi_radar_utils import display_radar_lcd, extract_radar_metrics
+from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading_hard_soft_corrections
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
@@ -206,7 +206,7 @@ def prepare_and_polar_plot_matplotlib(bssid, bssid_info, heading, rssi_min_plot=
     theta = np.deg2rad(degrees)
     subtitle = f"{bssid_info['ssid']}"
 
-    # 3.5 sec for lcd_png_generate = Trcue,  #7.5 sec for lcd_png_generate = True
+    # 3.5 sec for lcd_png_generate=True,  #7.5 sec for lcd_png_generate=False
     lcd_png_generate = False
     return plot_rssi_polar_matplotlib(degrees, rssi_array, theta, heading, subtitle, lcd_png_generate,
                                       file_name=file_name)
@@ -488,7 +488,7 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     peak_clust = peak_cluster if has_valid_history else None
 
     # Screen 2: Draw graph of data
-    display_radar_lcd(
+    display_rssi_polar_radar_lcd(
         disp2_draw,
         cadence_fill=None,
         heading=heading,
@@ -499,12 +499,12 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
         peak_cluster=peak_clust
     )
 
-    # Annotate Graph Text
+    # Annotate Polar Plot Text
     # Screen 2: Black-out patch on Radar for Peak RSSI and Peak degree, SSID
     disp2_draw.rectangle([209, 0, 240, 55], fill="black")
-    lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="red")
+    lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="black")
     disp2_draw.rectangle([212, 180, 240, 240], fill="black")
-    lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="red")
+    lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="black")
     lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
     disp_2.ShowImage(image2)
 
@@ -516,18 +516,24 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     lcd.print_270(text=" wait !", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
     disp_0.ShowImage(image0)
 
-    # Screen 1: Metrics: Compass, Peak RSSI metrics, and clock
+    # Screen 1 Right Display: Metrics - Compass, Peak RSSI metrics, and clock
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     lcd.print_270(text="Peak:", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
     rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
     lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
-    degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
-    lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
-    peak_count = len(peak_cluster) if peak_cluster is not None else 0
-    peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
-    lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
                   color="yellow")
+
+    peak_count = len(peak_cluster) if peak_cluster is not None else 0
+    # If peak_count is 360 then it is omnidirectional so rename it to one peak
+    if peak_count == 360:
+        peak_count = 1
+    else:
+        degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
+        lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
+        peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
+        lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
+
     disp_1.ShowImage(image1)
 
 
@@ -564,11 +570,17 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
     lcd.print_270(text="Peak", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
     rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
     lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
-    degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
-    lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
+
     peak_count = len(peak_cluster) if peak_cluster is not None else 0
-    peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
-    lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
+    # If peak_count is 360 then it is omnidirectional so rename it to one peak
+    if peak_count == 360:
+        peak_count = 1
+    else:
+        degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
+        lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
+        peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
+        lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
+
     disp_1.ShowImage(image1)
 
     while True:
@@ -587,7 +599,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
             disp2_draw = ImageDraw.Draw(image2)
 
-            display_radar_lcd(
+            display_rssi_polar_radar_lcd(
                 disp2_draw,
                 cadence_fill=None,
                 heading=heading,
@@ -595,17 +607,24 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                 connected=True,
                 peak_degree=peak_degree,
                 peak_rssi=peak_rssi,
-                peak_cluster=peak_cluster
+                peak_cluster=peak_cluster,
+                magnetometer=lis3mdl
             )
-
             # Annotate text overlay for screen 2
             disp2_draw.rectangle([209, 0, 240, 55], fill="black")
-            lcd.print_270(text=f"{peak_rssi:.0f}" if peak_rssi is not None else "---", pos=(210, 0), image=image2,
+            lcd.print_270(text=f"{peak_rssi:.0f}dB" if peak_rssi is not None else "---", pos=(210, 0), image=image2,
                           font=lcd.font0_34pt, color="red")
             disp2_draw.rectangle([212, 180, 240, 240], fill="black")
-            lcd.print_270(text=f"{peak_degree:.0f}°" if peak_degree is not None else "---°", pos=(213, 178),
-                          image=image2, font=lcd.font0_28pt, color="red")
             lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
+
+            # If no Magnetometer show "No Compass"
+            if lis3mdl is not None:
+                lcd.print_270(text=f"{peak_degree:.0f}°" if peak_degree is not None else "---°", pos=(213, 178),
+                              image=image2, font=lcd.font0_28pt, color="red")
+            else:
+                lcd.print_270(text="No", pos=(124, 101), image=image2, font=lcd.font0_24pt, color="red")
+                lcd.print_270(text="Compass", pos=(93, 62), image=image2, font=lcd.font0_24pt, color="red")
+
             disp_2.ShowImage(image2)
 
         # Button 1: Hi-Rez Toggle
@@ -804,7 +823,7 @@ def main():
                     print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
                     print("Clean Exit.")
 
-                    # --- Break out of loop, after saving plots ---
+                    # --- Break out of Wi-Fi Signal Scanningloop, after saving plots, which exits progrm ---
                     break
                 else:
                     print("Button pressed, but no LCD display is active.")

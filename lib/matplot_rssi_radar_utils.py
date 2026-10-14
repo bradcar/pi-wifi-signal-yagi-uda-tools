@@ -46,8 +46,8 @@ from PIL import Image  # ADD THIS TO RETURN A PIL IMAGE
 from lib.polar_math_utils import calculate_peak_bounds
 
 # dBm bounds for clamping values and gridlines
-RSSI_MAX_PLOT_CONSTANT = -20
-RSSI_MIN_PLOT_CONSTANT = -99
+# RSSI_MAX_PLOT_CONSTANT = -20
+# RSSI_MIN_PLOT_CONSTANT = -99
 Y_TICK_MAX = -10
 Y_TICK_MIN = -90
 
@@ -175,20 +175,21 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
     else:
         ax.tick_params(axis='y', labelsize=9, labelcolor=y_label_color)
 
-    rssi_max_plot = RSSI_MAX_PLOT_CONSTANT
-    rssi_min_plot = RSSI_MIN_PLOT_CONSTANT
+    # Set your desired minimum dBm center floor (ex: -80 dBm)
+    rssi_min_plot = -99
 
     if peak_rssi != -99:
+        # When peak RSSI > -45 (which stronger than 4 bars), have the max radius at 90% of full range)
         max_radius_percent = 0.90
         if peak_rssi > -45:
             rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0/max_radius_percent)
             print(f"Autoscaled Plot Range ({int(max_radius_percent*100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
         else:
+            # Typical case of when peak RSSI > -45 (which weaker than 4 bars), have the max radius at 90% of full range)
             rssi_max_plot = -45
             print(f"Static Plot Range (peak_rssi < -50):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
 
-    # Set your desired minimum dBm center floor (ex: -80 dBm)
-    rssi_min_plot = -99
+
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
     # draw bar lines:

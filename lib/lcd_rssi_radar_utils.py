@@ -62,8 +62,8 @@ def extract_radar_metrics(signal_history):
     return peak_rssi, peak_degree, peak_cluster, True
 
 
-def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
-                      peak_degree=None, peak_rssi=None, peak_cluster=None, rssi=None):
+def display_rssi_polar_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
+                                 peak_degree=None, peak_rssi=None, peak_cluster=None, rssi=None, magnetometer=None):
     """
     Draw a white box with a black radar circle in it.
     Add white directional orientation lines for North, East, South, and West.
@@ -80,14 +80,22 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     center_y = 120
     max_radius = 110
 
-    weak_bound = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
+    rssi_min_plot = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
+
+    # Set the minimum RSSI that is plotted to -99 dBm
+    rssi_min_plot = -99.0
 
     if peak_rssi is not None and peak_rssi > -99:
-        max_radius_percent = 0.85
-        strong_bound = weak_bound + (peak_rssi - weak_bound) * (1.0 / max_radius_percent)
+        max_radius_percent = 0.90
+        if peak_rssi > -45:
+            # Autoscaled range when peak RSSI is stronger than -45 dBm
+            rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0 / max_radius_percent)
+        else:
+            # Static range bounds (-99 dBm to -45 dBm) when peak RSSI is weaker than or equal to -45 dBm
+            rssi_max_plot = -45.0
     else:
         # Fallback to defaults if no signal is detected
-        strong_bound = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
+        rssi_max_plot = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
 
     # if no heading orientate to North 0°
     if heading is None:
@@ -102,17 +110,18 @@ def display_radar_lcd(draw, cadence_fill, heading: float, signal_history, connec
     # draw indicator, crosshairs and RSSI polygon
     draw_indicator(draw, cadence_fill, x_box=210, y_box=10, dot_size=15)
     draw_crosshairs(draw, heading, center_x, center_y, max_radius)
-    draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, strong_bound, weak_bound)
+    draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, rssi_max_plot, rssi_min_plot)
 
-    # peak signal graphic
-    if peak_rssi is not None and peak_degree is not None:
-        draw_peak_arc(draw, heading, center_x, center_y, max_radius,
-                      strong_bound, weak_bound, peak_degree, peak_rssi, peak_cluster)
+    if magnetometer is not None:
+        # peak signal graphic
+        if peak_rssi is not None and peak_degree is not None:
+            draw_peak_arc(draw, heading, center_x, center_y, max_radius,
+                          rssi_max_plot, rssi_min_plot, peak_degree, peak_rssi, peak_cluster)
 
-    # Show RSSI strength at antenna location at proportional distance
-    draw_rssi_box(draw=draw, rssi=rssi, target_degree=0.0, heading=0.0, center_x=center_x,
-                  center_y=center_y, max_radius=max_radius, strong_bound=strong_bound,
-                  weak_bound=weak_bound, box_size=12, color="cyan")
+        # Show RSSI strength at antenna location at proportional distance
+        draw_rssi_box(draw=draw, rssi=rssi, target_degree=0.0, heading=0.0, center_x=center_x,
+                      center_y=center_y, max_radius=max_radius, strong_bound=rssi_max_plot,
+                      weak_bound=rssi_min_plot, box_size=12, color="cyan")
 
     # Center axis core marker
     draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="blue")
