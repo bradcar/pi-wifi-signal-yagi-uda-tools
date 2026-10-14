@@ -197,8 +197,8 @@ def update_bssid_map(data, heading, bssid_map):
                 bssid_map[bssid]["rssi_history"] = [float(rssi)] * 360
 
 
-def prepare_and_polar_plot_matplotlib(bssid, bssid_info, heading, rssi_min_plot=-80, rssi_max_plot=-40,
-                                      file_name="plot.png"):
+def prepare_polar_plot_matplotlib(bssid, bssid_info, heading, lcd_png_generate,
+                                  file_name="plot.png"):
     """ Set up data for plot_rssi_polar call"""
     rssi_array = np.array(bssid_info["rssi_history"])
     degrees = np.arange(360)
@@ -207,7 +207,6 @@ def prepare_and_polar_plot_matplotlib(bssid, bssid_info, heading, rssi_min_plot=
     subtitle = f"{bssid_info['ssid']}"
 
     # 3.5 sec for lcd_png_generate=True,  #7.5 sec for lcd_png_generate=False
-    lcd_png_generate = False
     return plot_rssi_polar_matplotlib(degrees, rssi_array, theta, heading, subtitle, lcd_png_generate,
                                       file_name=file_name)
 
@@ -270,6 +269,41 @@ def oled_display_update(draw, font, image, oled_display, data, heading):
         print(f"OLED write error: {e}")
 
 
+def update_metrics_lcd_display(disp_1, peak_rssi, peak_degree, peak_cluster):
+    """
+    Update the display metrics
+
+    Relies on side effect of peak_count == 360 to denote no magnetometer
+    """
+    image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
+    lcd.print_270(text="Peak", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
+
+    rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
+    lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
+
+    peak_count = len(peak_cluster) if peak_cluster is not None else 0
+
+    # If peak_count is 360 then it is omnidirectional so rename it to one peak
+    if peak_count > 0 and peak_count != 360:
+        degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
+        lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
+        peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
+        lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
+
+    disp_1.ShowImage(image1)
+
+
+def update_menu_lcd_display(disp_0, items):
+    """
+    update_menu_lcd_display to draw text items on Display 0.
+    Items format: list of tuples -> (text, pos_tuple, font, color)
+    """
+    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+    for text, pos, font, color in items:
+        lcd.print_270(text=text, pos=pos, image=image0, font=font, color=color)
+    disp_0.ShowImage(image0)
+
+
 def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
     """Print scan results across the triple LCD HAT displays."""
     if not (disp_0 and disp_1 and disp_2):
@@ -281,16 +315,12 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
         dir_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
 
         # Screen 0: Interactive Menu Option, to tp
-        image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-        lcd.print_270("Plot", pos=(132, 0), image=image0, font=lcd.font0_28pt, color="yellow")
-        lcd.print_270("RSSI?", pos=(108, 0), image=image0, font=lcd.font0_28pt, color="yellow")
-
-        # New option
-        # todo check text position
-        lcd.print_270(text="Exit w/", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-        lcd.print_270(text="Plots ?", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-
-        disp_0.ShowImage(image0)
+        update_menu_lcd_display(disp_0, [
+            ("Plot", (137, 0), lcd.font0_28pt, "yellow"),
+            ("RSSI?", (113, 0), lcd.font0_28pt, "yellow"),
+            ("Exit w/", (72, 0), lcd.font0_24pt, "yellow"),
+            ("Plots ?", (47, 0), lcd.font0_24pt, "yellow")
+        ])
 
         # Screen 1: Heading & Clock
         image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
@@ -341,10 +371,10 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     global button1_pressed, button2_pressed
 
     # Screen 0: Menu options "Next" and "Select"
-    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270(text="Next", pos=(127, 0), image=image0, font=lcd.font0_28pt, color="green")
-    lcd.print_270(text="Select", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    disp_0.ShowImage(image0)
+    update_menu_lcd_display(disp_0, [
+        ("Next", (127, 0), lcd.font0_28pt, "green"),
+        ("Select", (62, 0), lcd.font0_24pt, "yellow")
+    ])
 
     # Screen 1: Time
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
@@ -429,47 +459,42 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     return None
 
 
-def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp):
+def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png_generate):
     """ create polar plot for BSSID, then saves png and CSV """
-    # safe SSID and BSSID strings for files
+    # Create safe SSID and BSSID strings for file names
     processed_ssid = info["ssid"].replace(" ", "_")
     safe_ssid = "".join([c for c in processed_ssid if c.isalnum() or c in ("-", "_")]).strip()
     if not safe_ssid:
         safe_ssid = "Hidden_or_Unknown"
 
-    safe_bssid = bssid.replace(":", "")
+    bssid_str = str(bssid) if bssid is not None else "UnknownBSSID"
+    safe_bssid = bssid_str.replace(":", "")
 
     # Normalize history data array: map None to your minimum plot floor (-99.0), clips to the center of the polar plot
     cleaned_history = [v if v is not None else -99.0 for v in info["rssi_history"]]
     info["rssi_history"] = cleaned_history
     valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
 
-    # Find strongest dB reading and append to file name
+    # Find strongest rssi dB and append to file name
     max_rssi = int(max(valid_signals)) if valid_signals else -99
 
     db_string = f"{max_rssi}_db"
     csv_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.csv"
     png_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.png"
 
-    if max_rssi > -85 and safe_ssid != "hidden":
-        print(
-            f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dB-String: {db_string}")
+    # Save CSV & plot
+    print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dB-String: {db_string}")
+    csv_data = np.column_stack((np.arange(360), cleaned_history))
+    np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
+    print(f"Saved csv: {csv_file}")
 
-        # Save CSV
-        csv_data = np.column_stack((np.arange(360), cleaned_history))
-        np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
-        print(f"Saved csv: {csv_file}")
-
-        # Create png plot
-        start_time = time.time()
-        polar_plot_image = prepare_and_polar_plot_matplotlib(bssid, info, heading, file_name=str(png_file))
-        print(f"plot time = {(time.time() - start_time):.2f} secs")
-        print(f"Plot file written: {png_file}")
-        return polar_plot_image
-    else:
-        print(
-            f"\n *** Not Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dB-String: {db_string}")
-        return None
+    # Create png plot
+    start_time = time.time()
+    polar_plot_image = prepare_polar_plot_matplotlib(bssid, info, heading, lcd_png_generate,
+                                                     file_name=str(png_file))
+    print(f"plot time = {(time.time() - start_time):.2f} secs")
+    print(f"Plot file written: {png_file}")
+    return polar_plot_image
 
 
 def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree,
@@ -508,33 +533,16 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
     disp_2.ShowImage(image2)
 
-    # Screen 0: Menu option for LCD plot
-    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text=" is 20s", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text=" wait !", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    disp_0.ShowImage(image0)
+    # Screen 0 Left Display: Menu option for LCD plot
+    update_menu_lcd_display(disp_0, [
+        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+        ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
+        (" is 20s", (45, 0), lcd.font0_24pt, "yellow"),
+        (" wait !", (20, 0), lcd.font0_24pt, "yellow")
+    ])
 
     # Screen 1 Right Display: Metrics - Compass, Peak RSSI metrics, and clock
-    image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    lcd.print_270(text="Peak:", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
-    rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
-    lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
-    lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
-                  color="yellow")
-
-    peak_count = len(peak_cluster) if peak_cluster is not None else 0
-    # If peak_count is 360 then it is omnidirectional so rename it to one peak
-    if peak_count == 360:
-        peak_count = 1
-    else:
-        degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
-        lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
-        peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
-        lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
-
-    disp_1.ShowImage(image1)
+    update_metrics_lcd_display(disp_1, peak_rssi, peak_deg, peak_clust)
 
 
 def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl):
@@ -559,29 +567,14 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
     i = 1
 
     # Screen 0 - Menu options - Left-most screen
-    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    lcd.print_270(text=" ~20s !", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-    disp_0.ShowImage(image0)
+    update_menu_lcd_display(disp_0, [
+        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+        ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
+        (" ~20s !", (45, 0), lcd.font0_24pt, "yellow")
+    ])
 
     # Screen 1 - Metrics: Peak RSSI & Peak degree right-most screen
-    image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
-    lcd.print_270(text="Peak", pos=(132, 0), image=image1, font=lcd.font0_34pt, color="red")
-    rssi_text = f"{peak_rssi:.0f}" if peak_rssi is not None else "no dBm"
-    lcd.print_270(text=rssi_text, pos=(84, 2), image=image1, font=lcd.font0_50pt, color="red")
-
-    peak_count = len(peak_cluster) if peak_cluster is not None else 0
-    # If peak_count is 360 then it is omnidirectional so rename it to one peak
-    if peak_count == 360:
-        peak_count = 1
-    else:
-        degree_text = f"{peak_degree:.0f}°" if peak_degree is not None else "? °"
-        lcd.print_270(text=degree_text, pos=(48, 8), image=image1, font=lcd.font0_34pt, color="red")
-        peak_text = f"{peak_count:.0f} peak{'s' if peak_count != 1 else ''}"
-        lcd.print_270(text=peak_text, pos=(18, 2), image=image1, font=lcd.font0_20pt, color="red")
-
-    disp_1.ShowImage(image1)
+    update_metrics_lcd_display(disp_1, peak_rssi, peak_degree, peak_cluster)
 
     while True:
         start_time = time.time()
@@ -636,28 +629,30 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                 hi_rez_active = False
 
                 # Re-paint the default Screen 0 options when dropping back to lo-rez
-                image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-                lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                lcd.print_270(text=" ~20s !", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                disp_0.ShowImage(image0)
+                update_menu_lcd_display(disp_0, [
+                    ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+                    ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
+                    (" ~20s !", (45, 0), lcd.font0_24pt, "yellow")
+                ])
             else:
                 print("Creating Hi Resolution auto-scaled plot with matplotlib...")
                 hi_rez_active = True
 
                 # Screen 0: Display waiting for Hi-Rez plot
-                image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-                lcd.print_270(text="Hi-Rez", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                lcd.print_270(text="...wait-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                lcd.print_270(text="ing", pos=(10, 22), image=image0, font=lcd.font0_24pt, color="yellow")
-                disp_0.ShowImage(image0)
+                update_menu_lcd_display(disp_0, [
+                    ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
+                    ("...wait-", (45, 0), lcd.font0_24pt, "yellow"),
+                    ("ing", (20, 22), lcd.font0_24pt, "yellow")
+                ])
 
                 plot_dir = Path("logs_polar_plots")
                 plot_dir.mkdir(exist_ok=True)
                 timestamp = datetime.now().strftime('%Y-%m%d_%H-%M')
 
                 bssid_info = bssid_map.get(target_bssid, {"ssid": ssid, "rssi_history": signal_history})
-                hi_rez_image = create_radar_png_csv_save(target_bssid, bssid_info, heading, plot_dir, timestamp)
+                lcd_png_generate = True
+                hi_rez_image = create_radar_png_csv_save(target_bssid, bssid_info, heading, plot_dir, timestamp,
+                                                         lcd_png_generate)
 
                 if hi_rez_image:
                     print("LCD Display 2 shows auto-scaled high-resolution plot...")
@@ -666,12 +661,12 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                     disp_2.ShowImage(lcd_image)
 
                     # Screen 0: Menu for return to scan or return to Lo-Rez plots - left-nost screen
-                    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-                    lcd.print_270(text="Scan?", pos=(127, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                    lcd.print_270(text="Back", pos=(60, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                    lcd.print_270(text="to Lo-", pos=(35, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                    lcd.print_270(text="Rez?", pos=(10, 0), image=image0, font=lcd.font0_24pt, color="yellow")
-                    disp_0.ShowImage(image0)
+                    update_menu_lcd_display(disp_0, [
+                        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+                        ("Back", (60, 0), lcd.font0_24pt, "yellow"),
+                        ("to Lo-", (35, 0), lcd.font0_24pt, "yellow"),
+                        ("Rez?", (10, 0), lcd.font0_24pt, "yellow")
+                    ])
                 else:
                     print("Error: Plot generation invalid image buffer reference.")
                     hi_rez_active = False
@@ -681,8 +676,6 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
             button2_pressed = False
             print("Returning to Wi-Fi scanning...")
             break
-
-        print(f"Loop time = {time.time() - start_time:.3f} sec")
 
 
 def main():
@@ -810,15 +803,29 @@ def main():
                     plot_dir.mkdir(exist_ok=True)
 
                     timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
-
-                    # Heading set to 0 so all plots have 0° North
-                    exit_heading = 0
                     saved_count = 0
+                    exit_heading = 0   # Set Heading for plots to  0° North
+
+                    lcd_png_generate = False
+                    hidden_placeholders = {"<hidden>", "Unknown", "", None}
 
                     for bssid, info in bssid_map.items():
-                        if any(val is not None and val > -99.0 for val in info["rssi_history"]):
-                            create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp)
-                            saved_count += 1
+                        # Extract valid signal history
+                        valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
+                        if not valid_signals:
+                            continue
+
+                        max_rssi = max(valid_signals)
+                        ssid = info.get("ssid")
+                        bssid = info.get("bssid")
+
+                        # Skip if SSID is hidden/unknown or peak RSSI is <= -85 dBm
+                        if ssid in hidden_placeholders or max_rssi <= -85:
+                            print(f"\n *** Not Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi}")
+                            continue
+
+                        create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
+                        saved_count += 1
 
                     print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
                     print("Clean Exit.")
