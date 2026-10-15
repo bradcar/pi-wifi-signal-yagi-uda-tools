@@ -165,12 +165,15 @@ def update_bssid_map(data, heading, bssid_map):
     Updates the persistent bssid_map with current rssi data. If ssid is unknown it will be updated in later
     scans as soon as ssid is found.
 
-    Use None when there is no signal.
+    Use None when there is no signal.  This will be converted to -99.0 dB when numerical dB values needed
+
+    If heading=None, there is no magnetometer. and the complete 360 degrees are given the same value.
+    If peak is the same everywhere in the data structure this side-effect is used to determine that there is no magnetometer.
     """
     heading = int(heading % 360) if heading is not None else None
     hidden_placeholders = {"<hidden>", "Unknown", "", None}
 
-    # Track which BSSIDs were seen in THIS specific scan cycle
+    # Track which BSSIDs were seen in This specific scan cycle.
     seen_bssids_this_scan = set()
 
     for net in data:
@@ -329,7 +332,7 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
         lcd.print_270(time_str, pos=(2, 0), image=image1, font=lcd.font0_20pt, color="yellow")
         disp_1.ShowImage(image1)
 
-        # SScreen 2 Center Display: Table of current Wi-Fi RSSI signal strenghs
+        # Screen 2 Center Display: Table of current Wi-Fi RSSI signal strenghs
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
         lcd.print_270(dir_str, pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
         lcd.print_270(time_str, pos=(240, 200), image=image2, font=lcd.font0_20pt, color="yellow")
