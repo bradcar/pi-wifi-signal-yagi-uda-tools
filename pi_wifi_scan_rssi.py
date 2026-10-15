@@ -314,7 +314,7 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
         heading_str = f"{heading:.0f}°" if heading is not None else "? °"
         dir_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
 
-        # Screen 0: Interactive Menu Option, to tp
+        # Screen 0 Left Display: Interactive Menu Option
         update_menu_lcd_display(disp_0, [
             ("Plot", (137, 0), lcd.font0_28pt, "yellow"),
             ("RSSI?", (113, 0), lcd.font0_28pt, "yellow"),
@@ -322,14 +322,14 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
             ("Plots ?", (47, 0), lcd.font0_24pt, "yellow")
         ])
 
-        # Screen 1: Heading & Clock
+        # Screen 1 Right Display: Heading & Clock
         image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
         lcd.print_270(f"heading=", pos=(132, 0), image=image1, font=lcd.font0_16pt, color="yellow")
         lcd.print_270(heading_str, pos=(104, 10), image=image1, font=lcd.font0_28pt, color="yellow")
         lcd.print_270(time_str, pos=(2, 0), image=image1, font=lcd.font0_20pt, color="yellow")
         disp_1.ShowImage(image1)
 
-        # Screen 2: Center Display: Table of current Wi-Fi RSSI signal strenghs
+        # SScreen 2 Center Display: Table of current Wi-Fi RSSI signal strenghs
         image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
         lcd.print_270(dir_str, pos=(240, 0), image=image2, font=lcd.font0_20pt, color="yellow")
         lcd.print_270(time_str, pos=(240, 200), image=image2, font=lcd.font0_20pt, color="yellow")
@@ -370,13 +370,13 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     """choose SSID with scrolling window and automatic wrap-around using persistent map data"""
     global button1_pressed, button2_pressed
 
-    # Screen 0: Menu options "Next" and "Select"
+    # Screen 0 Left Display: Menu options "Next" and "Select"
     update_menu_lcd_display(disp_0, [
         ("Next", (127, 0), lcd.font0_28pt, "green"),
         ("Select", (62, 0), lcd.font0_24pt, "yellow")
     ])
 
-    # Screen 1: Time
+    # Screen 1 Right Display: Time
     image1 = Image.new("RGB", (disp_1.width, disp_1.height), "black")
     lcd.print_270(text=f"{datetime.now().strftime('%H:%M:%S')}", pos=(2, 0), image=image1, font=lcd.font0_20pt,
                   color="yellow")
@@ -503,7 +503,7 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     """
     Pure rendering function: Draws the UI layers onto screens 0, 1, and 2.
     """
-    # Screen 2: Radar graph & annotations
+    # Screen 2 Center Display: Radar graph & annotations
     image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
     disp2_draw = ImageDraw.Draw(image2)
 
@@ -512,7 +512,7 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     peak_deg = peak_degree if has_valid_history else None
     peak_clust = peak_cluster if has_valid_history else None
 
-    # Screen 2: Draw graph of data
+    # Screen 2 Center Display: Draw graph of data
     display_rssi_polar_radar_lcd(
         disp2_draw,
         cadence_fill=None,
@@ -525,7 +525,7 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     )
 
     # Annotate Polar Plot Text
-    # Screen 2: Black-out patch on Radar for Peak RSSI and Peak degree, SSID
+    # Screen 2 Center Display: Black-out patch on Radar for Peak RSSI and Peak degree, SSID
     disp2_draw.rectangle([209, 0, 240, 55], fill="black")
     lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="black")
     disp2_draw.rectangle([212, 180, 240, 240], fill="black")
@@ -569,14 +569,14 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
     hi_rez_active = False
     i = 1
 
-    # Screen 0 - Menu options - Left-most screen
+    # Screen 0 Left Display: Menu options
     update_menu_lcd_display(disp_0, [
         ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
         ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
         (" ~20s !", (45, 0), lcd.font0_24pt, "yellow")
     ])
 
-    # Screen 1 - Metrics: Peak RSSI & Peak degree right-most screen
+    # Screen 1 right display - Metrics: Peak RSSI & Peak degree right-most screen
     update_metrics_lcd_display(disp_1, peak_rssi, peak_degree, peak_cluster)
 
     while True:
@@ -591,7 +591,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
             raw_heading = get_compass_heading_hard_soft_corrections(lis3mdl) if lis3mdl else None
             heading = raw_heading if raw_heading is not None else 0.0
 
-            # Screen 2: plot radar - large center screen
+            # Screen 2 Center Display: plot radar
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
             disp2_draw = ImageDraw.Draw(image2)
 
@@ -606,7 +606,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                 peak_cluster=peak_cluster,
                 magnetometer=lis3mdl
             )
-            # Annotate text overlay for screen 2
+            # Annotate text overlay for Screen 2 Center Display
             disp2_draw.rectangle([209, 0, 240, 55], fill="black")
             lcd.print_270(text=f"{peak_rssi:.0f}dB" if peak_rssi is not None else "---", pos=(210, 0), image=image2,
                           font=lcd.font0_34pt, color="red")
@@ -641,7 +641,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                 print("Creating Hi Resolution auto-scaled plot with matplotlib...")
                 hi_rez_active = True
 
-                # Screen 0: Display waiting for Hi-Rez plot
+                # Screen 0 Left Display: Display waiting for Hi-Rez plot
                 update_menu_lcd_display(disp_0, [
                     ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
                     ("...wait-", (45, 0), lcd.font0_24pt, "yellow"),
@@ -663,7 +663,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
                     lcd_image = lcd_image.rotate(270)
                     disp_2.ShowImage(lcd_image)
 
-                    # Screen 0: Menu for return to scan or return to Lo-Rez plots - left-nost screen
+                    # Screen 0 Left Display: Menu for return to scan or return to Lo-Rez plots - left-nost screen
                     update_menu_lcd_display(disp_0, [
                         ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
                         ("Back", (60, 0), lcd.font0_24pt, "yellow"),
