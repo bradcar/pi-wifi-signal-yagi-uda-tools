@@ -555,12 +555,15 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
         print(f"ERROR: Selected BSSID {target_bssid} ({menu_ssid}) dropped out of map before plotting!")
         return
 
-    signal_history = bssid_map[target_bssid]["rssi_history"]
+    raw_history = bssid_map[target_bssid]["rssi_history"]
     ssid = bssid_map[target_bssid]["ssid"]
 
     if ssid in {"", None}:
         print(f"ERROR: '{ssid}' for Selected BSSID {target_bssid}!")
         return
+
+    # Normalize None values to -99.0 so NumPy can process
+    signal_history = [v if v is not None else -99.0 for v in raw_history]
 
     peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
     hi_rez_active = False
