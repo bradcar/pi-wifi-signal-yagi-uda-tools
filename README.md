@@ -1,14 +1,14 @@
 
 # Wi-Fi Signal Tools for Pi Zero 2 W
 
-Four tools for measuring Wi-Fi signals. 
+There are four tools for measuring Wi-Fi signals. The primary full-feature tool is "pi_wifi_scan_rssi.py".
 
 # pi_wifi_scan_rssi.py
 
 The primary script runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan all available 2.4 GHz Wi-Fi networks.
-When paired with an Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI) with physical antenna headings to build 360° polar signal distribution maps.
+When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI) with physical antenna headings to build 360° polar signal distribution maps.
 It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports with Matplotlib on program exit.
-You will need to enter in the Pi Zero 2 W's password to perform Wi-Fi scans on it.
+You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (nmcli).
 
 ## Hardware & Display Layout
 
@@ -24,7 +24,7 @@ The program starts in Scan mode
    In this mode "Plot RSSI?" and "Exit w/ Plots?" are shown. 
 
    In this mode, if the button under "Plot RSSI?" is pressed the script will go into Plot mode. 
-   If the button under "Exit & Plot?" is selected the script will start preparing high-resolution plots for each of the Wi-Fi's detected.
+   If the button under "Exit & Plot?" is selected the script will start preparing high-resolution plots for each Wi-Fi detected.
    data with unknown SSID or with RSSI < -80db are skipped.
 
 2. Center Display (disp_2 — 240px × 240px):
@@ -66,51 +66,54 @@ In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveSh
   In this way the antenna can be used a dynamic pointer.
   Wi-Fi signals are not updated in this mode.
 
-
 3. Right Display (disp_1 — 160px × 80px):
    If a Wi-Fi has not been selected this display shows the system clock.
    If a Wi-Fi has been selected, it shows the Peak RSSI that was measured for this Wi-Fi signal.
-   It also shows the compass heading for that peak sign as well as the number of peaks with that same RSSI value.
+   It also shows the compass heading for that peak signal as well as the number of peaks with that same RSSI value.
 
 In this mode, if the button under "Scan?" is pressed the script will go back to Scan Mode. 
 If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the selected Wi-Fi.
-This can be a slow proces that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
+This can be a slow process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
 While generated with high resolution the 240x240px display may be harder to read.
 
 ### Exit w/ Plots Mode:
 
 If the button under "Exit & Plot?" is selected the script will start preparing high-resolution print-ready Matplotlib polar plots for each of the Wi-Fi's detected (unknown and RSSI < -90db are skipped). 
 These polar plots are scaled to show -99 dB to -45 dB range.
-In addition, orange rings are show at the bar equivalents. 
-The innermost ring is solid orange at -80 dB (1 bar), next ring is orange dashed at -70 dB (2 bars), next ring is orange dashed at -60 dB (3 bars), and the final ring is solid orange at -50 dB (4 bars).
+In addition, orange rings are show at the bar equivalents.
+1. The innermost ring is solid orange at -80 dB (1 bar), 
+2. next ring is orange dashed at -70 dB (2 bars), 
+3. next ring is orange dashed at -60 dB (3 bars),
+4. final ring is solid orange at -50 dB (4 bars).
 
+On exit the data used to generate the plots is also saved in a CSV file with data for the entire 360° data collected in 1° increments.
+The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset. 
+Plots use the ".png" extension and CSV Files use the ".csv" extension.
+The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ directory.
 
-On exit the data used to generate the plots is also saved in a CSV file with data for the entire 360° data collected in 1° increments. The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ directory.
+It takes about 7 to 9 seconds to generate each high-resolution plot and save the CSV file to the logs_polar_plots/ directory.
+For locations with many networks, this may take >10 minutes or more.
 
-The file names are labeled with SSID Name, BSSID, DATE/Time plot created, and strongest RSSI in this dataset. Plots use the ".png" extension and CSV Files use the ".csv" extension. 
-
-
-It takes about 7 to 9 seconds to create each plot and save csv save 
-They are both save to the logs_polar_plots. It takes 7 to 9 seconds to generate each high-resolution plot. For locations with hundreds of Wi-Fi signals this may take 10-20 minutes.
-
-Note: to quickly check the available Wi-Fi from the console use:
+Note: To quickly check the available Wi-Fi from the console use:
 
 ```$ sudo nmcli dev wifi list```
 
 ---
 
 ## Yagi Uda directional Antenna
-Yagi Uda diredtional antenna with -30.7 dB Return, loss VSWR 1:1.06.
+Yagi Uda diredtional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
   * Directional Antenna
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
-* u.FL TO RP-SMA 4.1" Pigtail
+  * Return Loss: -30.7 dB  (VSWR 1:1.06)
+* u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
   * TE Connectivity, Part: 994-080-0001-ND
-* Adding external u.FL connector to Pi Zero 2 W
+* Hardware modification required to add external u.FL connector to Pi Zero 2 W
+  * Voids warranty because one must cut traces and remove capacitors to solder u.FL connector to provided pads.
   * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
-		* 100° C board heater
-		* 280° C hot air at low flow
+        * 100° C board heater
+        * 280° C hot air at low flow
 
 ## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
@@ -143,7 +146,7 @@ Four Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a
 # pi_yagi_uda.py
 
 Targeted directional tracking integrating the Yagi-Uda antenna and LIS3MDL magnetometer.
-Automatically manages network state (nmcli) to toggle between unauthenticated scanning and high-speed multi-threaded connected polling.
+Automatically manages network state (nmcli) to toggle between unauthenticated scanning and high-speed multithreaded connected polling.
 Includes payload download capability when link budget is sufficient.
 
 The code automatically handles connection drops and resumes polling upon reconnect.
@@ -215,10 +218,10 @@ Quality or RX bitrates (download from AP) on unconnected networks. For connected
 
     SSID                    Band    BSSID             RSSI      Bars
     ------------------------------------------------------------------
-    your-network               2.4 GHz B6:39:56:91:1D:0F  -20 dBm  4 bars
+    your-network            2.4 GHz B6:39:56:91:1D:0F  -20 dBm  4 bars
     CenturyLink7697         2.4 GHz 08:26:97:62:38:DC  -22 dBm  4 bars
     <hidden>                2.4 GHz BA:39:56:91:1D:0F  -23 dBm  4 bars
-    your-network               2.4 GHz 0E:02:8E:9E:7D:C3  -55 dBm  3 bars
+    your-network            2.4 GHz 0E:02:8E:9E:7D:C3  -55 dBm  3 bars
     <hidden>                2.4 GHz 12:02:8E:9E:7D:C3  -59 dBm  3 bars
     <hidden>                2.4 GHz 28:80:88:49:59:BF  -75 dBm  1 bar
     ORBI24                  2.4 GHz 28:80:88:46:FA:83  -79 dBm  1 bar
