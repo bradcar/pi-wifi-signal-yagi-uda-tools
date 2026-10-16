@@ -180,15 +180,21 @@ def update_bssid_map(data, heading, bssid_map):
         bssid = net.bssid() or "Unknown"
         ssid = net.ssid() or "<hidden>"
         rssi = net.rssi_value()
+        channel = net.channel() if hasattr(net, 'channel') else "??"
 
         seen_bssids_this_scan.add(bssid)
 
         if bssid not in bssid_map:
-            bssid_map[bssid] = {"ssid": ssid, "rssi_history": [None] * 360}
+            # Store channel in the data structure
+            bssid_map[bssid] = {"ssid": ssid, "channel": channel, "rssi_history": [None] * 360}
         else:
             current_stored = bssid_map[bssid]["ssid"]
             if current_stored in hidden_placeholders and ssid not in hidden_placeholders:
                 bssid_map[bssid]["ssid"] = ssid
+
+            # Update channel if a valid one is found later
+            if channel != "??":
+                bssid_map[bssid]["channel"] = channel
 
         if heading is not None and rssi is not None:
             old_rssi = bssid_map[bssid]["rssi_history"][heading]
@@ -207,7 +213,12 @@ def prepare_polar_plot_matplotlib(bssid, bssid_info, heading, lcd_png_generate,
     degrees = np.arange(360)
 
     theta = np.deg2rad(degrees)
-    subtitle = f"{bssid_info['ssid']}"
+
+    # Put SSID, channel, and BSSID in the subtitle string
+    ssid_str = bssid_info.get('ssid', '<hidden>')
+    bssid_str = str(bssid) if bssid is not None else "UnknownBSSID"
+    channel_str = bssid_info.get('channel', '??')
+    subtitle = f"{ssid_str} (Ch: {channel_str})\n({bssid_str})"
 
     # 3.5 sec for lcd_png_generate=True,  #7.5 sec for lcd_png_generate=False
     return plot_rssi_polar_matplotlib(degrees, rssi_array, theta, heading, subtitle, lcd_png_generate,
@@ -248,10 +259,9 @@ def oled_display_update(draw, font, image, oled_display, data, heading):
     try:
         clear_display_oled(oled_display, draw, image)
 
-        if heading is not None:
-            draw.text((0, 0), f"dir: {heading:.0f}°", font=font, fill=1)
-        else:
-            draw.text((0, 0), f"no compass", font=font, fill=1)
+        heading_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
+        draw.text((0, 0), f"{heading_str}°", font=font, fill=1)
+
         draw.text((86, 0), f"{datetime.now().strftime('%H:%M:%S')}", font=font, fill=1)
 
         y = 8
@@ -471,7 +481,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
         safe_ssid = "Hidden_or_Unknown"
 
     bssid_str = str(bssid) if bssid is not None else "UnknownBSSID"
-    safe_bssid = bssid_str.replace(":", "")
+    safe_bssid = bssid_str.replace(":", "-")
 
     # Normalize history data array: map None to your minimum plot floor (-99.0), clips to the center of the polar plot
     cleaned_history = [v if v is not None else -99.0 for v in info["rssi_history"]]
@@ -486,7 +496,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     png_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.png"
 
     # Save CSV & plot
-    print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dB-String: {db_string}")
+    # print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dB-String: {db_string}")
     csv_data = np.column_stack((np.arange(360), cleaned_history))
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
     print(f"Saved csv: {csv_file}")
@@ -503,19 +513,24 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
 def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree,
                          peak_cluster,
                          has_valid_history):
-    """
-    Pure rendering function: Draws the UI layers onto screens 0, 1, and 2.
-    """
-    # Screen 2 Center Display: Radar graph & annotations
-    image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
-    disp2_draw = ImageDraw.Draw(image2)
+    """ Update displays when plotting particular Wi-Fi on screens 0, 1, and 2."""
+    # Screen 0 Left Display: Menu options
+    update_menu_lcd_display(disp_0, [
+        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+        ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
+        (" is 20s", (45, 0), lcd.font0_24pt, "yellow"),
+        (" wait !", (20, 0), lcd.font0_24pt, "yellow")
+    ])
 
-    # Unpack calculations directly through the consolidated utility pipeline
+    # Screen 1 Right Display: Metrics - Compass, Peak RSSI metrics, and clock
     peak_rssi = peak_rssi if has_valid_history else None
     peak_deg = peak_degree if has_valid_history else None
     peak_clust = peak_cluster if has_valid_history else None
+    update_metrics_lcd_display(disp_1, peak_rssi, peak_deg, peak_clust)
 
-    # Screen 2 Center Display: Draw graph of data
+    # Screen 2 Center Display: Draw Polar graph of RSSI data
+    image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
+    disp2_draw = ImageDraw.Draw(image2)
     display_rssi_polar_radar_lcd(
         disp2_draw,
         cadence_fill=None,
@@ -527,25 +542,13 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
         peak_cluster=peak_clust
     )
 
-    # Annotate Polar Plot Text
-    # Screen 2 Center Display: Black-out patch on Radar for Peak RSSI and Peak degree, SSID
+    # Screen 2 Center Display: Annotate Polar Plot with Peak RSSI, Peak degree, and SSID, put in black background
     disp2_draw.rectangle([209, 0, 240, 55], fill="black")
     lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="black")
     disp2_draw.rectangle([212, 180, 240, 240], fill="black")
     lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="black")
     lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
     disp_2.ShowImage(image2)
-
-    # Screen 0 Left Display: Menu option for LCD plot
-    update_menu_lcd_display(disp_0, [
-        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
-        ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
-        (" is 20s", (45, 0), lcd.font0_24pt, "yellow"),
-        (" wait !", (20, 0), lcd.font0_24pt, "yellow")
-    ])
-
-    # Screen 1 Right Display: Metrics - Compass, Peak RSSI metrics, and clock
-    update_metrics_lcd_display(disp_1, peak_rssi, peak_deg, peak_clust)
 
 
 def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl):
@@ -808,9 +811,9 @@ def main():
                     plot_dir = Path(plot_directory_name)
                     plot_dir.mkdir(exist_ok=True)
 
-                    timestamp = datetime.now().strftime('%Y-%m%d_%H:%M')
+                    timestamp = datetime.now().strftime('%Y-%m%d-%H%M')
                     saved_count = 0
-                    exit_heading = 0   # Set Heading for plots to  0° North
+                    exit_heading = 0   # Use 0° North for plots
 
                     lcd_png_generate = False
                     hidden_placeholders = {"<hidden>", "Unknown", "", None}
@@ -823,20 +826,20 @@ def main():
 
                         max_rssi = max(valid_signals)
                         ssid = info.get("ssid")
-                        bssid = info.get("bssid")
 
                         # Skip if SSID is hidden/unknown or peak RSSI is <= -85 dBm
                         if ssid in hidden_placeholders or max_rssi <= -85:
                             print(f"\n *** Not Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi}")
                             continue
 
+                        print(f"\n *** Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi} dB")
                         create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
                         saved_count += 1
 
                     print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
                     print("Clean Exit.")
 
-                    # --- Break out of Wi-Fi Signal Scanningloop, after saving plots, which exits progrm ---
+                    # --- Break out of the Wi-Fi Signal Scanning loop, after saving plots, which exits progrm ---
                     break
                 else:
                     print("Button pressed, but no LCD display is active.")
