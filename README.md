@@ -1,19 +1,99 @@
 
 # Wi-Fi Signal Tools for Pi Zero 2 W
 
-Four tools for measuring Wi-Fi signals. Preliminary work in progress!
+Four tools for measuring Wi-Fi signals. 
 
-our Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
+# pi_wifi_scan_rssi.py
 
-### LCD Display Tools with directional antenna:
-1. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings.
-2. **`pi_wifi_scan_rssi.py`** – Scans all surrounding 2.4GHz Wi-Fi networks, ranks them by RSSI strength, builds 360° directional signal profiles, and generates polar radar plots.
+The primary script runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan all available 2.4 GHz Wi-Fi networks.
+When paired with an Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI) with physical antenna headings to build 360° polar signal distribution maps.
+It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports with Matplotlib on program exit.
+You will need to enter in the Pi Zero 2 W's password to perform Wi-Fi scans on it.
 
-### Console-Only Tools:
-3. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
-4. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
+## Hardware & Display Layout
 
-Note: to quickly check the available wi-Fi from the console use:
+The user interface is shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
+It also uses the left most screen for menu selection using the physical buttons on the Triple Display LCD Hat. These buttons are directly under the left-most screen.
+
+The program starts in Scan mode
+
+### Scan Mode Displays
+
+1. Left Display (disp_0 — 160px × 80px): 
+   Displays dynamic interactive menu options above the display buttons.
+   In this mode "Plot RSSI?" and "Exit w/ Plots?" are shown. 
+
+   In this mode, if the button under "Plot RSSI?" is pressed the script will go into Plot mode. 
+   If the button under "Exit & Plot?" is selected the script will start preparing high-resolution plots for each of the Wi-Fi's detected.
+   data with unknown SSID or with RSSI < -80db are skipped.
+
+2. Center Display (disp_2 — 240px × 240px):
+  In Scan Mode, a live table of discovered 2.4 GHz networks is shown.
+  Each row shows SSID name, its RSSI values, its signal bars, and its channel number. 
+  They are sorted by the current measurements of RSSI signal strength.
+  For Example: 
+```
+SSID      dBm bar ch
+BOXY-NY   -52 ***  6
+<hidden>  -55 *** 11
+<hidden>  -57 *** 11
+BOXY-NY   -61 **   6
+BendSnap  -74 *    1
+Gruno     -76 *    3
+<hidden>  -76 *    4
+<hidden>  -78 *    4
+```
+
+3. Right Display (disp_1 — 160px × 80px):
+   Shows real-time telemetry metrics: current compass heading and system clock.
+
+### Plot mode:
+
+In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat.
+
+1. Left Display (disp_0 — 160px × 80px): 
+   Displays dynamic interactive menu options above the display buttons.
+   In this mode "Next" and "Select" are shown. 
+
+   If the button under "Next" is pressed the selected row in yellow advances to the next Wi-Fi. 
+   This will advance to the next signal and finally wrap around
+   If the button under "Select" is selected the script prepares a plots the selected Wi-Fi.
+
+2. Center Display (disp_2 — 240px × 240px):
+  If a Wi-Fi has not been selected a list of the strongest Wi-Fi signals is shown in a table.
+  If a Wi-Fi has been selected, a polar plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat. 
+  The display uses the LIS3MDL magnetometer to orientate the screen so 0° points true north.
+  In this way the antenna can be used a dynamic pointer.
+  Wi-Fi signals are not updated in this mode.
+
+
+3. Right Display (disp_1 — 160px × 80px):
+   If a Wi-Fi has not been selected this display shows the system clock.
+   If a Wi-Fi has been selected, it shows the Peak RSSI that was measured for this Wi-Fi signal.
+   It also shows the compass heading for that peak sign as well as the number of peaks with that same RSSI value.
+
+In this mode, if the button under "Scan?" is pressed the script will go back to Scan Mode. 
+If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the selected Wi-Fi.
+This can be a slow proces that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
+While generated with high resolution the 240x240px display may be harder to read.
+
+### Exit w/ Plots Mode:
+
+If the button under "Exit & Plot?" is selected the script will start preparing high-resolution print-ready Matplotlib polar plots for each of the Wi-Fi's detected (unknown and RSSI < -90db are skipped). 
+These polar plots are scaled to show -99 dB to -45 dB range.
+In addition, orange rings are show at the bar equivalents. 
+The innermost ring is solid orange at -80 dB (1 bar), next ring is orange dashed at -70 dB (2 bars), next ring is orange dashed at -60 dB (3 bars), and the final ring is solid orange at -50 dB (4 bars).
+
+
+On exit the data used to generate the plots is also saved in a CSV file with data for the entire 360° data collected in 1° increments. The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ directory.
+
+The file names are labeled with SSID Name, BSSID, DATE/Time plot created, and strongest RSSI in this dataset. Plots use the ".png" extension and CSV Files use the ".csv" extension. 
+
+
+It takes about 7 to 9 seconds to create each plot and save csv save 
+They are both save to the logs_polar_plots. It takes 7 to 9 seconds to generate each high-resolution plot. For locations with hundreds of Wi-Fi signals this may take 10-20 minutes.
+
+Note: to quickly check the available Wi-Fi from the console use:
 
 ```$ sudo nmcli dev wifi list```
 
@@ -21,7 +101,7 @@ Note: to quickly check the available wi-Fi from the console use:
 
 ## Yagi Uda directional Antenna
 Yagi Uda diredtional antenna with -30.7 dB Return, loss VSWR 1:1.06.
-* TECHTOO WiFi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
+* TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
   * Directional Antenna
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
@@ -48,7 +128,19 @@ Yagi Uda diredtional antenna with -30.7 dB Return, loss VSWR 1:1.06.
 
 ---
 
-## pi_yagi_uda.py
+Four Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
+
+### LCD Display Tools with directional antenna:
+1. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings (in section above)
+2. **`pi_wifi_scan_rssi.py`** – Scans all surrounding 2.4GHz Wi-Fi networks, ranks them by RSSI strength, builds 360° directional signal profiles, and generates polar radar plots.
+
+### Console-Only Tools:
+3. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
+4. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
+
+---
+
+# pi_yagi_uda.py
 
 Targeted directional tracking integrating the Yagi-Uda antenna and LIS3MDL magnetometer.
 Automatically manages network state (nmcli) to toggle between unauthenticated scanning and high-speed multi-threaded connected polling.
