@@ -167,7 +167,7 @@ from lib.download_file_utils import download_file
 from lib.fake_testing_utils import fake_heading_sweep, fake_rssi_history_fill
 from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics, arrow_annotation, rotation_to_peak
 from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
-from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading
+from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading_hard_soft_corrections
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
 from lib.oled_pi_yagi_uda import display_metrics_oled
 from lib.oled_rssi_radar_utils import display_radar_oled
@@ -549,7 +549,7 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
     last_bssid = None  # catch BSSID transitions
 
     while USE_ASYNC_METRICS:
-        current_heading = get_compass_heading(lis3mdl)
+        current_heading = get_compass_heading_hard_soft_corrections(lis3mdl)
         with metrics_lock:
             active = metrics.is_connected
 
@@ -721,10 +721,10 @@ def main():
         pi_celsius = pico_temperature() or 0.0
         duration = 0.0
         temp_duration = 0.0
-        metrics.heading = get_compass_heading(lis3mdl)
+        metrics.heading = get_compass_heading_hard_soft_corrections(lis3mdl)
 
         # Set initial heading state directly from LIS3MDL magnetometer
-        hw_heading = get_compass_heading(lis3mdl) if lis3mdl else 0.0
+        hw_heading = get_compass_heading_hard_soft_corrections(lis3mdl) if lis3mdl else 0.0
 
         loop_counter = 0
         while True:
@@ -756,7 +756,7 @@ def main():
 
             # RUNTIME METRICS
             # Read fresh magnetometer hardware data at the beginning of the evaluation loop
-            hw_heading = get_compass_heading(lis3mdl)
+            hw_heading = get_compass_heading_hard_soft_corrections(lis3mdl)
 
             # Thread-safe check of the current connection status
             with metrics_lock:
@@ -807,7 +807,7 @@ def main():
                             update_rssi_heading_history(metrics)
 
             # Get fresh magnetometer hardware data at the beginning of the evaluation loop
-            hw_heading = get_compass_heading(lis3mdl)
+            hw_heading = get_compass_heading_hard_soft_corrections(lis3mdl)
 
             with metrics_lock:
                 is_currently_connected = metrics.is_connected
