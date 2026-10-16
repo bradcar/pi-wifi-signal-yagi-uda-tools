@@ -150,7 +150,7 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
     ax.set_theta_offset(np.deg2rad(heading))
 
     thetaticks = np.arange(0, 360, 15)
-    # Calculate visual tick positions: shift index by -90° so 0° index lands at top
+    # Calculate polar tick positions: shift index by -90° so 0° index lands at top
     visual_ticks = np.deg2rad((thetaticks - 90) % 360)
     ax.set_xticks(visual_ticks)
     ax.set_xticklabels([f"{x}°" for x in thetaticks])
@@ -164,10 +164,11 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
     for tick, label in zip(thetaticks, ax.get_xticklabels()):
         if tick % 45 == 0:
             label.set_weight('bold')
-            label.set_fontsize(11 - font_adjust)
+            label.set_fontsize(11 - font_adjust)  #large font every 45 degrees
         else:
             label.set_fontsize(9 - font_adjust)
 
+    # yticks is the RSSI signal strength labels
     yticks = np.arange(Y_TICK_MIN, Y_TICK_MAX, 10)
     ax.set_yticks(yticks)
     ax.set_yticklabels([f"{y}" for y in yticks])
@@ -193,7 +194,7 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
 
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
-    # draw bar lines:
+    # draw bar circles:
     # 1-bar solid: -80 dB, dashed 2-bar dashed: -70 dB, 3-bar dashed : -60 dB, 4-bar Solid: -50 dB,
     circle_theta = np.linspace(0, 2 * np.pi, 360)
     ax.plot(circle_theta, np.full_like(circle_theta, -80), color='orange', linestyle='-', linewidth=1, zorder=3)
@@ -209,12 +210,11 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
         ax.plot(theta, rssi, color='green', linewidth=0.7, zorder=5)
     ax.fill(theta, rssi, color='green', alpha=0.7, zorder=5)
 
-    # Addition to  Title for plot
-    if len(peak_cluster) < 360:
-        red_peak_text = f"(Peak: {peak_rssi:.0f}dBm @ {peak_degree:.0f}°)"
-    else:
-        red_peak_text = f"(Peak: {peak_rssi:.0f}dBm, No compass)"
+    # Add RSSI value and peak direction to plot title
+    suffix = f"@ {peak_degree:.0f}°" if len(peak_cluster) < 360 else "No compass"
+    red_peak_text = f"(Peak: {peak_rssi:.0f}dBm {suffix})"
 
+    # Use longer title name if print version
     if not lcd_png_generate:
         fig.text(0.32, 0.95, "RSSI Strength", ha='center', fontsize=12, fontweight='bold', zorder=5)
         fig.text(0.45, 0.95, red_peak_text, ha='left', fontsize=12, fontweight='bold', color='red', zorder=5)
