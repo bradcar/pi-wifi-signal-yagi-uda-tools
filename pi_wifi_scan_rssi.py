@@ -168,7 +168,7 @@ def update_bssid_map(data, heading, bssid_map):
     Use None when there is no signal.  This will be converted to -99.0 dB when numerical dB values needed
 
     If heading=None, there is no magnetometer. and the complete 360 degrees are given the same value.
-    If peak is the same everywhere in the data structure this side-effect is used to determine that there is no magnetometer.
+    If peak is the same everywhere in the data structure this side effect is used to determine that there is no magnetometer.
     """
     heading = int(heading % 360) if heading is not None else None
     hidden_placeholders = {"<hidden>", "Unknown", "", None}
@@ -488,15 +488,15 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     info["rssi_history"] = cleaned_history
     valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
 
-    # Find strongest rssi dB and append to file name
+    # Find strongest RSSI dBm and append to file name
     max_rssi = int(max(valid_signals)) if valid_signals else -99
 
-    db_string = f"{max_rssi}_db"
+    db_string = f"{max_rssi}_dBm"
     csv_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.csv"
     png_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.png"
 
     # Save CSV & plot
-    # print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dB-String: {db_string}")
+    # print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dBm-String: {db_string}")
     csv_data = np.column_stack((np.arange(360), cleaned_history))
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
     print(f"Saved csv: {csv_file}")
@@ -832,7 +832,7 @@ def main():
                             print(f"\n *** Not Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi}")
                             continue
 
-                        print(f"\n *** Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi} dB")
+                        print(f"\n *** Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi} dBm")
                         create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
                         saved_count += 1
 
