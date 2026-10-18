@@ -108,9 +108,10 @@ Note: To quickly check the available Wi-Fi from the console use:
 ## Yagi Uda directional Antenna
 Yagi Uda diredtional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
-  * Directional Antenna
+  * Directional Antenna (we have verified this approx Beamwidth)
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
+  * 10 to 18 dB gain over omnidirectional antenna
   * Return Loss: -30.7 dB  (VSWR 1:1.06)
 * u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
   * TE Connectivity, Part: 994-080-0001-ND
