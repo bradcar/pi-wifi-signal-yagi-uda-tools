@@ -9,15 +9,17 @@ The primary script runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan 
 When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI) with physical antenna headings to build 360° polar signal distribution maps.
 It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports with Matplotlib on program exit.
 You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (nmcli).
-
+![yagi-uda-carpet.png](assets/images/yagi-uda-carpet.png)
 ## Hardware & Display Layout
 
 The user interface is shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
 It also uses the left most screen for menu selection using the physical buttons on the Triple Display LCD Hat. These buttons are directly under the left-most screen.
 
-The program starts in Scan mode
+The program starts in Scan mode.
 
 ### Scan Mode Displays
+
+![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_DSC0067.jpg)
 
 1. Left Display (disp_0 — 160px × 80px): 
    Displays dynamic interactive menu options above the display buttons.
@@ -50,7 +52,7 @@ Gruno     -76 *    3
 ### Plot mode:
 
 In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat.
-
+![wifi-finder_DSC0077.jpg](assets/images/wifi-finder_DSC0077.jpg)
 1. Left Display (disp_0 — 160px × 80px): 
    Displays dynamic interactive menu options above the display buttons.
    In this mode "Next" and "Select" are shown. 
@@ -73,6 +75,9 @@ In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveSh
 
 In this mode, if the button under "Scan?" is pressed the script will go back to Scan Mode. 
 If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the selected Wi-Fi.
+
+![wifi-finder_DSC0079.jpg](assets/images/wifi-finder_DSC0079.jpg)
+
 This can be a slow process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
 While generated with high resolution the 240x240px display may be harder to read.
 
@@ -114,6 +119,8 @@ Yagi Uda diredtional antenna
   * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
         * 100° C board heater
         * 280° C hot air at low flow
+* Photographers hand grip
+  *  DSLR Camera Hand Grip Stabilizer 
 
 ## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
