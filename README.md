@@ -146,17 +146,41 @@ Yagi Uda diredtional antenna
   * `GPIO 25` (Bottom Button 1) : Select BSSID | Toggle Hi-Rez Plot Generation
   * `GPIO 6` (External Trigger Button 0) : Short press (Connect/Download) | Long press (Disconnect)
 
+
+
+### Sample console output for pi_wifi_scan_rssi.py
+
+    SSID                    Band    BSSID             RSSI      Bars
+    ------------------------------------------------------------------
+    your-network            2.4 GHz B6:39:56:91:1D:0F  -20 dBm  4 bars
+    CenturyLink7697         2.4 GHz 08:26:97:62:38:DC  -22 dBm  4 bars
+    <hidden>                2.4 GHz BA:39:56:91:1D:0F  -23 dBm  4 bars
+    your-network            2.4 GHz 0E:02:8E:9E:7D:C3  -55 dBm  3 bars
+    <hidden>                2.4 GHz 12:02:8E:9E:7D:C3  -59 dBm  3 bars
+    <hidden>                2.4 GHz 28:80:88:49:59:BF  -75 dBm  1 bar
+    ORBI24                  2.4 GHz 28:80:88:46:FA:83  -79 dBm  1 bar
+      Clock: 2026-05-22 23:08:38, Update every 0.84 secs
+      Blocked <1-bar and only shows 2.4GHz on Zero 2 W
+
+### Power draw
+* Scanning Mode   : 0.25A, 1.31W @ 5.22V
+* Radar Graph UI  : 0.29A, 1.51W @ 5.22V
+* Idle            : 0.15A, 0.77W @ 5.22V
+
+### Usage:
+  in terminal, python3 mac_wifi_scan_rssi.py
+  can also run from PyCharm
+
 ---
 
-Four Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
+Three other Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
 
 ### LCD Display Tools with directional antenna:
 1. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings (in section above)
-2. **`pi_wifi_scan_rssi.py`** – Scans all surrounding 2.4GHz Wi-Fi networks, ranks them by RSSI strength, builds 360° directional signal profiles, and generates polar radar plots.
 
 ### Console-Only Tools:
-3. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
-4. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
+2. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
+3. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
 
 ---
 
@@ -214,36 +238,6 @@ Permissions: Ensure system utilities have setuid permissions for non-root execut
 ```sudo chmod u+s /usr/sbin/iwlist```
 
 
-
-## pi_wifi_scan_rssi.py 
-
-Scans and only measures RSSI on available 2.4GHz Wi-Fi (not 5GHz or 6GHz). Runs on Raspberry Pi Zero 2 W in Linux
-Scans repeatedly, sorted by strongest RSSI first.
-
-Quality or RX bitrates (download from AP) on unconnected networks. For connected network use: pi_wifi_rssi_quality_rxrate.py
-
-### Power draw
-* Scanning Mode   : 0.25A, 1.31W @ 5.22V
-* Radar Graph UI  : 0.29A, 1.51W @ 5.22V
-* Idle            : 0.15A, 0.77W @ 5.22V
-
-### Usage:
-  in terminal, python3 mac_wifi_scan_rssi.py
-  can also run from PyCharm
-
-### Sample console output pi_wifi_scan_rssi.py
-
-    SSID                    Band    BSSID             RSSI      Bars
-    ------------------------------------------------------------------
-    your-network            2.4 GHz B6:39:56:91:1D:0F  -20 dBm  4 bars
-    CenturyLink7697         2.4 GHz 08:26:97:62:38:DC  -22 dBm  4 bars
-    <hidden>                2.4 GHz BA:39:56:91:1D:0F  -23 dBm  4 bars
-    your-network            2.4 GHz 0E:02:8E:9E:7D:C3  -55 dBm  3 bars
-    <hidden>                2.4 GHz 12:02:8E:9E:7D:C3  -59 dBm  3 bars
-    <hidden>                2.4 GHz 28:80:88:49:59:BF  -75 dBm  1 bar
-    ORBI24                  2.4 GHz 28:80:88:46:FA:83  -79 dBm  1 bar
-      Clock: 2026-05-22 23:08:38, Update every 0.84 secs
-      Blocked <1-bar and only shows 2.4GHz on Zero 2 W
 
 ## pi_wifi_rssi_quality_rxrate.py
 
