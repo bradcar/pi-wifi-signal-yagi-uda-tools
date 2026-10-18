@@ -116,10 +116,10 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
         arc_radians = np.array([])
         arc_radii = np.array([])
 
-    if len(peak_cluster) < 360:
-        print(f"Peak detected: {peak_rssi:.0f} dBm @ {peak_degree:.0f}° degrees")
-    else:
-        print(f"Peak value {peak_rssi:.0f} dBm - No compass")
+    # if len(peak_cluster) < 360:
+    #     print(f"Peak detected: {peak_rssi:.0f} dBm @ {peak_degree:.0f}° degrees")
+    # else:
+    #     print(f"Peak value {peak_rssi:.0f} dBm - No compass")
 
     dark_mode = False
     if not lcd_png_generate:
@@ -185,12 +185,11 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
         max_radius_percent = 0.90
         if peak_rssi > -45:
             rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0 / max_radius_percent)
-            print(
-                f"Autoscaled Plot Range ({int(max_radius_percent * 100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
+            # print(f"Autoscaled Plot Range ({int(max_radius_percent * 100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
         else:
             # Typical case of when peak RSSI > -45 (which weaker than 4 bars), have the max radius at 90% of full range)
             rssi_max_plot = -45
-            print(f"Static Plot Range (peak_rssi < -50):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
+            # print(f"Static Plot Range (peak_rssi < -50):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
 
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
