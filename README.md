@@ -1,7 +1,9 @@
 
 # Wi-Fi Signal Tools for Pi Zero 2 W
 
-There are four tools for measuring Wi-Fi signals. The primary full-feature tool is "pi_wifi_scan_rssi.py".
+There are four tools for measuring Wi-Fi signals. The primary full-feature tool is "pi_wifi_scan_rs\
+si.
+py".
 
 # pi_wifi_scan_rssi.py
 
@@ -95,8 +97,9 @@ On exit the data used to generate the plots is also saved in a CSV file with dat
 The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset. 
 Plots use the ".png" extension and CSV Files use the ".csv" extension.
 The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ directory.
+![craftmaster_74-fe-ce-83-37-b2_2026-0925-1250_-57dBm_101deg.png](assets/images/craftmaster_74-fe-ce-83-37-b2_2026-0925-1250_-57dBm_101deg.png)
 
-It takes about 7 to 9 seconds to generate each high-resolution plot and save the CSV file to the logs_polar_plots/ directory.
+![mw-home_42-75-c3-47-e8-d9_2026-0925-1250_-70dBm_352deg.png](assets/images/mw-home_42-75-c3-47-e8-d9_2026-0925-1250_-70dBm_352deg.png)
 For locations with many networks, this may take >10 minutes or more.
 
 Note: To quickly check the available Wi-Fi from the console use:
