@@ -119,10 +119,10 @@ Yagi Uda diredtional antenna
 * Hardware modification required to add external u.FL connector to Pi Zero 2 W
   * Voids warranty because one must cut traces and remove capacitors to solder u.FL connector to provided pads.
   * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
-        * 100° C board heater
-        * 280° C hot air at low flow
+    * 100° C board heater
+    * 280° C hot air at low flow
 * Photographers hand grip
-  *  DSLR Camera Hand Grip Stabilizer 
+  *  DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
 
 ## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
