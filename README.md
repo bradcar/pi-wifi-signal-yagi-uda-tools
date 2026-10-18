@@ -111,7 +111,8 @@ Yagi Uda diredtional antenna
   * Directional Antenna (we have verified this approx Beamwidth)
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
-  * 10 to 18 dB gain over omnidirectional antenna
+  * measured 10 to 18 dB gain over omnidirectional antenna
+    * u.FL mod still lacks removal of some traces, so additional improvements likely.
   * Return Loss: -30.7 dB  (VSWR 1:1.06)
 * u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
   * TE Connectivity, Part: 994-080-0001-ND
