@@ -86,12 +86,12 @@ While generated with high resolution the 240x240px display may be harder to read
 ### Exit w/ Plots Mode:
 
 If the button under "Exit & Plot?" is selected the script will start preparing high-resolution print-ready Matplotlib polar plots for each of the Wi-Fi's detected (unknown and RSSI < -90db are skipped). 
-These polar plots are scaled to show -99 dB to -45 dB range.
+These polar plots are scaled to show -99 dBm to -45 dBm range.
 In addition, orange rings are show at the bar equivalents.
-1. The innermost ring is solid orange at -80 dB (1 bar), 
-2. next ring is orange dashed at -70 dB (2 bars), 
-3. next ring is orange dashed at -60 dB (3 bars),
-4. final ring is solid orange at -50 dB (4 bars).
+1. The innermost ring is solid orange at -80 dBm (1 bar), 
+2. next ring is orange dashed at -70 dBm (2 bars), 
+3. next ring is orange dashed at -60 dBm (3 bars),
+4. final ring is solid orange at -50 dBm (4 bars).
 
 On exit the data used to generate the plots is also saved in a CSV file with data for the entire 360° data collected in 1° increments.
 The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset. 
@@ -127,8 +127,8 @@ Yagi Uda diredtional antenna
 * Hardware modification required to add external u.FL connector to Pi Zero 2 W
   * Voids warranty because one must cut traces and remove capacitors to solder u.FL connector to provided pads.
   * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
-    * 100° C board heater
-    * 280° C hot air at low flow
+    * 100°C board heater
+    * 280°C hot air at low flow
 * Photographers hand grip
   *  DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
 
