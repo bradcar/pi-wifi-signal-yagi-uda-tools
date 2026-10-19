@@ -10,17 +10,16 @@ When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetomete
 It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports with Matplotlib on program exit.
 You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (nmcli).
 ![yagi-uda-carpet.png](assets/images/yagi-uda-carpet.png)
-Techtoo directdional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
-(black 10000maH batter, LIS3MDL in small white open box, Raspberry Pi Zero 2 W with Waveshre Triple display LCD in read open case)
+Prototype Configuration: Techtoo directional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
+Raspberry Pi Zero 2 W with Waveshare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white open box).
 
 ## Hardware & Display Layout
 
 The user interface is shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
 It also uses the left most screen for menu selection using the physical buttons on the Triple Display LCD Hat. These buttons are directly under the left-most screen.
 
-The program starts in Scan mode.
-
 ### Scan Mode Displays
+The program starts in Scan mode.
 
 ![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_DSC0067.jpg)
 
