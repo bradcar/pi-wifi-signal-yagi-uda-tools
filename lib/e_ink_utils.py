@@ -1,5 +1,7 @@
-# e_ink_utils.py
+#
 """
+e_ink_utils.py
+
 General Utils for E-ink SSD1680
 """
 from PIL import Image, ImageDraw, ImageFont

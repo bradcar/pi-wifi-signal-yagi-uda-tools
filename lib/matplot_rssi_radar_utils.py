@@ -1,5 +1,7 @@
-# mac_rssi_heading_polar_plot.py
+#
 """
+mac_rssi_heading_polar_plot.py
+
 Polar plot of RSSI strength at 360° headings. Radar-style plot for analysis
 of measured RSSI from directional antenna Yagi-Uda data.
 Peak RSSI is detected and its value and heading are printed in the title.

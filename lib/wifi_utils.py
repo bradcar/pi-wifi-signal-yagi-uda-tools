@@ -1,5 +1,7 @@
-# wifi_utils.py
+#
 """
+wifi_utils.py
+
 Collection of utility functions for working with Pi Zero Wi-Fi networks.
 
 Features
