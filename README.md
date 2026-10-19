@@ -1,9 +1,7 @@
 
 # Wi-Fi Signal Tools for Pi Zero 2 W
 
-There are four tools for measuring Wi-Fi signals. The primary full-feature tool is "pi_wifi_scan_rs\
-si.
-py".
+There are four tools for measuring Wi-Fi signals. The primary full-feature tool is "pi_wifi_scan_rssi.py".
 
 # pi_wifi_scan_rssi.py
 
@@ -12,6 +10,9 @@ When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetomete
 It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports with Matplotlib on program exit.
 You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (nmcli).
 ![yagi-uda-carpet.png](assets/images/yagi-uda-carpet.png)
+Techtoo directdional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
+(black 10000maH batter, LIS3MDL in small white open box, Raspberry Pi Zero 2 W with Waveshre Triple display LCD in read open case)
+
 ## Hardware & Display Layout
 
 The user interface is shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
@@ -116,10 +117,10 @@ Note: To quickly check the available Wi-Fi from the console use:
 ## Yagi Uda directional Antenna
 Yagi Uda diredtional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
-  * Directional Antenna (we have verified this approx Beamwidth)
+  * Directional Antenna (we have observed this approx Beamwidth)
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
-  * measured 10 to 18 dB gain over omnidirectional antenna
+  * measured 10 to 19 dB gain over omnidirectional antenna
     * u.FL mod still lacks removal of some traces, so additional improvements likely.
   * Return Loss: -30.7 dB  (VSWR 1:1.06)
 * u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
@@ -130,7 +131,8 @@ Yagi Uda diredtional antenna
     * 100°C board heater
     * 280°C hot air at low flow
 * Photographers hand grip
-  *  DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
+  * DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
+  * Hand Grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
 
 ## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
