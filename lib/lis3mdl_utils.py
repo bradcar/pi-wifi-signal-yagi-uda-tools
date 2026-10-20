@@ -1,7 +1,41 @@
-# lis3mdl_utils.py
+#
+"""
+lis3mdl_utils.py
+
+LIS3MDL Utilities
+"""
 import math
 import adafruit_lis3mdl
-from lis3mdl_calibration_parameters import X_OFFSET, Y_OFFSET, Z_OFFSET, SOFT_IRON_MATRIX, LOCAL_MAGNETIC_DECLINATION
+from lis3mdl_calibration_parameters import X_OFFSET, Y_OFFSET, Z_OFFSET, SOFT_IRON_MATRIX
+
+# Default sensor orientation offset in degrees
+_GLOBAL_COMPASS_ORIENTATION = 0.0
+_GLOBAL_MAGNETIC_DECLINATION = 14. + (30. / 60.)
+
+
+def set_compass_orientation_declination(orientation_degree, magnetic_declination):
+    """
+    Sets the global compass mounting orientation compensation and magnetic declination.
+    Call this once during initialization.
+
+    Magnetic Declination degrees, Positive(+) for East, Negative(-) for West
+
+    Magnetic declination Online Lookup:
+        https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml?
+
+    Hawthorne Nevada: shell line
+        38° 32' 33.36" N, 118° 37' 11.76" W, 4223ft
+        38.54260° N, 118.61993° W
+        Declination: 12° 11' E
+
+    Portland, Oregon
+        Declination: 14° 30' E
+        LOCAL_MAGNETIC_DECLINATION = 14. + (30. / 60.)  # East is positive
+    """
+    global _GLOBAL_COMPASS_ORIENTATION, _GLOBAL_MAGNETIC_DECLINATION
+    _GLOBAL_COMPASS_ORIENTATION = float(orientation_degree)
+    _GLOBAL_MAGNETIC_DECLINATION = float(magnetic_declination)
+    print(f"-> Set Compass orientation: {_GLOBAL_COMPASS_ORIENTATION}°, declination: {_GLOBAL_MAGNETIC_DECLINATION}")
 
 
 def init_lis3mdl(i2c):
@@ -52,7 +86,7 @@ def get_compass_8pt_string(heading: float):
     return ""
 
 
-def get_compass_heading(sensor, magnetic_declination: float = LOCAL_MAGNETIC_DECLINATION):
+def get_compass_heading(sensor):
     """
     Gets a calibrated compass heading from the X-Y magnetometer axes.
     For compass angles only need hard-iron offsets.
@@ -64,7 +98,6 @@ def get_compass_heading(sensor, magnetic_declination: float = LOCAL_MAGNETIC_DEC
 
     Args:
         sensor: LIS3MDL sensor instance or None
-        magnetic_declination: Magnetic declination angle in degrees (defaults to MAG_DECL parameter)
     Returns
         float: compass heading in degrees
     """
@@ -86,11 +119,10 @@ def get_compass_heading(sensor, magnetic_declination: float = LOCAL_MAGNETIC_DEC
         heading_deg = math.degrees(math.atan2(cal_x, cal_y))
 
         # Apply magnetic declination
-        if mag_decl is not None:
-            heading_deg += magnetic_declination
+        heading_deg += _GLOBAL_MAGNETIC_DECLINATION
 
         # Normalize  to 0.0 <= heading < 360.0, clean up negative floating-point artifacts (-0.0 -> 0.0)
-        heading = heading_deg % 360.0
+        heading = (heading_deg + _GLOBAL_COMPASS_ORIENTATION) % 360.0
         if heading < 0:
             heading += 360.0
 
@@ -101,7 +133,7 @@ def get_compass_heading(sensor, magnetic_declination: float = LOCAL_MAGNETIC_DEC
         return None
 
 
-def get_compass_heading_hard_soft_corrections(sensor, magnetic_declination: float = LOCAL_MAGNETIC_DECLINATION):
+def get_compass_heading_hard_soft_corrections(sensor):
     """
     Calculates geographic heading using 3D hard-iron offsets, a 3x3 soft-iron matrix,
     and local magnetic declination.
@@ -110,9 +142,8 @@ def get_compass_heading_hard_soft_corrections(sensor, magnetic_declination: floa
       - Sensor is kept level relative to the ground.
       - +Y axis points toward the front of the device.
 
-    Args:
+    Args::
         sensor: LIS3MDL sensor instance or None
-        magnetic_declination: Magnetic declination angle in degrees (defaults to MAG_DECL parameter)
 
     Returns:
         float: Geographic heading in degrees [0, 360), or None on error
@@ -145,11 +176,10 @@ def get_compass_heading_hard_soft_corrections(sensor, magnetic_declination: floa
         heading = -1.0 * math.degrees(math.atan2(cal_data[0], cal_data[1]))
 
         # Apply magnetic declination
-        if magnetic_declination is not None:
-            heading += magnetic_declination
+        heading += _GLOBAL_MAGNETIC_DECLINATION
 
         # Normalize  to 0.0 <= heading < 360.0, clean up negative floating-point artifacts (-0.0 -> 0.0)
-        heading = heading % 360.0
+        heading = (heading + _GLOBAL_COMPASS_ORIENTATION) % 360.0
         if heading < 0:
             heading += 360.0
 
