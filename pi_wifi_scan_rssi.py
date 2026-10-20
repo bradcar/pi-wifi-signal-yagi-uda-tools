@@ -120,7 +120,7 @@ from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading_hard_soft_corrections, set_compass_orientation_declination
 from lib.pi_zero_utils import pico_temperature, timeout, celsius_to_fahrenheit
 from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
-from lib.wifi_directional_utils import crude_estimate_wifi_distance, plot_wifi_source_angle_rssi
+from lib.wifi_directional_utils import crude_estimate_wifi_distance, plot_wifi_source_angle_rssi, plot_wifi_sources_angle_crude_distance
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
     channel_to_frequency, trigger_background_scan
 
@@ -371,6 +371,11 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
     # filter out networks with no RSSI data
     filtered_networks = []
     for bssid, info in (bssid_map or {}).items():
+        # Skip if SSID is missing or explicitly "--"
+        ssid_val = info.get("ssid")
+        if not ssid_val or ssid_val.strip() == "--":
+            continue
+
         valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
         if not valid_signals:
             continue
@@ -843,6 +848,9 @@ def main():
 
                     # create plot of angle vs. RSSI
                     plot_wifi_source_angle_rssi(summary_csv_path)
+
+                    # create plot of angle vs. crude distance estimation
+                    # plot_wifi_sources_angle_crude_distance(summary_csv_path)
 
                     print("Clean Exit.")
 

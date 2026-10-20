@@ -64,8 +64,9 @@ In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveSh
    If the button under "Select" is selected the script prepares a plots the selected Wi-Fi.
 
 2. Center Display (disp_2 — 240px × 240px):
-  If a Wi-Fi has not been selected a list of the strongest Wi-Fi signals is shown in a table.
-  If a Wi-Fi has been selected, a polar plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat. 
+  Shows a sorted list of the named Wi-Fi signals (strongest on top)
+  Only named Wi-Fi's are shown in this list (code can be modified to show all signals).
+  If a Wi-Fi is selected, a polar plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat. 
   The display uses the LIS3MDL magnetometer to orientate the screen so 0° points true north.
   In this way the antenna can be used a dynamic pointer.
   Wi-Fi signals are not updated in this mode.
@@ -83,7 +84,7 @@ If the button under "Hi-Rez ~20s!" is selected the script will start preparing h
 This can be a slow process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
 While generated with high resolution the 240x240px display may be harder to read.
 
-### Exit w/ Plots Mode:
+### Exit w/ Plots:
 
 If the button under "Exit & Plot?" is selected the script will start preparing high-resolution print-ready Matplotlib polar plots for each of the Wi-Fi's detected (unknown and RSSI < -90db are skipped). 
 These polar plots are scaled to show -99 dBm to -45 dBm range.
@@ -107,13 +108,19 @@ Notice for the plot below, with more samples the peak would have likely been at 
 
 For locations with many networks, this may take >10 minutes or more.
 
+Can also create plots of Wi-Fi sources (need to comment or uncomment code).
+
+![wifi_summary_2026-0926-park_angle-rssi.png](assets/images/wifi_summary_2026-0926-park_angle-rssi.png)
+
+![wifi_summary_2026-0926-park_angle-crude_dist.png](assets/images/wifi_summary_2026-0926-park_angle-crude_dist.png)
+
 Note: To quickly check the available Wi-Fi from the console use:
 
 ```$ sudo nmcli dev wifi list```
 
 ---
 
-## Yagi Uda directional Antenna
+## Yagi Uda Directional Antenna
 Yagi Uda diredtional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
   * Directional Antenna (we have observed this approx Beamwidth)
@@ -129,9 +136,11 @@ Yagi Uda diredtional antenna
   * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
     * 100°C board heater
     * 280°C hot air at low flow
+  * Buy the best u.FL connectors, many cheap ones do not hold up to the soldering heat.
 * Photographers hand grip
   * DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
-  * Hand Grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
+    * Also has 3/8" screw at bottom so can mount on tripod.
+  * Hand grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
 
 ## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
