@@ -534,7 +534,7 @@ def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_hist
     disp_2.ShowImage(image2)
 
 
-def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl):
+def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl, wifi_interface):
     global button1_pressed, button2_pressed
 
     button1_pressed = False
@@ -571,14 +571,36 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
     while True:
         start_time = time.time()
 
-        # Hi-Rez is static, so slow polling
+        # Hi-Rez plot is static, use slow polling
         if hi_rez_active:
             time.sleep(0.1)
 
-        # Lo-Rez RADAR plot
+        # Lo-Rez angle and RSSI plot, with live scanning
         if not hi_rez_active:
+            # Perform a live scan to update signals while viewing this BSSID
+            try:
+                with timeout(2, "Wi-Fi scan timed out!"):
+                    wifi_data = scan_target_ssid(wifi_interface)
+            except TimeoutError:
+                wifi_data = None
+
             raw_heading = get_compass_heading_hard_soft_corrections(lis3mdl) if lis3mdl else None
             heading = raw_heading if raw_heading is not None else 0.0
+
+            # Update bssid and rssi map if new scan data
+            if wifi_data:
+                update_bssid_map(wifi_data, heading, bssid_map)
+
+            # Get the latest live history from bssid_map for our target BSSID
+            if target_bssid in bssid_map:
+                raw_history = bssid_map[target_bssid]["rssi_history"]
+                signal_history = [v if v is not None else -99.0 for v in raw_history]
+                peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
+
+                # Also update metrics on Display 1 live
+                update_metrics_lcd_display(disp_1, peak_rssi if has_valid_history else None,
+                                           peak_degree if has_valid_history else None,
+                                           peak_cluster if has_valid_history else None)
 
             # Screen 2 Center Display: plot radar
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
@@ -772,7 +794,7 @@ def main():
                     target_bssid, menu_ssid = lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map)
                     if target_bssid:
                         print(f"Starting Radar Plot Mode for: {target_bssid}")
-                        plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl)
+                        plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl, wifi_interface)
                 else:
                     print("Button pressed, but no LCD display is active.")
 
