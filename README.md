@@ -12,6 +12,7 @@ You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it u
 ![yagi-uda-carpet.png](assets/images/yagi-uda-carpet.png)
 Prototype Configuration: Techtoo directional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
 Raspberry Pi Zero 2 W with Waveshare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white open box).
+![wifi-finder_DSC0082.jpg](assets/images/wifi-finder_DSC0082.jpg)
 
 ## Hardware & Display Layout
 
