@@ -560,7 +560,8 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
 
     # Screen 0 Left Display: Menu options
     update_menu_lcd_display(disp_0, [
-        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+        ("Full", (127, 0), lcd.font0_24pt, "yellow"),
+        ("Scan?", (105, 0), lcd.font0_24pt, "yellow"),
         ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
         (" ~20s !", (45, 0), lcd.font0_24pt, "yellow")
     ])
@@ -644,7 +645,8 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
 
                 # Re-paint the default Screen 0 options when dropping back to lo-rez
                 update_menu_lcd_display(disp_0, [
-                    ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
+                    ("Full", (127, 0), lcd.font0_24pt, "yellow"),
+                    ("Scan?", (105, 0), lcd.font0_24pt, "yellow"),
                     ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
                     (" ~20s !", (45, 0), lcd.font0_24pt, "yellow")
                 ])
