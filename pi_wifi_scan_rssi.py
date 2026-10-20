@@ -37,6 +37,7 @@ Display Layouts & Hardware Mapping:
 
 Sensors & Integration:
     * LIS3MDL 3-axis I2C magnetometer for compass headings for external direction antenna.
+      Uses both hard and soft calibration values for compass directions.
     * On-chip Temperature monitoring to protect Pi Zero 2 W against thermal limits.
 
 NOTES:
@@ -113,10 +114,11 @@ from gpiozero import Button
 import lib.lcd_st7789_utils as lcd
 from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
-from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading_hard_soft_corrections
+from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading_hard_soft_corrections, set_compass_orientation_declination
 from lib.oled_1305_utils import init_oled_display, clear_display_oled
 from lib.pi_zero_utils import pico_temperature, timeout, celsius_to_fahrenheit
 from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
+from lib.wifi_directional_utils import crude_estimate_wifi_meters
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
     channel_to_frequency, trigger_background_scan
 
@@ -171,14 +173,14 @@ def update_bssid_map(data, heading, bssid_map):
     If peak is the same everywhere in the data structure this side effect is used to determine that there is no magnetometer.
     """
     heading = int(heading % 360) if heading is not None else None
-    hidden_placeholders = {"<hidden>", "Unknown", "", None}
+    hidden_placeholders = {"--", "Unknown", "", None}
 
     # Track which BSSIDs were seen in This specific scan cycle.
     seen_bssids_this_scan = set()
 
     for net in data:
         bssid = net.bssid() or "Unknown"
-        ssid = net.ssid() or "<hidden>"
+        ssid = net.ssid() or "--"
         rssi = net.rssi_value()
         channel = net.channel() if hasattr(net, 'channel') else "??"
 
@@ -215,7 +217,7 @@ def prepare_polar_plot_matplotlib(bssid, bssid_info, heading, lcd_png_generate,
     theta = np.deg2rad(degrees)
 
     # Put SSID, channel, and BSSID in the subtitle string
-    ssid_str = bssid_info.get('ssid', '<hidden>')
+    ssid_str = bssid_info.get('ssid', '--')
     bssid_str = str(bssid) if bssid is not None else "UnknownBSSID"
     channel_str = bssid_info.get('channel', '??')
     subtitle = f"{ssid_str} (Ch: {channel_str})\n({bssid_str})"
@@ -235,7 +237,7 @@ def console_print(data, heading):
         return
 
     for net in data:
-        ssid = net.ssid() or "<hidden>"
+        ssid = net.ssid() or "--"
         bssid = net.bssid() or "Unknown"
         rssi = net.rssi_value()
         band = map_band_to_string(net)
@@ -266,7 +268,7 @@ def oled_display_update(draw, font, image, oled_display, data, heading):
 
         y = 8
         for net in (data or [])[:3]:
-            ssid = (net.ssid() or "<hidden>")[:10]
+            ssid = (net.ssid() or "--")[:10]
             rssi = net.rssi_value()
             num_bars = rssi_to_bars(rssi)
             bar_string = ("*" * num_bars).ljust(4)
@@ -362,7 +364,7 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
             if (BLOCK_0_BAR and rssi <= -80) or (BLOCK_NON_2_4_G and band != "2.4 GHz"):
                 continue
 
-            ssid = net.ssid() or "<hidden>"
+            ssid = net.ssid() or "--"
             truncated_ssid = ssid[:9] + "." if len(ssid) > 9 else ssid
             channel = net.channel() if hasattr(net, 'channel') else "??"
             bar_string = ("*" * rssi_to_bars(rssi)).ljust(4)
@@ -406,7 +408,7 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
         if BLOCK_0_BAR and rssi <= -80:
             continue
 
-        filtered_networks.append({"bssid": bssid, "ssid": info["ssid"] or "<hidden>", "rssi": rssi})
+        filtered_networks.append({"bssid": bssid, "ssid": info["ssid"] or "--", "rssi": rssi})
 
     # Sort BSSIDs by RSSI strength, strongest first
     filtered_networks.sort(key=lambda x: x["rssi"], reverse=True)
@@ -491,22 +493,27 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     # Find strongest RSSI dBm and append to file name
     max_rssi = int(max(valid_signals)) if valid_signals else -99
 
-    db_string = f"{max_rssi}_dBm"
-    csv_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.csv"
-    png_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{db_string}.png"
+    # Extract radar metrics (Peak RSSI, Peak Degree, Peak Cluster, Validity)
+    peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
+
+    # Format peak degree string for filenames/logs (handles omnidirectional / 360 clusters)
+    is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
+    deg_label = "Omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}deg"
+
+    dbm_string = f"{max_rssi}dBm"
+    csv_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{dbm_string}_{deg_label}.csv"
+    png_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{dbm_string}_{deg_label}.png"
 
     # Save CSV & plot
-    # print(f"\n *** Saving plot for: {safe_ssid}, with BSSID: {safe_bssid}, Max RSSI: {max_rssi}, dBm-String: {db_string}")
     csv_data = np.column_stack((np.arange(360), cleaned_history))
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
-    print(f"Saved csv: {csv_file}")
+    # print(f"Saved csv: {csv_file}")
 
     # Create png plot
     start_time = time.time()
-    polar_plot_image = prepare_polar_plot_matplotlib(bssid, info, heading, lcd_png_generate,
-                                                     file_name=str(png_file))
+    polar_plot_image = prepare_polar_plot_matplotlib(bssid, info, heading, lcd_png_generate, file_name=str(png_file))
     print(f"plot time = {(time.time() - start_time):.2f} secs")
-    print(f"Plot file written: {png_file}")
+    # print(f"Plot file written: {png_file}")
     return polar_plot_image
 
 
@@ -728,6 +735,11 @@ def main():
     lis3mdl = None
     if lis3mdl_detected:
         lis3mdl = init_lis3mdl(i2c1)
+        # 180 deg orientation when mounted on back of Yagi Uda prototype
+        # Declination Lookup: https: // www.ngdc.noaa.gov / geomag / calculators / magcalc.shtml?
+        #   Home Declination = 14.5  # East is positive
+        #   Hawthorne, NV = 12.1833333 # 12' 11'
+        set_compass_orientation_declination(180.0, 14.5)  
 
     # Fill Wi-Fi cache once before starting
     print("Pre-warming Wi-Fi cache...")
@@ -788,8 +800,7 @@ def main():
 
                 print(
                     f"\n{'Only showing networks with >1-bar & 2.4GHz' if BLOCK_0_BAR else 'Only showing 2.4GHz networks'}")
-                print(
-                    f"  Tracking {above_80_rssi} of {len(bssid_map)} Networks, only {above_80_rssi} above -80 dBm (>1-bar)")
+                print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Networks, only {above_80_rssi} above -80 dBm (>1-bar)")
                 print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"  Updates: {duration * 1000:.1f} msec, {1.0 / duration:.1f} Hz")
                 print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C ({celsius_to_fahrenheit(pi_celsius):.0f}°F)\n")
@@ -816,25 +827,61 @@ def main():
                     exit_heading = 0   # Use 0° North for plots
 
                     lcd_png_generate = False
-                    hidden_placeholders = {"<hidden>", "Unknown", "", None}
+                    hidden_placeholders = {"--", "Unknown", "", None}
+
+                    # List to accumulate entries for summary CSV
+                    summary_rows = []
 
                     for bssid, info in bssid_map.items():
+                        cleaned_history = [v if v is not None else -99.0 for v in info["rssi_history"]]
                         # Extract valid signal history
-                        valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
+                        valid_signals = [v for v in cleaned_history if v > -99.0]
                         if not valid_signals:
                             continue
 
                         max_rssi = max(valid_signals)
                         ssid = info.get("ssid")
+                        channel = info.get("channel", "??")
+
+                        # Extract radar metrics to find the true peak angle
+                        peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
+
+                        is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
+                        peak_angle_string = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}"
+
+                        # Save summary for all named SSIDs in plot_dir (skip "--" which are uknown)
+                        if ssid != "--":
+                            # angle_offset_deg is 0.0 for peak values
+                            distance = crude_estimate_wifi_meters(rssi_measured=max_rssi, angle_offset_deg=0.0)
+                            summary_rows.append({
+                                "ssid": ssid,
+                                "bssid": bssid,
+                                "channel": channel,
+                                "max_rssi": max_rssi,
+                                "peak_angle": peak_angle_string,
+                                "meters": distance
+                            })
 
                         # Skip if SSID is hidden/unknown or peak RSSI is <= -85 dBm
                         if ssid in hidden_placeholders or max_rssi <= -85:
-                            print(f"\n *** Not Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi}")
+                            print(f"\n *** Not Saved: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
                             continue
 
-                        print(f"\n *** Saving plot for: {ssid}, with BSSID: {bssid}, Max RSSI: {max_rssi} dBm")
+                        print(f"\n *** Save plot: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
                         create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
                         saved_count += 1
+
+                    # Save summary of all named SSIDs in plot_dir
+                    if summary_rows:
+                        summary_csv_path = plot_dir / f"wifi_summary_{timestamp}.csv"
+                        try:
+                            with open(summary_csv_path, "w") as f:
+                                f.write("ssid,bssid,channel,max_rssi,peak_angle,distance\n")
+                                for row in summary_rows:
+                                    f.write(f'"{row["ssid"]}",{row["bssid"]},{row["channel"]},{row["max_rssi"]},{row["peak_angle"]},{row["meters"]}\n')
+                            print(f"\n -> Summary CSV written to '{summary_csv_path}'")
+                        except Exception as e:
+                            print(f"\n Warning: Failed to write summary CSV: {e}")
 
                     print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
                     print("Clean Exit.")

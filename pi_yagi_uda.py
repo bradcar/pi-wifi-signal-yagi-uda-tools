@@ -167,7 +167,7 @@ from lib.download_file_utils import download_file
 from lib.fake_testing_utils import fake_heading_sweep, fake_rssi_history_fill
 from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics, arrow_annotation, rotation_to_peak
 from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
-from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading_hard_soft_corrections
+from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading_hard_soft_corrections, set_compass_orientation_declination
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
 from lib.oled_pi_yagi_uda import display_metrics_oled
 from lib.oled_rssi_radar_utils import display_radar_oled
@@ -347,9 +347,6 @@ def change_connection(action: Literal["up", "down"]) -> bool:
 
 def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_connect):
     """" Screen 0: Mode Status"""
-    if not try_connect and rssi is None and download_count == 0:
-        return
-
     disp0_image = Image.new("RGB", (disp_0.width, disp_0.height), "black")
     if try_connect:
         lcd.print_270(text="Trying", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
@@ -361,9 +358,15 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
     elif connected and rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
         lcd.print_270(text="down", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
         lcd.print_270(text="load?", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
+    else:
+        # Default state when scanning, searching, or signal is below threshold
+        lcd.print_270(text="Waiting", pos=(132, 0), image=disp0_image, font=lcd.font0_20pt, color="yellow")
+        lcd.print_270(text="for the", pos=(112, 0), image=disp0_image, font=lcd.font0_20pt, color="yellow")
+        lcd.print_270(text="Signal...", pos=(87, 0), image=disp0_image, font=lcd.font0_20pt, color="yellow")
 
     if download_count > 0:
         lcd.print_270(text=f"#{download_count}", pos=(2, 4), image=disp0_image, font=lcd.font0_34pt, color="blue")
+
     disp_0.ShowImage(disp0_image)
 
 
@@ -470,7 +473,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
                 if bssid:
                     print(f" SUCCESS: Connected to BSSID: {bssid} with SSID: {ssid}\n")
                 else:
-                    print(" SUCCESS: Connected to unknown BSSID? with SSID: {ssid}\n")
+                    print(f" SUCCESS: Connected to unknown BSSID? with SSID: {ssid}\n")
 
                 rssi_heading_history[:] = [-99.0] * 360
                 return is_connected, rssi, ssid
@@ -656,6 +659,11 @@ def main():
     lis3mdl = None
     if lis3mdl_detected:
         lis3mdl = init_lis3mdl(i2c1)
+        # 180 deg orientation when mounted on back of Yagi Uda prototype
+        # Declination Lookup: https: // www.ngdc.noaa.gov / geomag / calculators / magcalc.shtml?
+        #   Home Declination = 14.5  # East is positive
+        #   Hawthorne, NV = 12.1833333 # 12' 11'
+        set_compass_orientation_declination(180.0, 14.5)
 
     # TODO switching displays by hardcoding
     lcd_detected = False
@@ -841,8 +849,8 @@ def main():
             # Display metrics on OLED screen
             if oled_detected:
                 clear_display_oled(oled_display, draw, image)
-                display_metrics_oled(draw, font, loc_rssi, ssid, loc_rx_rate, loc_heading, download_count,
-                                     loc_is_connected)
+                display_metrics_oled(draw, font, oled_display, image, loc_rssi, loc_heading, loc_quality, loc_rx_rate, loc_is_connected)
+
                 display_radar_oled(draw, cadence_fill, loc_heading or 0.0, loc_rssi_heading_history,
                                    loc_is_connected)
                 oled_display.image(image)
