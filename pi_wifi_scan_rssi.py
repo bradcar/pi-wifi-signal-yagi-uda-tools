@@ -94,6 +94,9 @@ Free pins:
     GPIO 16 (Physical Pin 36) — Free general-purpose GPIO.
     GPIO 17 (Physical Pin 11) — Free general-purpose GPIO.
 
+CLI on Pi Zero 2 W:
+    $ sudo nmcli dev wifi list
+
 TODOs:
 
 
@@ -115,10 +118,9 @@ import lib.lcd_st7789_utils as lcd
 from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading_hard_soft_corrections, set_compass_orientation_declination
-from lib.oled_1305_utils import init_oled_display, clear_display_oled
 from lib.pi_zero_utils import pico_temperature, timeout, celsius_to_fahrenheit
 from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
-from lib.wifi_directional_utils import crude_estimate_wifi_meters
+from lib.wifi_directional_utils import crude_estimate_wifi_distance, plot_wifi_source_angle_rssi
 from lib.wifi_utils import init_wifi, scan_target_ssid, map_band_to_string, rssi_to_string, rssi_to_bars, \
     channel_to_frequency, trigger_background_scan
 
@@ -251,37 +253,6 @@ def console_print(data, heading):
             print(f"{truncated_ssid:<23} {band:<7}  {bssid}  ch={channel:<2} {rssi:>4} dBm  {rssi_string}")
 
     print(f"==> Heading direction: {heading:.0f}°" if heading is not None else " ** no compass **")
-
-
-def oled_display_update(draw, font, image, oled_display, data, heading):
-    """ Legacy OLED display - unfortunately refresh too slow."""
-    if oled_display is None:
-        return
-
-    try:
-        clear_display_oled(oled_display, draw, image)
-
-        heading_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
-        draw.text((0, 0), f"{heading_str}°", font=font, fill=1)
-
-        draw.text((86, 0), f"{datetime.now().strftime('%H:%M:%S')}", font=font, fill=1)
-
-        y = 8
-        for net in (data or [])[:3]:
-            ssid = (net.ssid() or "--")[:10]
-            rssi = net.rssi_value()
-            num_bars = rssi_to_bars(rssi)
-            bar_string = ("*" * num_bars).ljust(4)
-
-            draw.text((0, y), f"{ssid:<10}", font=font, fill=1)
-            draw.text((7 * 8 + 1, y), f"{rssi:>4} dbm", font=font, fill=1)
-            draw.text((12 * 8 + 4, y), f"{bar_string}", font=font, fill=1)
-            y += 8
-
-        oled_display.image(image)
-        oled_display.show()
-    except Exception as e:
-        print(f"OLED write error: {e}")
 
 
 def update_metrics_lcd_display(disp_1, peak_rssi, peak_degree, peak_cluster):
@@ -707,13 +678,8 @@ def main():
 
     i2c1, lis3mdl_detected, oled_detected = init_i2c()
 
-    oled_display, draw, font, image = None, None, None, None
     if oled_detected:
-        try:
-            oled_display, draw, font, image = init_oled_display(i2c1, use_mono_type=False)
-        except Exception as e:
-            print(f"Warning: Failed to initialize OLED display: {e}")
-            oled_detected = False
+        print(f"Warning: Legacy OLED code removed!")
 
     lcd_detected = False
     disp_0, disp_1, disp_2 = None, None, None
@@ -729,7 +695,7 @@ def main():
     # Initialize GPIO Buttons SECOND (after LCD claims SPI/GPIO pins)
     init_buttons()
 
-    if not oled_detected and not lcd_detected:
+    if not lcd_detected:
         print("\n -- Running in Console-Only Mode --")
 
     lis3mdl = None
@@ -744,14 +710,6 @@ def main():
     # Fill Wi-Fi cache once before starting
     print("Pre-warming Wi-Fi cache...")
     trigger_background_scan(wifi_interface)
-    if oled_detected and oled_display and draw:
-        try:
-            draw.text((0, 0), "Warming Wi-Fi cache", font=font, fill=1)
-            oled_display.image(image)
-            oled_display.show()
-        except (OSError, IOError):
-            # Skip if OLED not present, this is typical path
-            pass
 
     try:
         duration = 0.0
@@ -785,8 +743,6 @@ def main():
                 update_bssid_map(wifi_data, heading, bssid_map)
 
                 console_print(wifi_data, heading)
-                if oled_detected:
-                    oled_display_update(draw, font, image, oled_display, wifi_data, heading)
                 if lcd_detected:
                     lcd_display_update(disp_0, disp_1, disp_2, wifi_data, heading)
 
@@ -852,7 +808,7 @@ def main():
                         # Save summary for all named SSIDs in plot_dir (skip "--" which are uknown)
                         if ssid != "--":
                             # angle_offset_deg is 0.0 for peak values
-                            distance = crude_estimate_wifi_meters(rssi_measured=max_rssi, angle_offset_deg=0.0)
+                            distance = crude_estimate_wifi_distance(rssi_measured=max_rssi, angle_offset_deg=0.0)
                             summary_rows.append({
                                 "ssid": ssid,
                                 "bssid": bssid,
@@ -884,6 +840,10 @@ def main():
                             print(f"\n Warning: Failed to write summary CSV: {e}")
 
                     print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
+
+                    # create plot of angle vs. RSSI
+                    plot_wifi_source_angle_rssi(summary_csv_path)
+
                     print("Clean Exit.")
 
                     # --- Break out of the Wi-Fi Signal Scanning loop, after saving plots, which exits progrm ---
