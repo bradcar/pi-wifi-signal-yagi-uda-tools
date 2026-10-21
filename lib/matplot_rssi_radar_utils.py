@@ -1,45 +1,16 @@
 #
 """
-mac_rssi_heading_polar_plot.py
+matplot_rssi_radar_utils.py
 
-Polar plot of RSSI strength at 360° headings. Radar-style plot for analysis
-of measured RSSI from directional antenna Yagi-Uda data.
-Peak RSSI is detected and its value and heading are printed in the title.
-Magnetic North is 0° degrees, East is 90° degrees.
-
-Features:
-- Runs on macOS or Pi Zero 2 W
-- lcd_png_generate flag - if True creates small 240px x 240px png for direct display on small color LCD
-- Dark Mode created for testing and possible use for lcd png's.
-- Detects peak RSSI, or mid of plateau of peaks
-- Autoscales so the peak is 85% of the polar plot limit.
-- Indicates peak with red line from plot boundary to peak, outside of boundary peaks RSSI printed.
-
-Methods:
-    peaks_arc_calc(): Calculates the angular midpoint and bounding arc across a cluster of peak RSSI readings.
-    rssi_peak(): Identifies the maximum RSSI value and filters data to pass peak cluster information down for arc calculation.
-    plot_rssi_polar(): Filters input data, dark/light UI modes, generates matplotlib polar radar plot. Creates png.
-
-Dependencies:
-    matplotlib, numpy
-
-Expected CSV Input Format:
-    The input file must include headers matching 'degree' and 'rssi'.
-    Example:
-        degree,rssi
-        0,-45
-        10,-48.5
-        ...
-
-Note:
-    Magnetic North 0° is at Top/Up. Clockwise rotation with East 90° at right.
-
-Usage:
-    python mac_rssi_heading_polar_plot.py <path_to_rssi_data.csv>
+rssi_peak - Find the maximum RSSI value and filters data to pass peak cluster information for peak arc calculation.
+peaks_arc_calc - Determines the angular arc boundary and vector mean for a cluster of peak RSSI readings.
+plot_rssi_polar_matplotlib - Generates a Matplotlib polar radar plot exported to PNG.
+                             Filters input data, handles dark/light UI modes, and g
 
 """
-from typing import Any
+import gc
 import io  # ADD THIS FOR IN-MEMORY BUFFERS
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -93,14 +64,53 @@ def peaks_arc_calc(degrees, peak_rssi: float):
     return arc_radians, arc_radii, mean_peak_degree
 
 
-def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_generate, file_name="plot.png"):
+def plot_rssi_polar_matplotlib(rssi, heading, subtitle, lcd_png_generate, file_name="plot.png"):
     """
     plot_rssi_polar_matplotlib
 
     Features:
+
+
+    Polar plot of RSSI strength at 360° headings. Radar-style plot for analysis
+    of measured RSSI from directional antenna Yagi-Uda data.
+    Peak RSSI is detected and its value and heading are printed in the title.
+    Magnetic North is 0° degrees, East is 90° degrees.
+
+    Features:
         * Puts 0 degree to north
         * Light and dark mode
+        * Runs on macOS or Pi Zero 2 W
+        * lcd_png_generate flag - if True creates small 240px x 240px png for direct display on small color LCD
+        * ark Mode created for testing and possible use for lcd png's.
+        * Detects peak RSSI, or mid of plateau of peaks
+        * Autoscales so the peak is 85% of the polar plot limit.
+        * Indicates peak with red line from plot boundary to peak, outside of boundary peaks RSSI printed.
+
+    Methods:
+        peaks_arc_calc(): Calculates the angular midpoint and bounding arc across a cluster of peak RSSI readings.
+        rssi_peak(): Identifies the maximum RSSI value and filters data to pass peak cluster information down for arc calculation.
+        plot_rssi_polar(): Filters input data, dark/light UI modes, generates matplotlib polar radar plot. Creates png.
+
+    Dependencies:
+        matplotlib, numpy
+
+    Expected CSV Input Format:
+        The input file must include headers matching 'degree' and 'rssi'.
+        Example:
+            degree,rssi
+            0,-45
+            10,-48.5
+            ...
+
+    Note:
+        Magnetic North 0° is at Top/Up. Clockwise rotation with East 90° at right.
+
+    Usage:
+        python mac_rssi_heading_polar_plot.py <path_to_rssi_data.csv>
     """
+    rssi = np.array(rssi)
+    degrees = np.arange(len(rssi))
+
     # Create a 2D array matrix: Column 0 = degree, Column 1 = rssi
     history_array = np.column_stack((degrees, rssi))
 
@@ -179,18 +189,14 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
     else:
         ax.tick_params(axis='y', labelsize=9, labelcolor=y_label_color)
 
-    # Set your desired minimum dBm center floor (ex: -80 dBm)
+    # Set your desired minimum (ex: -80 dBm). When peak RSSI > -45 ( stronger than 4 bars), then max radius at 90% of full range)
     rssi_min_plot = -99
-
+    rssi_max_plot = -45
     if peak_rssi != -99:
-        # When peak RSSI > -45 (which stronger than 4 bars), have the max radius at 90% of full range)
         max_radius_percent = 0.90
+        # print(f"Autoscaled Plot Range ({int(max_radius_percent * 100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
         if peak_rssi > -45:
             rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0 / max_radius_percent)
-            # print(f"Autoscaled Plot Range ({int(max_radius_percent * 100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
-        else:
-            # Typical case of when peak RSSI > -45 (which weaker than 4 bars), have the max radius at 90% of full range)
-            rssi_max_plot = -45
             # print(f"Static Plot Range (peak_rssi < -50):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
 
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
@@ -198,17 +204,14 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
     # draw bar circles:
     # 1-bar solid: -80 dB, dashed 2-bar dashed: -70 dB, 3-bar dashed : -60 dB, 4-bar Solid: -50 dB,
     circle_theta = np.linspace(0, 2 * np.pi, 360)
-    ax.plot(circle_theta, np.full_like(circle_theta, -80), color='orange', linestyle='-', linewidth=1, zorder=3)
-    ax.plot(circle_theta, np.full_like(circle_theta, -70), color='orange', linestyle='--', linewidth=1, zorder=3)
-    ax.plot(circle_theta, np.full_like(circle_theta, -60), color='orange', linestyle='--', linewidth=1, zorder=3)
-    ax.plot(circle_theta, np.full_like(circle_theta, -50), color='orange', linestyle='-', linewidth=1, zorder=3)
+    for rssi_val, style in [(-80, ':'), (-70, '--'), (-60, '--'), (-50, '-')]:
+        ax.plot(circle_theta, np.full_like(circle_theta, rssi_val), color='orange', linestyle=style, linewidth=1,
+                zorder=3)
 
     # Rotate Data by -90 (CCW, -pi/2), so 0 degrees north is at top of circle
-    theta = theta - np.pi / 2
-    if not lcd_png_generate:
-        ax.plot(theta, rssi, color='green', linewidth=2.0, zorder=5)
-    else:
-        ax.plot(theta, rssi, color='green', linewidth=0.7, zorder=5)
+    theta = np.deg2rad(degrees) - np.pi / 2
+    line_width = 2.0 if not lcd_png_generate else 0.7
+    ax.plot(theta, rssi, color='green', linewidth=line_width, zorder=5)
     ax.fill(theta, rssi, color='green', alpha=0.7, zorder=5)
 
     # Add RSSI value and peak direction to plot title
@@ -265,22 +268,21 @@ def plot_rssi_polar_matplotlib(degrees, rssi, theta, heading, subtitle, lcd_png_
 
     plt.grid(True, linestyle='--', color=grid_color, alpha=0.6)
 
+    buf = io.BytesIO()
     if not lcd_png_generate:
         plt.savefig(file_name, format='png', dpi=300, bbox_inches='tight')
-        buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
     else:
         ax.set_position([0.14, 0.1, 0.72, 0.75])
         plt.savefig(file_name, format='png', dpi=LCD_DPI)
-
-        # Put image in memory
-        buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=LCD_DPI)
 
-    # reset image buffer, return PIL Image
     buf.seek(0)
     pil_img_out = Image.open(buf).copy()
     buf.close()
     plt.close(fig)
+
+    # GC plotting
+    gc.collect()
 
     return pil_img_out
