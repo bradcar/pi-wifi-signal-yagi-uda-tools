@@ -62,8 +62,8 @@ def extract_radar_metrics(signal_history):
     return peak_rssi, peak_degree, peak_cluster, True
 
 
-def display_rssi_polar_radar_lcd(draw, cadence_fill, heading: float, signal_history, connected,
-                                 peak_degree=None, peak_rssi=None, peak_cluster=None, rssi=None, magnetometer=None):
+def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_history, connected,
+                                peak_degree=None, peak_rssi=None, peak_cluster=None, rssi=None, magnetometer=None):
     """
     Draw a white box with a black radar circle in it.
     Add white directional orientation lines for North, East, South, and West.
@@ -111,6 +111,12 @@ def display_rssi_polar_radar_lcd(draw, cadence_fill, heading: float, signal_hist
     draw_indicator(draw, cadence_fill, x_box=210, y_box=10, dot_size=15)
     draw_crosshairs(draw, heading, center_x, center_y, max_radius)
     draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, rssi_max_plot, rssi_min_plot)
+    # Small white triangle pointing down at the top of the circle, notice this is 270 degree so it get rotated correctly
+    right_circle_x = center_x + max_radius  # 120 + 110 = 230
+    draw.polygon([
+        (right_circle_x - 8, center_y),  # Tip pointing left (toward center)
+        (right_circle_x + 2, center_y - 3), (right_circle_x + 2, center_y + 3)  # Base edges
+    ], fill="white")
 
     if magnetometer is not None:
         # peak signal graphic
