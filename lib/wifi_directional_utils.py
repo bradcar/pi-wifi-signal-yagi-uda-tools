@@ -167,9 +167,9 @@ def plot_wifi_source_angle_rssi(summary_csv_path: str):
     # Map each RSSI value to its pre-calculated radius
     rssi_radius_map = dict(zip(tick_rssis, tick_radii))
 
-    # 1-bar solid: -80 dB, 2-bar dashed: -70 dB, 3-bar dashed: -60 dB, 4-bar solid: -50 dB
+    # 1-bar dotted: -80 dB, 2-bar dashed: -70 dB, 3-bar dashed: -60 dB, 4-bar solid: -50 dB
     circle_theta = np.linspace(0, 2 * np.pi, 360)
-    ax.plot(circle_theta, np.full_like(circle_theta, rssi_radius_map[-80]), color='orange', linestyle='-', linewidth=1,
+    ax.plot(circle_theta, np.full_like(circle_theta, rssi_radius_map[-80]), color='orange', linestyle=':', linewidth=1,
             zorder=3, label='-80 dBm (1-Bar)')
     ax.plot(circle_theta, np.full_like(circle_theta, rssi_radius_map[-70]), color='orange', linestyle='--', linewidth=1,
             zorder=3, label='-70 dBm (2-Bars)')
@@ -708,7 +708,7 @@ def export_summary_to_kml(
     root = ele_tree.Element(kml_tag("kml"))
     document = ele_tree.SubElement(root, kml_tag("Document"))
 
-    ele_tree.SubElement(document, kml_tag("name")).text = ("Yagi-Uda Wi-Fi Scan Results")
+    ele_tree.SubElement(document, kml_tag("name")).text = "Yagi-Uda Wi-Fi Scan Results"
 
     def add_placemark(
             name: str,
