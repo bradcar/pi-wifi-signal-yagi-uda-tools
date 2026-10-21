@@ -115,7 +115,7 @@ from busio import I2C
 from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
-from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics
+from lib.lcd_rssi_radar_utils import display_rssi_polar_plot_lcd, extract_radar_metrics
 from lib.lcd_st7789_utils import create_lcd_display_canvases
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_heading_hard_soft_corrections, set_compass_orientation_declination
 from lib.pi_zero_utils import pico_temperature, timeout, celsius_to_fahrenheit
@@ -208,25 +208,6 @@ def update_bssid_map(data, heading, bssid_map):
             old_rssi = bssid_map[bssid]["rssi_history"][0]
             if old_rssi is None or old_rssi < rssi:
                 bssid_map[bssid]["rssi_history"] = [float(rssi)] * 360
-
-
-def prepare_polar_plot_matplotlib(bssid, bssid_info, heading, lcd_png_generate,
-                                  file_name="plot.png"):
-    """ Set up data for plot_rssi_polar call"""
-    rssi_array = np.array(bssid_info["rssi_history"])
-    degrees = np.arange(360)
-
-    theta = np.deg2rad(degrees)
-
-    # Put SSID, channel, and BSSID in the subtitle string
-    ssid_str = bssid_info.get('ssid', '--')
-    bssid_str = str(bssid) if bssid is not None else "UnknownBSSID"
-    channel_str = bssid_info.get('channel', '??')
-    subtitle = f"{ssid_str} (Ch: {channel_str})\n({bssid_str})"
-
-    # 3.5 sec for lcd_png_generate=True,  #7.5 sec for lcd_png_generate=False
-    return plot_rssi_polar_matplotlib(degrees, rssi_array, theta, heading, subtitle, lcd_png_generate,
-                                      file_name=file_name)
 
 
 def console_print(data, heading):
@@ -352,7 +333,7 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
         print(f"Display write error (LCD ignored): {e}")
 
 
-def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
+def choose_ssid_lcd(lcd, disp_0, disp_1, disp_2, bssid_map):
     """choose SSID with scrolling window and automatic wrap-around using persistent map data"""
     global button1_pressed, button2_pressed
 
@@ -451,7 +432,12 @@ def lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map):
 
 
 def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png_generate):
-    """ create polar plot for BSSID, then saves png and CSV """
+    """
+    create polar plot for BSSID, then saves png and CSV
+    Used on script exit
+
+    3.5 sec for lcd_png_generate=True,  #7.5 sec for lcd_png_generate=False
+    """
     # Create safe SSID and BSSID strings for file names
     processed_ssid = info["ssid"].replace(" ", "_")
     safe_ssid = "".join([c for c in processed_ssid if c.isalnum() or c in ("-", "_")]).strip()
@@ -469,12 +455,12 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     # Find strongest RSSI dBm and append to file name
     max_rssi = int(max(valid_signals)) if valid_signals else -99
 
-    # Extract radar metrics (Peak RSSI, Peak Degree, Peak Cluster, Validity)
+    # Extract radar metrics: Peak RSSI, Peak Degree, Peak Cluster, Valid
     peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
 
     # Format peak degree string for filenames/logs (handles omnidirectional / 360 clusters)
     is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
-    deg_label = "Omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}deg"
+    deg_label = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}deg"
 
     dbm_string = f"{max_rssi}dBm"
     csv_file = plot_dir / f"{safe_ssid}_{safe_bssid}_{timestamp}_{dbm_string}_{deg_label}.csv"
@@ -483,58 +469,23 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     # Save CSV & plot
     csv_data = np.column_stack((np.arange(360), cleaned_history))
     np.savetxt(csv_file, csv_data, fmt='%d,%.1f', header='degree,rssi', comments='')
-    # print(f"Saved csv: {csv_file}")
+
+    # Build the plot subtitle string, to ssid add the channel and bssid
+    ssid_str = info.get('ssid', '--')
+    channel_str = info.get('channel', '??')
+    subtitle = f"{ssid_str} (Ch: {channel_str})\n({bssid_str})"
 
     # Create png plot
     start_time = time.time()
-    polar_plot_image = prepare_polar_plot_matplotlib(bssid, info, heading, lcd_png_generate, file_name=str(png_file))
+    rssi_array = np.array(cleaned_history)
+
+    polar_plot_image = plot_rssi_polar_matplotlib(rssi_array, heading, subtitle, lcd_png_generate,file_name=str(png_file))
+
     print(f"plot time = {(time.time() - start_time):.2f} secs")
-    # print(f"Plot file written: {png_file}")
     return polar_plot_image
 
 
-def display_lcd_radar_ui(lcd, disp_0, disp_1, disp_2, ssid, heading, signal_history, peak_rssi, peak_degree,
-                         peak_cluster,
-                         has_valid_history):
-    """ Update displays when plotting particular Wi-Fi on screens 0, 1, and 2."""
-    # Screen 0 Left Display: Menu options
-    update_menu_lcd_display(disp_0, [
-        ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
-        ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
-        (" is 20s", (45, 0), lcd.font0_24pt, "yellow"),
-        (" wait !", (20, 0), lcd.font0_24pt, "yellow")
-    ])
-
-    # Screen 1 Right Display: Metrics - Compass, Peak RSSI metrics, and clock
-    peak_rssi = peak_rssi if has_valid_history else None
-    peak_deg = peak_degree if has_valid_history else None
-    peak_clust = peak_cluster if has_valid_history else None
-    update_metrics_lcd_display(disp_1, peak_rssi, peak_deg, peak_clust)
-
-    # Screen 2 Center Display: Draw Polar graph of RSSI data
-    image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
-    disp2_draw = ImageDraw.Draw(image2)
-    display_rssi_polar_radar_lcd(
-        disp2_draw,
-        cadence_fill=None,
-        heading=heading,
-        signal_history=signal_history,
-        connected=True,
-        peak_degree=peak_deg,
-        peak_rssi=peak_rssi,
-        peak_cluster=peak_clust
-    )
-
-    # Screen 2 Center Display: Annotate Polar Plot with Peak RSSI, Peak degree, and SSID, put in black background
-    disp2_draw.rectangle([209, 0, 240, 55], fill="black")
-    lcd.print_270(text=f"{peak_rssi:.0f}", pos=(210, 0), image=image2, font=lcd.font0_34pt, color="black")
-    disp2_draw.rectangle([212, 180, 240, 240], fill="black")
-    lcd.print_270(text=f"{peak_degree:.0f}°", pos=(213, 178), image=image2, font=lcd.font0_28pt, color="black")
-    lcd.print_270(text=f"{ssid}", pos=(0, 0), image=image2, font=lcd.font0_20pt, color="yellow")
-    disp_2.ShowImage(image2)
-
-
-def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl, wifi_interface):
+def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl, wifi_interface):
     global button1_pressed, button2_pressed
 
     button1_pressed = False
@@ -607,7 +558,7 @@ def plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, l
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
             disp2_draw = ImageDraw.Draw(image2)
 
-            display_rssi_polar_radar_lcd(
+            display_rssi_polar_plot_lcd(
                 disp2_draw,
                 cadence_fill=None,
                 heading=heading,
@@ -793,10 +744,10 @@ def main():
             if button2_pressed:
                 button2_pressed = False
                 if lcd_detected:
-                    target_bssid, menu_ssid = lcd_choose_ssid(lcd, disp_0, disp_1, disp_2, bssid_map)
+                    target_bssid, menu_ssid = choose_ssid_lcd(lcd, disp_0, disp_1, disp_2, bssid_map)
                     if target_bssid:
                         print(f"Starting Radar Plot Mode for: {target_bssid}")
-                        plot_bssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl, wifi_interface)
+                        display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, target_bssid, lis3mdl, wifi_interface)
                 else:
                     print("Button pressed, but no LCD display is active.")
 
@@ -855,6 +806,7 @@ def main():
                         print(f"\n *** Save plot: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
                         create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
                         saved_count += 1
+
 
                     # Save summary of all named SSIDs in plot_dir
                     if summary_rows:
