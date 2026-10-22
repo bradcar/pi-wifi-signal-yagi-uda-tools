@@ -260,15 +260,20 @@ def update_metrics_lcd_display(disp_1, peak_rssi, peak_degree, peak_cluster):
     disp_1.ShowImage(image1)
 
 
-def update_menu_lcd_display(disp_0, items):
+def update_text_lcd_display(disp, items, image=None):
     """
-    update_menu_lcd_display to draw text items on Display 0.
+    update_text_lcd_display to draw text items on Display 0.
     Items format: list of tuples -> (text, pos_tuple, font, color)
+
+    If an image is provided, text is drawn on it; otherwise, a black canvas is created.
     """
-    image0 = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+    if image is None:
+        image = Image.new("RGB", (disp.width, disp.height), "black")
+
     for text, pos, font, color in items:
-        lcd.print_270(text=text, pos=pos, image=image0, font=font, color=color)
-    disp_0.ShowImage(image0)
+        lcd.print_270(text=text, pos=pos, image=image, font=font, color=color)
+
+    disp.ShowImage(image)
 
 
 def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
@@ -282,7 +287,7 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
         dir_str = f"dir: {heading:.0f}°" if heading is not None else "no compass"
 
         # Screen 0 Left Display: Interactive Menu Option
-        update_menu_lcd_display(disp_0, [
+        update_text_lcd_display(disp_0, [
             ("Plot", (137, 0), lcd.font0_28pt, "yellow"),
             ("RSSI?", (113, 0), lcd.font0_28pt, "yellow"),
             ("Exit w/", (72, 0), lcd.font0_24pt, "yellow"),
@@ -338,7 +343,7 @@ def choose_ssid_lcd(lcd, disp_0, disp_1, disp_2, bssid_map):
     global button1_pressed, button2_pressed
 
     # Screen 0 Left Display: Menu options "Next" and "Select"
-    update_menu_lcd_display(disp_0, [
+    update_text_lcd_display(disp_0, [
         ("Next", (127, 0), lcd.font0_28pt, "green"),
         ("Select", (62, 0), lcd.font0_24pt, "yellow")
     ])
@@ -510,7 +515,7 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
     i = 1
 
     # Screen 0 Left Display: Menu options
-    update_menu_lcd_display(disp_0, [
+    update_text_lcd_display(disp_0, [
         ("Full", (127, 0), lcd.font0_24pt, "yellow"),
         ("Scan?", (105, 0), lcd.font0_24pt, "yellow"),
         ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
@@ -595,7 +600,7 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
                 hi_rez_active = False
 
                 # Re-paint the default Screen 0 options when dropping back to lo-rez
-                update_menu_lcd_display(disp_0, [
+                update_text_lcd_display(disp_0, [
                     ("Full", (127, 0), lcd.font0_24pt, "yellow"),
                     ("Scan?", (105, 0), lcd.font0_24pt, "yellow"),
                     ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
@@ -606,7 +611,7 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
                 hi_rez_active = True
 
                 # Screen 0 Left Display: Display waiting for Hi-Rez plot
-                update_menu_lcd_display(disp_0, [
+                update_text_lcd_display(disp_0, [
                     ("Hi-Rez", (70, 0), lcd.font0_24pt, "yellow"),
                     ("...wait-", (45, 0), lcd.font0_24pt, "yellow"),
                     ("ing", (20, 22), lcd.font0_24pt, "yellow")
@@ -628,7 +633,7 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
                     disp_2.ShowImage(lcd_image)
 
                     # Screen 0 Left Display: Menu for return to scan or return to Lo-Rez plots - left-nost screen
-                    update_menu_lcd_display(disp_0, [
+                    update_text_lcd_display(disp_0, [
                         ("Scan?", (127, 0), lcd.font0_24pt, "yellow"),
                         ("Back", (60, 0), lcd.font0_24pt, "yellow"),
                         ("to Lo-", (35, 0), lcd.font0_24pt, "yellow"),
