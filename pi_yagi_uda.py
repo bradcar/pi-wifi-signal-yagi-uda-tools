@@ -164,10 +164,11 @@ from gpiozero import Button
 
 import lib.lcd_st7789_utils as lcd
 from lib.download_file_utils import download_file
-from lib.fake_testing_utils import fake_heading_sweep, fake_rssi_history_fill
-from lib.lcd_rssi_radar_utils import display_rssi_polar_radar_lcd, extract_radar_metrics, arrow_annotation, rotation_to_peak
+from lib.lcd_rssi_radar_utils import display_rssi_polar_plot_lcd, extract_radar_metrics, arrow_annotation, \
+    rotation_to_peak
 from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
-from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading_hard_soft_corrections, set_compass_orientation_declination
+from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading_hard_soft_corrections, \
+    set_compass_orientation_declination
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
 from lib.oled_pi_yagi_uda import display_metrics_oled
 from lib.oled_rssi_radar_utils import display_radar_oled
@@ -178,12 +179,13 @@ from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_strin
 DEBUG = False
 USE_MONO_TYPE = False
 USE_ASYNC_METRICS = True
-metrics_lock = threading.Lock()  # Protects SimpleNamespace data transitions
+metrics_lock = threading.Lock()  # Protects Metrics updates: heading, rssi, ...  (SimpleNamespace)
+lis3mdl_lock = threading.Lock()  # Protects magnetometer, without protection collisions calculated to 53 degree
 
-#TARGET_SSID = "ABox-PDX"  # CHANNEL=11
+TARGET_SSID = "ABox-PDX"  # CHANNEL=11
 # TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
 # TODO #2 Try shell-fi with static-IP for faster connection wifi_utils.py
-TARGET_SSID = "shell-fi"  # CHANNEL=11
+# TARGET_SSID = "shell-fi"  # CHANNEL=11
 TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
 
 URL_STRING = "http://192.168.4.1/download"
@@ -320,6 +322,15 @@ def init_i2c():
     return i2c1, oled_detected, lis_detected
 
 
+def read_compass_heading(sensor):
+    """ read compass heading from sensor, but protected with locks for multi-threaded operation."""
+    if sensor is None:
+        return None
+
+    with lis3mdl_lock:
+        return get_compass_heading_hard_soft_corrections(sensor)
+
+
 def change_connection(action: Literal["up", "down"]) -> bool:
     change_timeout = 5
     try:
@@ -345,38 +356,60 @@ def change_connection(action: Literal["up", "down"]) -> bool:
     return connect_ssid(TARGET_SSID)
 
 
+def update_text_lcd_display(disp, items, image=None):
+    """
+    update_text_lcd_display to draw text items on Display 0.
+    Items format: list of tuples -> (text, pos_tuple, font, color)
+
+    If an image is provided, text is drawn on it; otherwise, a black canvas is created.
+    """
+    if image is None:
+        image = Image.new("RGB", (disp.width, disp.height), "black")
+
+    for text, pos, font, color in items:
+        lcd.print_270(text=text, pos=pos, image=image, font=font, color=color)
+
+    disp.ShowImage(image)
+
+
 def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_connect):
     """" Screen 0: Mode Status"""
-    disp0_image = Image.new("RGB", (disp_0.width, disp_0.height), "black")
+    items = []
     if try_connect:
-        lcd.print_270(text="Trying", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
-        lcd.print_270(text="to link", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
-        lcd.print_270(text="Pause", pos=(108 - 26, 0), image=disp0_image, font=lcd.font0_24pt, color="green")
+        items = [
+            ("Trying", (132, 0), lcd.font0_28pt, "green"),
+            ("to link", (108, 0), lcd.font0_28pt, "green"),
+        ]
     elif not connected and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
-        lcd.print_270(text="Con-", pos=(132, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
-        lcd.print_270(text="nect?", pos=(108, 0), image=disp0_image, font=lcd.font0_28pt, color="green")
+        items = [
+            ("Con-", (132, 0), lcd.font0_28pt, "green"),
+            ("nect?", (108, 0), lcd.font0_28pt, "green"),
+        ]
     elif connected and rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-        lcd.print_270(text="down", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
-        lcd.print_270(text="load?", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
+        items = [
+            ("down", (70, 0), lcd.font0_28pt, "blue"),
+            ("load?", (44, 0), lcd.font0_28pt, "blue"),
+        ]
     else:
-        # Default state when scanning, searching, or signal is below threshold
-        lcd.print_270(text="Waiting", pos=(132, 0), image=disp0_image, font=lcd.font0_20pt, color="yellow")
-        lcd.print_270(text="for the", pos=(112, 0), image=disp0_image, font=lcd.font0_20pt, color="yellow")
-        lcd.print_270(text="Signal...", pos=(87, 0), image=disp0_image, font=lcd.font0_20pt, color="yellow")
+        items = [
+            ("Waiting", (132, 0), lcd.font0_20pt, "yellow"),
+            ("for the", (112, 0), lcd.font0_20pt, "yellow"),
+            ("Signal...", (87, 0), lcd.font0_20pt, "yellow"),
+        ]
 
     if download_count > 0:
-        lcd.print_270(text=f"#{download_count}", pos=(2, 4), image=disp0_image, font=lcd.font0_34pt, color="blue")
+        items.append((f"#{download_count}", (2, 4), lcd.font0_34pt, "blue"))
 
-    disp_0.ShowImage(disp0_image)
+    update_text_lcd_display(disp_0, items)
 
 
-def display_0_trying_download_lcd(lcd, disp_0, download_count):
-    """ Display 'trying download' on lcd screen 0"""
-    disp0_image = Image.new("RGB", (disp_0.width, disp_0.height), "black")
-    lcd.print_270(text="Trying", pos=(70, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
-    lcd.print_270(text="File dl", pos=(44, 0), image=disp0_image, font=lcd.font0_28pt, color="blue")
-    lcd.print_270(text="Pause", pos=(44 - 26, 0), image=disp0_image, font=lcd.font0_24pt, color="blue")
-    disp_0.ShowImage(disp0_image)
+def display_0_trying_download_lcd(disp_0, download_count):
+    """Display 'trying download' on lcd screen 0"""
+    items = [
+        ("Trying", (70, 0), lcd.font0_28pt, "blue"),
+        ("File dl", (44, 0), lcd.font0_28pt, "blue"),
+    ]
+    update_text_lcd_display(disp_0, items)
 
 
 def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, connected: bool):
@@ -386,6 +419,7 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
 
     heading_text = "RSSI:"
     metric_color = "yellow"
+
     # show RSSI & heading with orange font if +/- 30°, label as "PEAK" within +/- 15 degrees and red font
     if shortest_angle is not None and abs(shortest_angle) < 30:
         metric_color = "orange"
@@ -393,31 +427,38 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
             heading_text = "PEAK"
             metric_color = "red"
 
-    lcd.print_270(text=heading_text, pos=(132, 0), image=disp1_image, font=lcd.font0_34pt, color=metric_color)
+    items = [
+        (heading_text, (132, 0), lcd.font0_34pt, metric_color)
+    ]
+
     if rssi is not None:
-        lcd.print_270(text=f"{rssi}", pos=(84, 2), image=disp1_image, font=lcd.font0_50pt, color=metric_color)
+        items.append((f"{rssi}", (84, 2), lcd.font0_50pt, metric_color))
     else:
-        lcd.print_270(text=f"no dBm", pos=(84, 2), image=disp1_image, font=lcd.font0_20pt, color="yellow")
+        items.append(("no dBm", (98, 2), lcd.font0_20pt, "yellow"))
 
     if compass_heading is not None:
-        indent = 3 - (1 if compass_heading < 10 else (2 if compass_heading < 100 else 3))
-        lcd.print_270(text=f"{compass_heading:.0f}°", pos=(49, 8 + (9 * indent)), image=disp1_image,
-                      font=lcd.font0_34pt,
-                      color=metric_color)
+        indent = 2 if compass_heading < 10 else (1 if compass_heading < 100 else 0)
+        items.append((f"{compass_heading:.0f}°", (49, 4 + (20 * indent)), lcd.font0_34pt, metric_color))
 
-        # Arrows to indicate rotation direction to align with the peak rssi
-        arrow_annotation(disp1_draw, shortest_angle, left_arrow_position=(41, 0),
-                         right_arrow_position=(41, 80 - 17))
+        if rssi is not None:
+            # Indicator arrows show rotation direction to align with the peak rssi
+            arrow_annotation(disp1_draw, shortest_angle,
+                             left_arrow_position=(37, 2),
+                             right_arrow_position=(37, 61))
+        else:
+            print(f"******* rssi = {rssi}, do NOT add Arrows")
+
     else:
-        lcd.print_270(text=f"? °", pos=(48, 30), image=disp1_image, font=lcd.font0_34pt, color="yellow")
+        items.append(("? °", (48, 30), lcd.font0_34pt, "yellow"))
 
     if connected:
-        lcd.print_270(text="Wi-Fi", pos=(11, 1), image=disp1_image, font=lcd.font0_33pt, color="green")
-        lcd.print_270(text="connected", pos=(0, 3), image=disp1_image, font=lcd.font0_13pt, color="green")
+        items.append(("Wi-Fi", (11, 1), lcd.font0_33pt, "green"))
+        items.append(("connected", (0, 3), lcd.font0_13pt, "green"))
     else:
-        lcd.print_270(text="Scan", pos=(5, 0), image=disp1_image, font=lcd.font0_33pt, color="yellow")
+        items.append(("Scan", (5, 7), lcd.font0_28pt, "yellow"))
 
-    disp_1.ShowImage(disp1_image)
+    # Display the text and pass disp1_image so the text and arrows are shown
+    update_text_lcd_display(disp_1, items, image=disp1_image)
 
 
 def annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, heading, shortest_angle):
@@ -521,7 +562,7 @@ def handle_connected_mode(metrics, download_count, heading, target_ssid, url, de
                 if oled_context:
                     oled_context.update_line3_oled("trying download...")
                 if lcd and disp0 and disp1:
-                    display_0_trying_download_lcd(lcd, disp0, download_count)
+                    display_0_trying_download_lcd(disp0, download_count)
 
                 success, filename = download_file(url, destination_dir, timeout=5)
                 if success:
@@ -552,7 +593,8 @@ def wifi_connected_thread_worker(metrics, lis3mdl, oled_context, lcd, disp_0, di
     last_bssid = None  # catch BSSID transitions
 
     while USE_ASYNC_METRICS:
-        current_heading = get_compass_heading_hard_soft_corrections(lis3mdl)
+        current_heading = read_compass_heading(lis3mdl)
+
         with metrics_lock:
             active = metrics.is_connected
 
@@ -604,8 +646,22 @@ def update_rssi_heading_history(metrics):
     if metrics.heading is not None:
         metrics.rssi_heading_history[int(metrics.heading) % 360] = metrics.rssi
     else:
-        # show circular rssi if no known heading
-        metrics.rssi_heading_history[:] = [rssi] * 360
+        # if no known heading, put rssi value at every degree (circle)
+        metrics.rssi_heading_history[:] = [metrics.rssi] * 360
+
+
+def inspect_heading_history(history):
+    """Diagnostic Scan the 360-degree signal history."""
+    print("\n--- Scanning Heading History Array ---")
+    valid_entries = []
+    for degree, rssi_val in enumerate(history):  # Crashed here with TypeError when history was a float
+        if rssi_val > -98.0:
+            valid_entries.append((degree, rssi_val))
+            print(f"Degree {degree}°: {rssi_val} dBm")
+
+    if not valid_entries:
+        print("No valid RSSI data recorded in history yet.")
+    return valid_entries
 
 
 def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_count):
@@ -729,10 +785,10 @@ def main():
         pi_celsius = pico_temperature() or 0.0
         duration = 0.0
         temp_duration = 0.0
-        metrics.heading = get_compass_heading_hard_soft_corrections(lis3mdl)
+        metrics.heading = read_compass_heading(lis3mdl)
 
         # Set initial heading state directly from LIS3MDL magnetometer
-        hw_heading = get_compass_heading_hard_soft_corrections(lis3mdl) if lis3mdl else 0.0
+        hw_heading = read_compass_heading(lis3mdl) if lis3mdl else 0.0
 
         loop_counter = 0
         while True:
@@ -764,7 +820,7 @@ def main():
 
             # RUNTIME METRICS
             # Read fresh magnetometer hardware data at the beginning of the evaluation loop
-            hw_heading = get_compass_heading_hard_soft_corrections(lis3mdl)
+            hw_heading = read_compass_heading(lis3mdl)
 
             # Thread-safe check of the current connection status
             with metrics_lock:
@@ -815,7 +871,7 @@ def main():
                             update_rssi_heading_history(metrics)
 
             # Get fresh magnetometer hardware data at the beginning of the evaluation loop
-            hw_heading = get_compass_heading_hard_soft_corrections(lis3mdl)
+            hw_heading = read_compass_heading(lis3mdl)
 
             with metrics_lock:
                 is_currently_connected = metrics.is_connected
@@ -849,7 +905,8 @@ def main():
             # Display metrics on OLED screen
             if oled_detected:
                 clear_display_oled(oled_display, draw, image)
-                display_metrics_oled(draw, font, oled_display, image, loc_rssi, loc_heading, loc_quality, loc_rx_rate, loc_is_connected)
+                display_metrics_oled(draw, font, oled_display, image, loc_rssi, loc_heading, loc_quality, loc_rx_rate,
+                                     loc_is_connected)
 
                 display_radar_oled(draw, cadence_fill, loc_heading or 0.0, loc_rssi_heading_history,
                                    loc_is_connected)
@@ -868,7 +925,7 @@ def main():
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
 
-                display_rssi_polar_radar_lcd(
+                display_rssi_polar_plot_lcd(
                     disp2_draw, cadence_fill, loc_heading, loc_rssi_heading_history, loc_is_connected,
                     peak_degree, peak_rssi,
                     peak_cluster, loc_rssi
