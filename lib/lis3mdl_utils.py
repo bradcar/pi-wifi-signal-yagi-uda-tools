@@ -172,7 +172,7 @@ def get_compass_heading_hard_soft_corrections(sensor):
                     (SOFT_IRON_MATRIX[i][2] * hi_cal[2])
             )
 
-        # Calculate heading angle (matching original implementation: -1 * atan2(X, Y))
+        # Calculate heading angle: -1 * atan2(X, Y)
         heading = -1.0 * math.degrees(math.atan2(cal_data[0], cal_data[1]))
 
         # Apply magnetic declination

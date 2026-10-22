@@ -57,7 +57,7 @@ def extract_radar_metrics(signal_history):
     if len(valid_history) == 0:
         return -99.0, 0.0, None, False
 
-    # Pass the filtered NumPy matrix down to your peak locator
+    # Pass the filtered NumPy matrix to your peak locator
     arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_history)
     return peak_rssi, peak_degree, peak_cluster, True
 
