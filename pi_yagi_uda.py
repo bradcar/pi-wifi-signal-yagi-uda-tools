@@ -323,7 +323,7 @@ def init_i2c():
 
 
 def read_compass_heading(sensor):
-    """ read compass heading from sensor, but protected with locks for multi-threaded operation."""
+    """ read compass heading from sensor, but protected with locks for multithreaded operation."""
     if sensor is None:
         return None
 
@@ -432,19 +432,20 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
     ]
 
     if rssi is not None:
-        items.append((f"{rssi}", (84, 2), lcd.font0_50pt, metric_color))
+        items.append((f"{rssi}", (86, 2), lcd.font0_50pt, metric_color))
+        #items.append((f"dBm", (84, 55), lcd.font0_16pt, metric_color))
     else:
         items.append(("no dBm", (98, 2), lcd.font0_20pt, "yellow"))
 
     if compass_heading is not None:
         indent = 2 if compass_heading < 10 else (1 if compass_heading < 100 else 0)
-        items.append((f"{compass_heading:.0f}°", (49, 4 + (20 * indent)), lcd.font0_34pt, metric_color))
+        items.append((f"{compass_heading:.0f}°", (51, 4 + (20 * indent)), lcd.font0_34pt, metric_color))
 
         if rssi is not None:
             # Indicator arrows show rotation direction to align with the peak rssi
             arrow_annotation(disp1_draw, shortest_angle,
-                             left_arrow_position=(37, 2),
-                             right_arrow_position=(37, 61))
+                             left_arrow_position=(39, 2),
+                             right_arrow_position=(39, 61))
         else:
             print(f"******* rssi = {rssi}, do NOT add Arrows")
 
@@ -452,8 +453,11 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
         items.append(("? °", (48, 30), lcd.font0_34pt, "yellow"))
 
     if connected:
-        items.append(("Wi-Fi", (11, 1), lcd.font0_33pt, "green"))
-        items.append(("connected", (0, 3), lcd.font0_13pt, "green"))
+        items.append(("Wi-Fi", (13, 2), lcd.font0_33pt, "green"))
+        if rssi is not None:
+            items.append((f"{rssi_to_string(rssi)}", (0, 12), lcd.font0_20pt, "green"))
+        else:
+            items.append(("connect", (0, 9), lcd.font0_16pt, "green"))
     else:
         items.append(("Scan", (5, 7), lcd.font0_28pt, "yellow"))
 
@@ -494,7 +498,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
         subprocess.run(["sudo", "nmcli", "device", "reconnect", "wlan0"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        print(f"Error during wifi scan: {e}")
+        print(f"Error during Wi-Fi scan: {e}")
 
     ssid = target_ssid if rssi is not None else None
 

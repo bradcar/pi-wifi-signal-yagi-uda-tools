@@ -2,7 +2,7 @@
 """
 lcd_st7789_utils.py
 
-General Utils for WaveShare Triple LCD dispaly (ST7789 Drivers)
+General Utils for WaveShare Triple LCD display (ST7789 Drivers)
 Handles initialization, drawing parameters, and full RGB color rendering.
 
 Left Display:   160px x  80px (12,800 px)
@@ -106,7 +106,7 @@ from vendor.waveshare_lcd import LCD_0inch96
 from vendor.waveshare_lcd import LCD_1inch3
 
 
-# Global hardware pin designations for displays, 40_000_000 freq from Waveshare Demo
+# Global hardware pin designations for displays, 40_000_000 freq from WaveShare Demo
 LCD_CONFIGS = {
     0: {"type": "0inch96", "bus": 0, "device": 0, "rst": 24, "dc": 4, "bl": 13, "freq": 40000000},  # Left (160x80), SPI0 CE0
     1: {"type": "0inch96", "bus": 0, "device": 1, "rst": 23, "dc": 5, "bl": 12, "freq": 40000000},  # Right (160x80), SPI0 CE1
