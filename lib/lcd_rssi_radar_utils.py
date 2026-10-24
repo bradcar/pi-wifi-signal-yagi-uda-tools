@@ -32,9 +32,9 @@ import math
 import numpy as np
 from PIL.ImageDraw import ImageDraw
 
+from lib.lcd_st7789_utils import draw_directional_arrow
 from lib.matplot_rssi_radar_utils import rssi_peak
 from lib.polar_math_utils import calculate_peak_bounds
-from lib.lcd_st7789_utils import draw_directional_arrow
 
 # Radar lines Boundary
 SCAN_RSSI_STRONG = -30
@@ -62,8 +62,9 @@ def extract_radar_metrics(signal_history):
     return peak_rssi, peak_degree, peak_cluster, True
 
 
-def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_history, connected,
-                                peak_degree=None, peak_rssi=None, peak_cluster=None, rssi=None, magnetometer=None):
+def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_history, connected, peak_degree=None,
+                                peak_rssi=None, peak_cluster=None, rssi=None, magnetometer=None, rssi_min_plot=-90.0,
+                                rssi_max_plot=None):
     """
     Draw a white box with a black radar circle in it.
     Add white directional orientation lines for North, East, South, and West.
@@ -74,25 +75,21 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
     * indicator  6ms
     * polygon   17ms
     * arc        0.7ms
-
     """
     center_x = 120  # vertical height, 120 is centered, 111 drops 9 px, 1px margin
     center_y = 120
     max_radius = 110
 
-    rssi_min_plot = CONNECT_RSSI_WEAK if connected else SCAN_RSSI_WEAK
-
-    # Set the minimum RSSI that is plotted to -99 dBm
-    rssi_min_plot = -99.0
-
     if peak_rssi is not None and peak_rssi > -99:
-        max_radius_percent = 0.90
-        if peak_rssi > -45:
-            # Autoscaled range when peak RSSI is stronger than -45 dBm
-            rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0 / max_radius_percent)
-        else:
-            # Static range bounds (-99 dBm to -45 dBm) when peak RSSI is weaker than or equal to -45 dBm
-            rssi_max_plot = -45.0
+        # if rssi_max_plot is not set, calculate dynamic plot range
+        if rssi_max_plot is None:
+            max_radius_percent = 0.90
+            if peak_rssi > -45:
+                # Autoscaled range when peak RSSI is stronger than -45 dBm
+                rssi_max_plot = rssi_min_plot + (peak_rssi - rssi_min_plot) * (1.0 / max_radius_percent)
+            else:
+                # Static range bounds (-99 dBm to -45 dBm) when peak RSSI is weaker than or equal to -45 dBm
+                rssi_max_plot = -45.0
     else:
         # Fallback to defaults if no signal is detected
         rssi_max_plot = CONNECT_RSSI_STRONG if connected else SCAN_RSSI_STRONG
@@ -110,7 +107,8 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
     # draw indicator, crosshairs and RSSI polygon
     draw_indicator(draw, cadence_fill, x_box=210, y_box=10, dot_size=15)
     draw_crosshairs(draw, heading, center_x, center_y, max_radius)
-    draw_rssi_polygon(draw, signal_history, heading, center_x, center_y, max_radius, rssi_max_plot, rssi_min_plot)
+    draw_rssi_green_polygon(draw, signal_history, heading, center_x, center_y, max_radius, rssi_max_plot, rssi_min_plot)
+
     # Small white triangle pointing down at the top of the circle, notice this is 270 degree so it get rotated correctly
     right_circle_x = center_x + max_radius  # 120 + 110 = 230
     draw.polygon([
@@ -119,12 +117,12 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
     ], fill="white")
 
     if magnetometer is not None:
-        # peak signal graphic
+        # Draw peak signal Line indicator graphic
         if peak_rssi is not None and peak_degree is not None:
             draw_peak_arc(draw, heading, center_x, center_y, max_radius,
                           rssi_max_plot, rssi_min_plot, peak_degree, peak_rssi, peak_cluster)
 
-        # Show RSSI strength at antenna location at proportional distance
+        # Draw box at current RSSI strength in antenna direction
         draw_rssi_box(draw=draw, rssi=rssi, target_degree=0.0, heading=0.0, center_x=center_x,
                       center_y=center_y, max_radius=max_radius, strong_bound=rssi_max_plot,
                       weak_bound=rssi_min_plot, box_size=12, color="cyan")
@@ -133,27 +131,33 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
     draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="blue")
 
 
-def draw_rssi_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int,
-                      strong_bound: int,
-                      weak_bound: int):
-    # Antenna strength polygon vertex points at 5 degrees intervals, 72 vertices
+def draw_rssi_green_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int,
+                            strong_bound: int,
+                            weak_bound: int):
+    """
+    draw_rssi_polygon draws polygon whose vertices are clamped from lower bound at center (0 length) to
+    upper bound (farthest out).
+
+    """
+    # Antenna strength polygon vertex points at 5 degrees intervals, will create polygon with 72 vertices (360/5)
     polygon_points = []
     for angle in range(0, 360, 5):
         window_values = []
+
+        # Get maximum rssi value over a local 5-degree window (±2°) of RSSI values, wrapping around the 360° compass
         for offset in range(-2, 3):
             neighbor_index = (angle + offset) % 360
             window_values.append(signal_history[neighbor_index])
-
-        peak_rssi = max(window_values)
+        vertex_rssi = max(window_values)
 
         # Ensure no zero division error
         bound_range = strong_bound - weak_bound if strong_bound != weak_bound else 1
 
         # Clamp peak value within our newly calculated limits
-        peak_rssi = max(weak_bound, min(peak_rssi, strong_bound))
+        vertex_rssi = max(weak_bound, min(vertex_rssi, strong_bound))
 
         # Scale across the entire functional pixel radius length
-        proportion = (peak_rssi - weak_bound) / bound_range
+        proportion = (vertex_rssi - weak_bound) / bound_range
         line_length = max_radius * proportion
 
         # Apply identical screen space angle mapping
