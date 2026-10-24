@@ -150,10 +150,11 @@ TODO uncomment saving Actual RSSI to heading, instead of fake testing code
 """
 import os
 import subprocess
-import time
 import threading
+import time
 import types
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 import board
@@ -173,6 +174,7 @@ from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIG
 from lib.oled_pi_yagi_uda import display_metrics_oled
 from lib.oled_rssi_radar_utils import display_radar_oled
 from lib.pi_zero_utils import pico_temperature, timeout
+from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
 from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
     remove_ssid
 
@@ -182,10 +184,10 @@ USE_ASYNC_METRICS = True
 metrics_lock = threading.Lock()  # Protects Metrics updates: heading, rssi, ...  (SimpleNamespace)
 lis3mdl_lock = threading.Lock()  # Protects magnetometer, without protection collisions calculated to 53 degree
 
-TARGET_SSID = "ABox-PDX"  # CHANNEL=11
+# TARGET_SSID = "ABox-PDX"  # CHANNEL=11
 # TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
 # TODO #2 Try shell-fi with static-IP for faster connection wifi_utils.py
-# TARGET_SSID = "shell-fi"  # CHANNEL=11
+TARGET_SSID = "shell-fi"  # CHANNEL=11
 TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
 
 URL_STRING = "http://192.168.4.1/download"
@@ -420,10 +422,10 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
     heading_text = "RSSI:"
     metric_color = "yellow"
 
-    # show RSSI & heading with orange font if +/- 30°, label as "PEAK" within +/- 15 degrees and red font
-    if shortest_angle is not None and abs(shortest_angle) < 30:
+    # show RSSI & heading with orange font if +/- 15°, label as "PEAK" within +/- 7.5 degrees and red font
+    if shortest_angle is not None and abs(shortest_angle) < 15:
         metric_color = "orange"
-        if abs(shortest_angle) < 15:
+        if abs(shortest_angle) < 7.5:
             heading_text = "PEAK"
             metric_color = "red"
 
@@ -432,14 +434,14 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
     ]
 
     if rssi is not None:
-        items.append((f"{rssi}", (86, 2), lcd.font0_50pt, metric_color))
-        #items.append((f"dBm", (84, 55), lcd.font0_16pt, metric_color))
+        items.append((f"{rssi}", (87, 2), lcd.font0_50pt, metric_color))
+        # items.append((f"dBm", (84, 55), lcd.font0_16pt, metric_color))
     else:
         items.append(("no dBm", (98, 2), lcd.font0_20pt, "yellow"))
 
     if compass_heading is not None:
         indent = 2 if compass_heading < 10 else (1 if compass_heading < 100 else 0)
-        items.append((f"{compass_heading:.0f}°", (51, 4 + (20 * indent)), lcd.font0_34pt, metric_color))
+        items.append((f"{compass_heading:.0f}°", (54, 4 + (20 * indent)), lcd.font0_34pt, metric_color))
 
         if rssi is not None:
             # Indicator arrows show rotation direction to align with the peak rssi
@@ -453,9 +455,9 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
         items.append(("? °", (48, 30), lcd.font0_34pt, "yellow"))
 
     if connected:
-        items.append(("Wi-Fi", (13, 2), lcd.font0_33pt, "green"))
+        items.append(("Wi-Fi", (13, 5), lcd.font0_33pt, "green"))
         if rssi is not None:
-            items.append((f"{rssi_to_string(rssi)}", (0, 12), lcd.font0_20pt, "green"))
+            items.append((f"{rssi_to_string(rssi)}", (0, 14), lcd.font0_20pt, "green"))
         else:
             items.append(("connect", (0, 9), lcd.font0_16pt, "green"))
     else:
@@ -465,7 +467,7 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
     update_text_lcd_display(disp_1, items, image=disp1_image)
 
 
-def annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, heading, shortest_angle):
+def annotate_display_2_rotate_to_peak_arrows(disp2_image, disp2_draw, heading, shortest_angle):
     """ """
     disp2_draw.rectangle([212, 91, 240, 154], fill="black")
     indent = 3 - (1 if heading < 10 else (2 if heading < 100 else 3))
@@ -680,7 +682,7 @@ def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_cou
             print(f"RX Rate: {f'{rx_rate:.1f} Mb/s' if rx_rate is not None else 'n/a'}")
 
             if rssi >= RSSI_DOWNLOAD_THRESHOLD:
-                print("-> download possible, trigger with button1")
+                print(f"-> download possible, trigger with button1 - (Currently {download_count} downloads)")
             else:
                 print("-> connected, weak signal")
         else:
@@ -929,14 +931,11 @@ def main():
                 disp2_image = Image.new("RGB", (disp_2.width, disp_2.height), "black")
                 disp2_draw = ImageDraw.Draw(disp2_image)
 
-                display_rssi_polar_plot_lcd(
-                    disp2_draw, cadence_fill, loc_heading, loc_rssi_heading_history, loc_is_connected,
-                    peak_degree, peak_rssi,
-                    peak_cluster, loc_rssi
-                )
+                display_rssi_polar_plot_lcd(disp2_draw, cadence_fill, loc_heading, loc_rssi_heading_history,
+                                            loc_is_connected, peak_degree, peak_rssi, peak_cluster, loc_rssi, lis3mdl)
 
                 # Annotate radar with heading & peak arrows, seems unneeded enough visual cues with peak indicators
-                # annotate_display_2_rotate_to_peak(disp2_image, disp2_draw, metrics.heading, shortest_angle)
+                # annotate_display_2_rotate_to_peak_arrows(disp2_image, disp2_draw, metrics.heading, shortest_angle)
                 disp_2.ShowImage(disp2_image)
 
             # Print update frequency and period to console
@@ -952,6 +951,65 @@ def main():
 
     except KeyboardInterrupt:
         print("\nEnded Tracking (^c).")
+
+        # NOTE: RISKY using Control-C as signal because PyCharm will send 15:SIGTERM which will kill
+        # plot if it takes too long !!!
+
+        # Plot data file directory
+        plot_directory_name = "logs_shell_fi_polar_plots"
+        plot_dir = Path(plot_directory_name)
+        plot_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y-%m%d-%H%M')
+
+        # Grab the current metric state safely
+        with metrics_lock:
+            cleaned_history = [v if v is not None else -99.0 for v in metrics.rssi_heading_history]
+            current_bssid = metrics.bssid or "unknown_bssid"
+            is_currently_connected = metrics.is_connected
+
+        valid_signals = [v for v in cleaned_history if v > -99.0]
+
+        if valid_signals:
+            max_rssi = max(valid_signals)
+            peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
+
+            is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
+            peak_angle_string = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}"
+
+            print(f"\n *** Save CSV & plot for {TARGET_SSID} (Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string})")
+
+            # Save direction vs RSSI history to CSV
+            summary_csv_path = plot_dir / f"wifi_summary_{TARGET_SSID}_{timestamp}.csv"
+            try:
+                with open(summary_csv_path, "w") as f:
+                    f.write("degree,rssi\n")
+                    for degree, val in enumerate(cleaned_history):
+                        f.write(f"{degree},{val}\n")
+                print(f" -> Scan CSV written to '{summary_csv_path}'")
+            except Exception as e:
+                print(f"\n Warning: Failed to write summary CSV: {e}")
+
+            # Call library plotting function to create polar plot
+            try:
+                plot_png_path = plot_dir / f"radar_plot_{TARGET_SSID}_{timestamp}.png"
+                mode_str = "Connected mode" if is_currently_connected else "Scanning mode"
+                subtitle_text = f"SSID: {TARGET_SSID} (ch:{TARGET_CHANNEL})\n{current_bssid}\n{mode_str}\npi_yagi_uda.py"
+
+                plot_rssi_polar_matplotlib(
+                    rssi=cleaned_history,
+                    heading=0.0,  # 0° North reference for export
+                    subtitle=subtitle_text,
+                    lcd_png_generate=False,
+                    file_name=str(plot_png_path)
+                )
+                print(f" -> Radar Plot PNG saved to '{plot_png_path}'")
+            except Exception as e:
+                print(f"\n Warning: Failed to generate polar plot via library: {e}")
+
+        else:
+            print("\n No valid RSSI history data recorded to save.")
+        print("Clean Exit.")
 
     finally:
         # remove shell-fi on exit
