@@ -478,7 +478,7 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     # Build the plot subtitle string, to ssid add the channel and bssid
     ssid_str = info.get('ssid', '--')
     channel_str = info.get('channel', '??')
-    subtitle = f"{ssid_str} (Ch: {channel_str})\n({bssid_str})"
+    subtitle = f"SSID: {ssid_str} (Ch: {channel_str})\n{bssid_str}\npi-wifi-scan_rssi.py"
 
     # Create png plot
     start_time = time.time()
@@ -563,17 +563,9 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
             image2 = Image.new("RGB", (disp_2.width, disp_2.height), "black")
             disp2_draw = ImageDraw.Draw(image2)
 
-            display_rssi_polar_plot_lcd(
-                disp2_draw,
-                cadence_fill=None,
-                heading=heading,
-                signal_history=signal_history,
-                connected=True,
-                peak_degree=peak_degree,
-                peak_rssi=peak_rssi,
-                peak_cluster=peak_cluster,
-                magnetometer=lis3mdl
-            )
+            display_rssi_polar_plot_lcd(disp2_draw, cadence_fill=None, heading=heading, signal_history=signal_history,
+                                        connected=True, peak_degree=peak_degree, peak_rssi=peak_rssi,
+                                        peak_cluster=peak_cluster, magnetometer=lis3mdl)
             # Annotate text overlay for Screen 2 Center Display
             disp2_draw.rectangle([209, 0, 240, 55], fill="black")
             lcd.print_270(text=f"{peak_rssi:.0f}dB" if peak_rssi is not None else "---", pos=(210, 0), image=image2,
@@ -812,7 +804,6 @@ def main():
                         create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
                         saved_count += 1
 
-
                     # Save summary of all named SSIDs in plot_dir
                     if summary_rows:
                         summary_csv_path = plot_dir / f"wifi_summary_{timestamp}.csv"
@@ -827,10 +818,10 @@ def main():
 
                     print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
 
-                    # create plot of angle vs. RSSI
+                    # Optional: create plot of angle vs. RSSI source location
                     plot_wifi_source_angle_rssi(summary_csv_path)
 
-                    # create plot of angle vs. crude distance estimation
+                    # Optional: create plot of angle vs. crude distance estimation of rssi source
                     # plot_wifi_sources_angle_crude_distance(summary_csv_path)
 
                     print("Clean Exit.")
