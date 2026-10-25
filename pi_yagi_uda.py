@@ -149,6 +149,8 @@ Empirical Link Budget Reference Table:
     | -80 dBm (Connect Thr.)  | ~290 meters       | ~950 feet (~0.2 mi) - Reliable beacon handshake zone    |
     | -85 dBm (Fringe Limit)  | ~515 meters       | ~1,690 feet (~0.3 mi) - Rear fringe / precise pointing  |
     +-------------------------+-------------------+---------------------------------------------------------+
+
+
 ================================================================================
 
 
@@ -157,7 +159,9 @@ Power Draw:
     Connected: 0.31a, 1.62w, 5.22v
     Idle:      0.15a, 0.77w, 5.22v
 
-TODO uncomment logging code to Pi Zero flash
+NOTES:
+    * Colors blue and green are muted and dim, Must use "x00ff00" for green and "x0000ff" for blue
+
 TODO solder trigger button to gpio6 p31
 """
 import os
@@ -190,23 +194,26 @@ from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
 from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
     remove_ssid
 
-DEBUG = False
-USE_MONO_TYPE = False
+# TARGET_SSID = "ABox-PDX"  # CHANNEL=11
+TARGET_SSID = "shell-fi"  # CHANNEL=11
+TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
+URL_STRING = "http://192.168.4.1/download"
+DESTINATION_STRING = os.path.expanduser("~/downloads")
+LOG_DIRECTORY = "logs_yagi_uda_rssi"
+
 USE_ASYNC_METRICS = True
 metrics_lock = threading.Lock()  # Protects Metrics updates: heading, rssi, ...  (SimpleNamespace)
 lis3mdl_lock = threading.Lock()  # Protects magnetometer, without protection collisions calculated to 53 degree
 
-# TARGET_SSID = "ABox-PDX"  # CHANNEL=11
-TARGET_SSID = "shell-fi"  # CHANNEL=11
-TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
+LOG_PRELIM_CSV_TO_FLASH = False
+DEBUG = False
 
 # Network Signal Thresholds
-RSSI_CONNECT_THRESHOLD = -85  # Minimum signal to allow a hardware connection, maybe -85 orig -80
-RSSI_DOWNLOAD_THRESHOLD = -75  # Minimum signal to execute data payload transfer, maybe -80
+RSSI_CONNECT_THRESHOLD = -91.0  # Minimum signal to allow a hardware connection, maybe -85 orig -80
+RSSI_DOWNLOAD_THRESHOLD = -80.0  # Minimum signal to execute data payload transfer, maybe -80
 
-URL_STRING = "http://192.168.4.1/download"
-DESTINATION_STRING = os.path.expanduser("~/downloads")
-LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
+USE_MONO_TYPE = False
+
 
 try_connect = False
 try_download = False
@@ -389,18 +396,22 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
     items = []
     if try_connect:
         items = [
-            ("Trying", (132, 0), lcd.font0_28pt, "green"),
-            ("to link", (108, 0), lcd.font0_28pt, "green"),
+            ("Trying", (132, 0), lcd.font0_28pt, "#00ff00"),
+            ("to link", (108, 0), lcd.font0_28pt, "#00ff00"),
         ]
+    elif connected:
+        items = [
+            ("Linked", (132, 0), lcd.font0_24pt, "#00ff00"),
+        ]
+        # You are connected! Check if signal is strong enough for download prompt or just show connected status
+        # if so append text to items to display two messages on disp_0
+        if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
+            items.append(("down", (70, 0), lcd.font0_28pt, "#0000ff"))
+            items.append(("load?", (44, 0), lcd.font0_28pt, "#0000ff"))
     elif not connected and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
         items = [
-            ("Con-", (132, 0), lcd.font0_28pt, "green"),
-            ("nect?", (108, 0), lcd.font0_28pt, "green"),
-        ]
-    elif connected and rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
-        items = [
-            ("down", (70, 0), lcd.font0_28pt, "blue"),
-            ("load?", (44, 0), lcd.font0_28pt, "blue"),
+            ("Con-", (132, 0), lcd.font0_28pt, "#00ff00"),
+            ("nect?", (108, 0), lcd.font0_28pt, "#00ff00"),
         ]
     else:
         items = [
@@ -410,7 +421,7 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
         ]
 
     if download_count > 0:
-        items.append((f"#{download_count}", (2, 4), lcd.font0_34pt, "blue"))
+        items.append((f"#{download_count}", (2, 4), lcd.font0_34pt, "#0000ff"))
 
     update_text_lcd_display(disp_0, items)
 
@@ -418,8 +429,8 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
 def display_0_trying_download_lcd(disp_0, download_count):
     """Display 'trying download' on lcd screen 0"""
     items = [
-        ("Trying", (70, 0), lcd.font0_28pt, "blue"),
-        ("File dl", (44, 0), lcd.font0_28pt, "blue"),
+        ("Trying", (70, 0), lcd.font0_28pt, "#0000ff"),
+        ("File dl", (44, 0), lcd.font0_28pt, "#0000ff"),
     ]
     update_text_lcd_display(disp_0, items)
 
@@ -436,7 +447,7 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
     if shortest_angle is not None and abs(shortest_angle) < 15:
         metric_color = "orange"
         if abs(shortest_angle) < 7.5:
-            heading_text = "PEAK"
+            # heading_text = "PEAK" This is confusing
             metric_color = "red"
 
     items = [
@@ -465,11 +476,11 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
         items.append(("? °", (48, 30), lcd.font0_34pt, "yellow"))
 
     if connected:
-        items.append(("Wi-Fi", (13, 5), lcd.font0_33pt, "green"))
+        items.append(("Wi-Fi", (13, 5), lcd.font0_33pt, "#00ff00"))
         if rssi is not None:
-            items.append((f"{rssi_to_string(rssi)}", (0, 14), lcd.font0_20pt, "green"))
+            items.append((f"{rssi_to_string(rssi)}", (0, 14), lcd.font0_20pt, "#00ff00"))
         else:
-            items.append(("connect", (0, 9), lcd.font0_16pt, "green"))
+            items.append(("connect", (0, 9), lcd.font0_16pt, "#00ff00"))
     else:
         items.append(("Scan", (5, 7), lcd.font0_28pt, "yellow"))
 
@@ -811,11 +822,12 @@ def main():
             start_loop = time.time()
 
             # write CSV of heading, RSSI strength for entire 360 degrees, every 61 seconds
-            if start_loop - last_csv_write > 61:
-                with metrics_lock:
-                    current_history_copy = list(metrics.rssi_heading_history)
-                write_history_to_csv(current_history_copy)
-                last_csv_write = time.time()
+            if LOG_PRELIM_CSV_TO_FLASH:
+                if start_loop - last_csv_write > 61:
+                    with metrics_lock:
+                        current_history_copy = list(metrics.rssi_heading_history)
+                    write_history_to_csv(current_history_copy)
+                    last_csv_write = time.time()
 
             temp_duration += duration
             if temp_duration > 60.0:
@@ -988,7 +1000,6 @@ def main():
 
             print(f"\nLowest RSSI (noise floor): {min_rssi} dBm\n")
 
-            print(f"\n *** Save CSV & plot for {TARGET_SSID} (Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string})")
 
             # Save direction vs RSSI history to CSV
             summary_csv_path = plot_dir / f"wifi_summary_{TARGET_SSID}_{timestamp}.csv"
@@ -1007,6 +1018,7 @@ def main():
                 mode_str = "Connected mode" if is_currently_connected else "Scanning mode"
                 subtitle_text = f"SSID: {TARGET_SSID} (ch:{TARGET_CHANNEL})\n{current_bssid}\n{mode_str}\npi_yagi_uda.py"
 
+                print(f" -> Create MathPlotLib polar plot .png written to '{summary_csv_path}'")
                 plot_rssi_polar_matplotlib(
                     rssi=cleaned_history,
                     heading=0.0,  # 0° North reference for export
@@ -1014,7 +1026,6 @@ def main():
                     lcd_png_generate=False,
                     file_name=str(plot_png_path)
                 )
-                print(f" -> Radar Plot PNG saved to '{plot_png_path}'")
             except Exception as e:
                 print(f"\n Warning: Failed to generate polar plot via library: {e}")
 

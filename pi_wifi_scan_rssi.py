@@ -99,6 +99,8 @@ In a park we see -98.0 dBm on a verified, named SSID. This value is nearly at th
 With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
 Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency.
 
+NOTES:
+    * Colors blue and green are muted and dim, Must use "x00ff00" for green and "x0000ff" for blue
 
 CLI on Pi Zero 2 W:
     $ sudo nmcli dev wifi list
@@ -309,8 +311,8 @@ def lcd_display_update(disp_0, disp_1, disp_2, data, heading):
         update_text_lcd_display(disp_0, [
             ("Plot", (137, 0), lcd.font0_28pt, "yellow"),
             ("RSSI?", (113, 0), lcd.font0_28pt, "yellow"),
-            ("Exit w/", (72, 0), lcd.font0_24pt, "yellow"),
-            ("Plots ?", (47, 0), lcd.font0_24pt, "yellow")
+            ("Exit w/", (72, 0), lcd.font0_24pt, "#0000ff"),
+            ("Plots ?", (47, 0), lcd.font0_24pt, "#0000ff")
         ])
 
         # Screen 1 Right Display: Heading & Clock
@@ -363,7 +365,7 @@ def choose_ssid_lcd(lcd, disp_0, disp_1, disp_2, bssid_map):
 
     # Screen 0 Left Display: Menu options "Next" and "Select"
     update_text_lcd_display(disp_0, [
-        ("Next", (127, 0), lcd.font0_28pt, "green"),
+        ("Next", (127, 0), lcd.font0_28pt, "#00ff00"),
         ("Select", (62, 0), lcd.font0_24pt, "yellow")
     ])
 
@@ -417,7 +419,7 @@ def choose_ssid_lcd(lcd, disp_0, disp_1, disp_2, bssid_map):
             start_idx = 0
 
         y = 210
-        lcd.print_270(text="#  SSID           (RSSI)", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="blue")
+        lcd.print_270(text="#  SSID           (RSSI)", pos=(y, 2), image=image2, font=lcd.font0_24pt, color="#0000ff")
         y -= 24
 
         # show visible rows
