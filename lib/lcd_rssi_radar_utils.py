@@ -24,7 +24,12 @@ Functionality
     * Peak indicator, draws arc if multiple RSSI at same peak
     * Indicator update cadence if showing continuous updates, not shown for single render
     * RSSI current value shown as box at compass heading
-    * TODO should RSSI=0 or =None be invisible or at center?
+
+NOTES:
+    * Colors blue and green are muted and dim, Must use "x00ff00" for green and "x0000ff" for blue
+
+TODOs:
+    * TODO should RSSI=0
 """
 
 import math
@@ -127,8 +132,31 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
                       center_y=center_y, max_radius=max_radius, strong_bound=rssi_max_plot,
                       weak_bound=rssi_min_plot, box_size=12, color="cyan")
 
-    # Center axis core marker
-    draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="blue")
+        # RSSI Bar circles (-50 solid, -60/-70/-80 dashed)
+        rssi_targets = [
+            {"rssi": -50, "dashed": False},
+            {"rssi": -60, "dashed": True},
+            {"rssi": -70, "dashed": True},
+            {"rssi": -80, "dashed": True},
+        ]
+
+        for item in rssi_targets:
+            val = item["rssi"]
+            # Check if target RSSI falls within current plot bounds
+            if rssi_min_plot <= val <= rssi_max_plot:
+                # Map RSSI to radius, center is min_plot and outer edge is max_plot
+                fraction = (val - rssi_min_plot) / (rssi_max_plot - rssi_min_plot)
+                radius = int(max_radius * fraction)
+
+                if radius > 0:
+                    if item["dashed"]:
+                        draw_dashed_circle(draw, center_x, center_y,radius, outline="white", dash_deg=10, gap_deg=5,)
+                    else:
+                        # Solid circle for -50 dBm
+                        draw.ellipse([center_x - radius, center_y - radius, center_x + radius, center_y + radius,], outline="white")
+
+    # Center axis core marker Blue give hex so it is bright blue
+    draw.rectangle((center_x - 2, center_y - 2, center_x + 1, center_y + 1), fill="#00ff00")
 
 
 def draw_rssi_green_polygon(draw, signal_history, heading: float, center_x: int, center_y: int, max_radius: int,
@@ -306,6 +334,26 @@ def draw_rssi_box(draw, rssi: int, target_degree: float, heading: float, center_
     x1_inner = x1 - 1
     y1_inner = y1 - 1
     draw.rectangle((x0_inner, y0_inner, x1_inner, y1_inner), outline="black")
+
+
+def draw_dashed_circle(
+    draw, center_x, center_y, radius, outline, dash_deg=6, gap_deg=4
+):
+  """Draws a dashed circle using arc segments."""
+  if radius <= 0:
+    return
+  current_angle = 0
+  while current_angle < 360:
+    start_angle = current_angle
+    end_angle = min(current_angle + dash_deg, 360)
+    bbox = [
+        center_x - radius,
+        center_y - radius,
+        center_x + radius,
+        center_y + radius,
+    ]
+    draw.arc(bbox, start=start_angle, end=end_angle, fill=outline)
+    current_angle += dash_deg + gap_deg
 
 
 def draw_indicator(draw, cadence_fill, x_box: int, y_box: int, dot_size: int):
