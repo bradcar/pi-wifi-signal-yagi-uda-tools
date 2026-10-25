@@ -769,105 +769,104 @@ def main():
 
             if button1_pressed:
                 button1_pressed = False
-                if lcd_detected:
-                    plot_directory_name = "logs_polar_plots"
-                    plot_dir = Path(plot_directory_name)
-                    plot_dir.mkdir(exist_ok=True)
 
-                    timestamp = datetime.now().strftime('%Y-%m%d-%H%M')
-                    saved_count = 0
-                    exit_heading = 0   # Use 0° North for plots
+                plot_directory_name = "logs_polar_plots"
+                plot_dir = Path(plot_directory_name)
+                plot_dir.mkdir(exist_ok=True)
 
-                    # Track global lowest RSSI with its resolved name SSIDs for noise floor estimation
-                    lowest_rssi_global = None
-                    lowest_ssid_global = None
+                timestamp = datetime.now().strftime('%Y-%m%d-%H%M')
+                saved_count = 0
+                exit_heading = 0   # Use 0° North for plots
 
-                    lcd_png_generate = False
-                    hidden_placeholders = {"--", "Unknown", "", None}
+                # Track global lowest RSSI with its resolved name SSIDs for noise floor estimation
+                lowest_rssi_global = None
+                lowest_ssid_global = None
 
-                    # List to accumulate entries for summary CSV
-                    summary_rows = []
+                lcd_png_generate = False
+                hidden_placeholders = {"--", "Unknown", "", None}
 
-                    for bssid, info in bssid_map.items():
-                        cleaned_history = [v if v is not None else -120.0 for v in info["rssi_history"]]
-                        # Extract valid signal history
-                        valid_signals = [v for v in cleaned_history if v > -120.0]
-                        if not valid_signals:
-                            continue
+                # List to accumulate entries for summary CSV
+                summary_rows = []
 
-                        max_rssi = max(valid_signals)
-                        ssid = info.get("ssid")
-                        channel = info.get("channel", "??")
+                for bssid, info in bssid_map.items():
+                    cleaned_history = [v if v is not None else -120.0 for v in info["rssi_history"]]
+                    # Extract valid signal history
+                    valid_signals = [v for v in cleaned_history if v > -120.0]
+                    if not valid_signals:
+                        continue
 
-                        # Check and update lowest RSSI for named SSIDs
-                        if ssid and ssid not in hidden_placeholders:
-                            local_min = get_lowest_rssi_detected(cleaned_history)
-                            if local_min is not None:
-                                if lowest_rssi_global is None or local_min < lowest_rssi_global:
-                                    lowest_rssi_global = local_min
-                                    lowest_ssid_global = ssid
+                    max_rssi = max(valid_signals)
+                    ssid = info.get("ssid")
+                    channel = info.get("channel", "??")
 
-                        # Extract radar metrics to find the true peak angle
-                        peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
+                    # Check and update lowest RSSI for named SSIDs
+                    if ssid and ssid not in hidden_placeholders:
+                        local_min = get_lowest_rssi_detected(cleaned_history)
+                        if local_min is not None:
+                            if lowest_rssi_global is None or local_min < lowest_rssi_global:
+                                lowest_rssi_global = local_min
+                                lowest_ssid_global = ssid
 
-                        is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
-                        peak_angle_string = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}"
+                    # Extract radar metrics to find the true peak angle
+                    peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
 
-                        # Save summary for all named SSIDs in plot_dir (skip "--" which are uknown)
-                        if ssid != "--":
-                            # angle_offset_deg is 0.0 for peak values
-                            distance = crude_estimate_wifi_distance(rssi_measured=max_rssi, angle_offset_deg=0.0)
-                            summary_rows.append({
-                                "ssid": ssid,
-                                "bssid": bssid,
-                                "channel": channel,
-                                "max_rssi": max_rssi,
-                                "peak_angle": peak_angle_string,
-                                "meters": distance
-                            })
+                    is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
+                    peak_angle_string = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}"
 
-                        # Skip if SSID is hidden/unknown or peak RSSI is <= -85 dBm
-                        if ssid in hidden_placeholders or max_rssi <= -85:
-                            print(f"\n *** Not Saved: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
-                            continue
+                    # Save summary for all named SSIDs in plot_dir (skip "--" which are uknown)
+                    if ssid != "--":
+                        # angle_offset_deg is 0.0 for peak values
+                        distance = crude_estimate_wifi_distance(rssi_measured=max_rssi, angle_offset_deg=0.0)
+                        summary_rows.append({
+                            "ssid": ssid,
+                            "bssid": bssid,
+                            "channel": channel,
+                            "max_rssi": max_rssi,
+                            "peak_angle": peak_angle_string,
+                            "meters": distance
+                        })
 
-                        print(f"\n *** Save plot: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
-                        create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
-                        saved_count += 1
+                    # Skip if SSID is hidden/unknown or peak RSSI is <= -85 dBm
+                    if ssid in hidden_placeholders or max_rssi <= -85:
+                        print(f"\n *** Not Saved: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
+                        continue
 
-                    # Print Noise Floor / Lowest RSSI Report after scanning all signals
-                    if lowest_rssi_global is not None:
-                        print(f"\nLowest RSSI detected for named SSID:  {lowest_rssi_global:.1f} dBm for SSID: {lowest_ssid_global}")
-                        print(f"Estimated local ambient RF noise floor for Pi Zero 2 W with Yagi Uda Antenna: {lowest_rssi_global:.1f} dBm\n")
-                    else:
-                        print(f"WARNING lowest RSSI is None")
+                    print(f"\n *** Save plot: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
+                    create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
+                    saved_count += 1
 
-                    # Save summary of all named SSIDs in plot_dir
-                    if summary_rows:
-                        summary_csv_path = plot_dir / f"wifi_summary_{timestamp}.csv"
-                        try:
-                            with open(summary_csv_path, "w") as f:
-                                f.write("ssid,bssid,channel,max_rssi,peak_angle,distance\n")
-                                for row in summary_rows:
-                                    f.write(f'"{row["ssid"]}",{row["bssid"]},{row["channel"]},{row["max_rssi"]},{row["peak_angle"]},{row["meters"]}\n')
-                            print(f"\n -> Summary CSV written to '{summary_csv_path}'")
-                        except Exception as e:
-                            print(f"\n Warning: Failed to write summary CSV: {e}")
-
-                    print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
-
-                    # Optional: create plot of angle vs. RSSI source location
-                    plot_wifi_source_angle_rssi(summary_csv_path)
-
-                    # Optional: create plot of angle vs. crude distance estimation of rssi source
-                    # plot_wifi_sources_angle_crude_distance(summary_csv_path)
-
-                    print("Clean Exit.")
-
-                    # --- Break out of the Wi-Fi Signal Scanning loop, after saving plots, which exits progrm ---
-                    break
+                # Print Noise Floor / Lowest RSSI Report after scanning all signals
+                if lowest_rssi_global is not None:
+                    print(f"\nLowest RSSI detected for named SSID:  {lowest_rssi_global:.1f} dBm for SSID: {lowest_ssid_global}")
+                    print(f"Estimated local ambient RF noise floor for Pi Zero 2 W with Yagi Uda Antenna: {lowest_rssi_global:.1f} dBm\n")
                 else:
-                    print("Button pressed, but no LCD display is active.")
+                    print(f"WARNING lowest RSSI is None")
+
+                # Save summary of all named SSIDs in plot_dir
+                if summary_rows:
+                    summary_csv_path = plot_dir / f"wifi_summary_{timestamp}.csv"
+                    try:
+                        with open(summary_csv_path, "w") as f:
+                            f.write("ssid,bssid,channel,max_rssi,peak_angle,distance\n")
+                            for row in summary_rows:
+                                f.write(f'"{row["ssid"]}",{row["bssid"]},{row["channel"]},{row["max_rssi"]},{row["peak_angle"]},{row["meters"]}\n')
+                        print(f"\n -> Summary CSV written to '{summary_csv_path}'")
+                    except Exception as e:
+                        print(f"\n Warning: Failed to write summary CSV: {e}")
+
+                print(f"Successfully saved {saved_count} plot(s) in '{plot_dir}'.")
+
+                # Optional: create plot of angle vs. RSSI source location
+                plot_wifi_source_angle_rssi(summary_csv_path)
+
+                # Optional: create plot of angle vs. crude distance estimation of rssi source
+                # plot_wifi_sources_angle_crude_distance(summary_csv_path)
+
+                print("Clean Exit.")
+
+                # --- Break out of the Wi-Fi Signal Scanning loop, after saving plots, which exits progrm ---
+                break
+
 
 
     except KeyboardInterrupt:
