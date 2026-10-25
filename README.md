@@ -23,6 +23,7 @@ pi_yagi_uda.py Features:
 * Hardware buttons: Features the display's hardware buttons for miode handling and file-download triggers.
 * Access Point Download: Button can trigger data dowbnload from Access Point and store into Pi Zero W flash.
 * Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to prevent signakl measurement lag.
+![pi_yagi_uda_DSC0092.jpg](assets/images/pi_yagi_uda_DSC0092.jpg)
 
 # pi_wifi_scan_rssi.py
 
