@@ -532,7 +532,7 @@ def handle_scan_mode(rssi_heading_history, heading, target_ssid, target_channel,
                 else:
                     print(f" SUCCESS: Connected to unknown BSSID? with SSID: {ssid}\n")
 
-                rssi_heading_history[:] = [-99.0] * 360
+                rssi_heading_history[:] = [-120.0] * 360
                 return is_connected, rssi, ssid
         else:
             print(f"\n* Connection ignored: Signal ({rssi} dBm) below threshold.")
@@ -774,7 +774,7 @@ def main():
         tx_rate=None,
         bssid=None,
         heading=0.0,
-        rssi_heading_history=[-99.0] * 360,
+        rssi_heading_history=[-120.0] * 360,
         update_period=0.0,
         is_downloading=False,
     )
@@ -980,10 +980,13 @@ def main():
 
         if valid_signals:
             max_rssi = max(valid_signals)
+            min_rssi = min(valid_signals)
             peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
 
             is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
             peak_angle_string = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}"
+
+            print(f"\nLowest RSSI (noise floor): {min_rssi} dBm\n")
 
             print(f"\n *** Save CSV & plot for {TARGET_SSID} (Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string})")
 
@@ -998,7 +1001,7 @@ def main():
             except Exception as e:
                 print(f"\n Warning: Failed to write summary CSV: {e}")
 
-            # Call library plotting function to create polar plot
+            # Create polar plot with MatPlotLib
             try:
                 plot_png_path = plot_dir / f"radar_plot_{TARGET_SSID}_{timestamp}.png"
                 mode_str = "Connected mode" if is_currently_connected else "Scanning mode"
