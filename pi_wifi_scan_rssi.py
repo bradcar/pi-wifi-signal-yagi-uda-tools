@@ -94,6 +94,12 @@ Free pins:
     GPIO 16 (Physical Pin 36) — Free general-purpose GPIO.
     GPIO 17 (Physical Pin 11) — Free general-purpose GPIO.
 
+# Noise Floor - exceptional
+In a park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
+With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
+Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency.
+
+
 CLI on Pi Zero 2 W:
     $ sudo nmcli dev wifi list
 
@@ -169,7 +175,7 @@ def update_bssid_map(data, heading, bssid_map):
     Updates the persistent bssid_map with current rssi data. If ssid is unknown it will be updated in later
     scans as soon as ssid is found.
 
-    Use None when there is no signal.  This will be converted to -99.0 dB when numerical dB values needed
+    Use None when there is no signal.  This will be converted to -120.0 dB when numerical dB values needed
 
     If heading=None, there is no magnetometer. and the complete 360 degrees are given the same value.
     If peak is the same everywhere in the data structure this side effect is used to determine that there is no magnetometer.
@@ -208,6 +214,19 @@ def update_bssid_map(data, heading, bssid_map):
             old_rssi = bssid_map[bssid]["rssi_history"][0]
             if old_rssi is None or old_rssi < rssi:
                 bssid_map[bssid]["rssi_history"] = [float(rssi)] * 360
+
+
+def get_lowest_rssi_detected(history):
+    """
+    Scans the 360-degree heading history to find the lowest named (SSID) valid RSSI signal (> -120.0).
+    Named are used because they require a clean beacon frame that must have some baseline of signal integrity.
+    This returned value can be used as a rough estimate of the local ambient noise floor.
+    Returns None if no valid signals have been recorded yet.
+    """
+    valid_signals = [val for val in history if val > -120.0]
+    if not valid_signals:
+        return None
+    return float(min(valid_signals))
 
 
 def console_print(data, heading):
@@ -362,7 +381,7 @@ def choose_ssid_lcd(lcd, disp_0, disp_1, disp_2, bssid_map):
         if not ssid_val or ssid_val.strip() == "--":
             continue
 
-        valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
+        valid_signals = [v for v in info["rssi_history"] if v is not None and v > -120.0]
         if not valid_signals:
             continue
         rssi = max(valid_signals)
@@ -452,13 +471,13 @@ def create_radar_png_csv_save(bssid, info, heading, plot_dir, timestamp, lcd_png
     bssid_str = str(bssid) if bssid is not None else "UnknownBSSID"
     safe_bssid = bssid_str.replace(":", "-")
 
-    # Normalize history data array: map None to your minimum plot floor (-99.0), clips to the center of the polar plot
-    cleaned_history = [v if v is not None else -99.0 for v in info["rssi_history"]]
+    # Normalize history data array: map None to your minimum plot floor (-120.0), clips to the center of the polar plot
+    cleaned_history = [v if v is not None else -120.0 for v in info["rssi_history"]]
     info["rssi_history"] = cleaned_history
-    valid_signals = [v for v in info["rssi_history"] if v is not None and v > -99.0]
+    valid_signals = [v for v in info["rssi_history"] if v is not None and v > -120.0]
 
     # Find strongest RSSI dBm and append to file name
-    max_rssi = int(max(valid_signals)) if valid_signals else -99
+    max_rssi = int(max(valid_signals)) if valid_signals else -120
 
     # Extract radar metrics: Peak RSSI, Peak Degree, Peak Cluster, Valid
     peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
@@ -507,8 +526,8 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
         print(f"ERROR: '{ssid}' for Selected BSSID {target_bssid}!")
         return
 
-    # Normalize None values to -99.0 so NumPy can process
-    signal_history = [v if v is not None else -99.0 for v in raw_history]
+    # Normalize None values to -120.0 so NumPy can process
+    signal_history = [v if v is not None else -120.0 for v in raw_history]
 
     peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
     hi_rez_active = False
@@ -551,7 +570,7 @@ def display_plot_mode_ssid_lcd(disp_0, disp_1, disp_2, bssid_map, menu_ssid, tar
             # Get the latest live history from bssid_map for our target BSSID
             if target_bssid in bssid_map:
                 raw_history = bssid_map[target_bssid]["rssi_history"]
-                signal_history = [v if v is not None else -99.0 for v in raw_history]
+                signal_history = [v if v is not None else -120.0 for v in raw_history]
                 peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(signal_history)
 
                 # Also update metrics on Display 1 live
@@ -650,7 +669,7 @@ def main():
     wifi_interface = init_wifi()
     subprocess.run(["sudo", "ip", "link", "set", wifi_interface, "up"])
 
-    # bssid_map Stores {bssid: {"ssid": "Name", "rssi_history": [-99]*360}}
+    # bssid_map Stores {bssid: {"ssid": "Name", "rssi_history": [-120]*360}}
     bssid_map = {}
 
     i2c1, lis3mdl_detected, oled_detected = init_i2c()
@@ -759,6 +778,10 @@ def main():
                     saved_count = 0
                     exit_heading = 0   # Use 0° North for plots
 
+                    # Track global lowest RSSI with its resolved name SSIDs for noise floor estimation
+                    lowest_rssi_global = None
+                    lowest_ssid_global = None
+
                     lcd_png_generate = False
                     hidden_placeholders = {"--", "Unknown", "", None}
 
@@ -766,15 +789,23 @@ def main():
                     summary_rows = []
 
                     for bssid, info in bssid_map.items():
-                        cleaned_history = [v if v is not None else -99.0 for v in info["rssi_history"]]
+                        cleaned_history = [v if v is not None else -120.0 for v in info["rssi_history"]]
                         # Extract valid signal history
-                        valid_signals = [v for v in cleaned_history if v > -99.0]
+                        valid_signals = [v for v in cleaned_history if v > -120.0]
                         if not valid_signals:
                             continue
 
                         max_rssi = max(valid_signals)
                         ssid = info.get("ssid")
                         channel = info.get("channel", "??")
+
+                        # Check and update lowest RSSI for named SSIDs
+                        if ssid and ssid not in hidden_placeholders:
+                            local_min = get_lowest_rssi_detected(cleaned_history)
+                            if local_min is not None:
+                                if lowest_rssi_global is None or local_min < lowest_rssi_global:
+                                    lowest_rssi_global = local_min
+                                    lowest_ssid_global = ssid
 
                         # Extract radar metrics to find the true peak angle
                         peak_rssi, peak_degree, peak_cluster, has_valid_history = extract_radar_metrics(cleaned_history)
@@ -803,6 +834,13 @@ def main():
                         print(f"\n *** Save plot: {ssid}, BSSID: {bssid}, Max RSSI: {max_rssi} dBm, Peak angle: {peak_angle_string}")
                         create_radar_png_csv_save(bssid, info, exit_heading, plot_dir, timestamp, lcd_png_generate)
                         saved_count += 1
+
+                    # Print Noise Floor / Lowest RSSI Report after scanning all signals
+                    if lowest_rssi_global is not None:
+                        print(f"\nLowest RSSI detected for named SSID:  {lowest_rssi_global:.1f} dBm for SSID: {lowest_ssid_global}")
+                        print(f"Estimated local ambient RF noise floor for Pi Zero 2 W with Yagi Uda Antenna: {lowest_rssi_global:.1f} dBm\n")
+                    else:
+                        print(f"WARNING lowest RSSI is None")
 
                     # Save summary of all named SSIDs in plot_dir
                     if summary_rows:
