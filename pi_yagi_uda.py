@@ -137,16 +137,28 @@ PyCharm Remote Deployment Notes:
    - Target Interpreter: /home/pi/.virtualenvs/pi-wifi-signal-yagi-uda-tools/bin/python
    - Target Deployment Path: /home/pi/pi-wifi-signal-yagi-uda-tools
    - Excluded Paths: Exclude `.venv` from local/remote deployment sync options.
+
 ================================================================================
+
+Empirical Link Budget Reference Table:
+    +-------------------------+-------------------+---------------------------------------------------------+
+    | RSSI Target             | Distance Estimate | Practical Context / Range                               |
+    +-------------------------+-------------------+---------------------------------------------------------+
+    | -64 dBm (Measured)      |   46 meters       | ~150 feet (Calibrated baseline)                         |
+    | -75 dBm (Download Thr.) | ~163 meters       | ~535 feet (~0.1 mi) - Hi-throughput data transfer zone  |
+    | -80 dBm (Connect Thr.)  | ~290 meters       | ~950 feet (~0.2 mi) - Reliable beacon handshake zone    |
+    | -85 dBm (Fringe Limit)  | ~515 meters       | ~1,690 feet (~0.3 mi) - Rear fringe / precise pointing  |
+    +-------------------------+-------------------+---------------------------------------------------------+
+================================================================================
+
 
 Power Draw:
     Scanning:  0.29a, 1.49w, 5.22v
     Connected: 0.31a, 1.62w, 5.22v
     Idle:      0.15a, 0.77w, 5.22v
 
-TODO measure shell-fi with Yagi-Uda antenna created by Pi Pico as Access Point
 TODO uncomment logging code to Pi Zero flash
-TODO uncomment saving Actual RSSI to heading, instead of fake testing code
+TODO solder trigger button to gpio6 p31
 """
 import os
 import subprocess
@@ -185,10 +197,12 @@ metrics_lock = threading.Lock()  # Protects Metrics updates: heading, rssi, ... 
 lis3mdl_lock = threading.Lock()  # Protects magnetometer, without protection collisions calculated to 53 degree
 
 # TARGET_SSID = "ABox-PDX"  # CHANNEL=11
-# TODO #1 test Pi Pico as Access Point, make sure on channel=11 !
-# TODO #2 Try shell-fi with static-IP for faster connection wifi_utils.py
 TARGET_SSID = "shell-fi"  # CHANNEL=11
 TARGET_CHANNEL = 11  # Set to None, if not targeting a particular channel
+
+# Network Signal Thresholds
+RSSI_CONNECT_THRESHOLD = -85  # Minimum signal to allow a hardware connection, maybe -85 orig -80
+RSSI_DOWNLOAD_THRESHOLD = -75  # Minimum signal to execute data payload transfer, maybe -80
 
 URL_STRING = "http://192.168.4.1/download"
 DESTINATION_STRING = os.path.expanduser("~/downloads")
@@ -196,10 +210,6 @@ LOG_DIRECTORY = "logs_yagi_uda_rssi_heading"
 
 try_connect = False
 try_download = False
-
-# Network Signal Thresholds
-RSSI_CONNECT_THRESHOLD = -80  # Minimum signal to allow a hardware connection
-RSSI_DOWNLOAD_THRESHOLD = -75  # Minimum signal to execute data payload transfer
 
 OLED_TEXT_WIDTH = 96  # Text on left 96px
 OLED_CIRCLE_AREA_START_X = OLED_TEXT_WIDTH  # Graphic starts at 96px
@@ -235,7 +245,7 @@ button2_pressed = False
 # button2 = Button(6, pull_up=True, bounce_time=0.1)
 
 # Button Definitions for LCD Display
-button0 = Button(6, pull_up=True, bounce_time=0.1, hold_time=0.5)  # todo resolder OLED to gpio6 p31
+button0 = Button(6, pull_up=True, bounce_time=0.1, hold_time=0.5)
 button1 = Button(25, pull_up=True, bounce_time=0.1)
 button2 = Button(26, pull_up=True, bounce_time=0.1)
 
@@ -727,11 +737,9 @@ def main():
         #   Hawthorne, NV = 12.1833333 # 12' 11'
         set_compass_orientation_declination(180.0, 14.5)
 
-    # TODO switching displays by hardcoding
     lcd_detected = False
     if not oled_detected:
         lcd_detected = True
-    # TODO FIX EASY WAY TO SWAP OLED TO LCD !!
     else:
         disp_0 = None
         disp_1 = None
@@ -802,11 +810,12 @@ def main():
             cadence_fill = not cadence_fill
             start_loop = time.time()
 
-            # write CSV of heading, rssi strength for entire 360 degrees, every 61 seconds
-            # TODO ADD BACK LOGGING CSV TO FLASH -  ** LOGGING DISABLED **
-            # if start_loop - last_csv_write > 61:
-            #     write_history_to_csv(rssi_heading_history)
-            #     last_csv_write = time.time()
+            # write CSV of heading, RSSI strength for entire 360 degrees, every 61 seconds
+            if start_loop - last_csv_write > 61:
+                with metrics_lock:
+                    current_history_copy = list(metrics.rssi_heading_history)
+                write_history_to_csv(current_history_copy)
+                last_csv_write = time.time()
 
             temp_duration += duration
             if temp_duration > 60.0:
@@ -821,7 +830,7 @@ def main():
                 button0_long_press = False
                 if metrics.is_connected:
                     change_connection("down")
-                    metrics.rssi_heading_history = [-99.0] * 360
+                    metrics.rssi_heading_history = [-120.0] * 360
                 metrics.is_connected = False
 
             # RUNTIME METRICS
@@ -956,19 +965,18 @@ def main():
         # plot if it takes too long !!!
 
         # Plot data file directory
-        plot_directory_name = "logs_shell_fi_polar_plots"
-        plot_dir = Path(plot_directory_name)
+        plot_dir = Path(LOG_DIRECTORY)
         plot_dir.mkdir(exist_ok=True)
 
         timestamp = datetime.now().strftime('%Y-%m%d-%H%M')
 
         # Grab the current metric state safely
         with metrics_lock:
-            cleaned_history = [v if v is not None else -99.0 for v in metrics.rssi_heading_history]
+            cleaned_history = [v if v is not None else -120.0 for v in metrics.rssi_heading_history]
             current_bssid = metrics.bssid or "unknown_bssid"
             is_currently_connected = metrics.is_connected
 
-        valid_signals = [v for v in cleaned_history if v > -99.0]
+        valid_signals = [v for v in cleaned_history if v > -120.0]
 
         if valid_signals:
             max_rssi = max(valid_signals)
