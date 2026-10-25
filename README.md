@@ -10,7 +10,7 @@ pi_wifi_scan_rssi.py Features:
 * 1.4Hz Unconneted Scan Rate: Periodically scans for Wi-Fi networks using "nmcli".
 * WaveShare Triple LCD Display: Displays live network tables, telemetry, and interactive menu with physical buttons below menu.
 * Ibteractive Polar Plot: Creates polar plot for RSSI strength in each of 360 degrees.
-* Renders a live polar plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution,.
+* Renders a live polar plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution.
 * Print-Quality Polar Plot Export: Generates and saves high-resolution Matplotlib .png polar plots with 1° resolution on program exit.
 * Log file: Saves a .csv data file for each Wi-Fi on exit.
 
@@ -19,7 +19,7 @@ pi_yagi_uda.py Features:
 * 1.4 Hz Unconneted Scan Rate: Scans unconnected Wi-Fis with "nmcli".
 * 5 Hz Conneted Scan Rate: Higher accuracy interface polling when actively connected with an access point.
 * Dual Operational Modes: Can switch between background scanning and connected link polling.
-* Physical Buttons Control Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start cobbnection,.
+* Physical Buttons Control Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start cobbnection.
 * Hardware buttons: Features the display's hardware buttons for miode handling and file-download triggers.
 * Access Point Download: Button can trigger data dowbnload from Access Point and store into Pi Zero W flash.
 * Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to prevent signakl measurement lag.
@@ -162,8 +162,8 @@ Yagi Uda directional antenna
   * Hand grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
 
 
-## Noise Floor - exceptional
-In a open neighborhood park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
+## Noise Floor - exceptional configuration
+In an open neighborhood park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
 With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
 Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency. 
 
