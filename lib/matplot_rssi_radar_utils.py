@@ -115,14 +115,14 @@ def plot_rssi_polar_matplotlib(rssi, heading, subtitle, lcd_png_generate, file_n
     history_array = np.column_stack((degrees, rssi))
 
     # Fast mask filtering using native NumPy expressions
-    valid_data = history_array[history_array[:, 1] > -98]
+    valid_data = history_array[history_array[:, 1] > -120]
 
     if len(valid_data) != 0:
         # if arc is 360 degrees, the peak pointer will be at 180 degrees
         arc_radians, arc_radii, peak_cluster, peak_degree, peak_rssi = rssi_peak(valid_data)
         arc_radians = arc_radians - np.pi / 2
     else:
-        peak_rssi = -99.0
+        peak_rssi = -120.0
         peak_degree = 0
         peak_cluster = np.array([])
         arc_radians = np.array([])
@@ -192,7 +192,11 @@ def plot_rssi_polar_matplotlib(rssi, heading, subtitle, lcd_png_generate, file_n
     # Set your desired minimum (ex: -80 dBm). When peak RSSI > -45 ( stronger than 4 bars), then max radius at 90% of full range)
     rssi_min_plot = -99
     rssi_max_plot = -45
-    if peak_rssi != -99:
+
+    # Set unmeasured values -120 to center
+    rssi = np.clip(rssi, rssi_min_plot, None)
+
+    if peak_rssi != -120.0:
         max_radius_percent = 0.90
         # print(f"Autoscaled Plot Range ({int(max_radius_percent * 100)}% range):  {rssi_max_plot:.0f} to {rssi_min_plot:.0f} dBm")
         if peak_rssi > -45:
@@ -202,9 +206,10 @@ def plot_rssi_polar_matplotlib(rssi, heading, subtitle, lcd_png_generate, file_n
     ax.set_ylim(rssi_min_plot, rssi_max_plot)
 
     # draw bar circles:
-    # 1-bar solid: -80 dB, dashed 2-bar dashed: -70 dB, 3-bar dashed : -60 dB, 4-bar Solid: -50 dB,
+    # 1-bar solid: -80 dB, dashed 2-bar dashed: -70 dB, 3-bar dashed : -60 dB, 4-bar Solid: -50 dB
+    # "--" gives narrow gap, (4, 12 gives larger gap)
     circle_theta = np.linspace(0, 2 * np.pi, 360)
-    for rssi_val, style in [(-80, ':'), (-70, '--'), (-60, '--'), (-50, '-')]:
+    for rssi_val, style in [(-80, ':'), (-70, '--'), (-60, '-.'), (-50, '-')]:
         ax.plot(circle_theta, np.full_like(circle_theta, rssi_val), color='orange', linestyle=style, linewidth=1,
                 zorder=3)
 
