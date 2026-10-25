@@ -11,7 +11,7 @@ pi_wifi_scan_rssi.py Features:
 * WaveShare Triple LCD Display: Displays live network tables, telemetry, and interactive menu with physical buttons below menu.
 * Ibteractive Polar Plot: Creates polar plot for RSSI strength in each of 360 degrees.
 * Renders a live polar plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution.
-* Print-Quality Polar Plot Export: Generates and saves high-resolution Matplotlib .png polar plots with 1° resolution on program exit.
+* Print-Quality Polar Plot Export: Creates high-resolution Matplotlib polar plots with 1° resolution and saves them in .png format on program exit.
 * Log file: Saves a .csv data file for each Wi-Fi on exit.
 
 pi_yagi_uda.py Features:
