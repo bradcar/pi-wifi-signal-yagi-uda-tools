@@ -145,9 +145,9 @@ Yagi Uda directional antenna
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
   * measured 10 to 19 dB gain over omnidirectional antenna
-    * u.FL mod still lacks removal of some traces, so additional improvements likely.
+    * u.FL mod still lacks removal of some traces, so additional improvements are likely.
   * Return Loss: -30.7 dB  (VSWR 1:1.06)
-  * Noise floor estimate at -98.0 dBm
+  * Noise floor measure at unbelievably low -98.0 dBm.
 * u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
   * TE Connectivity, Part: 994-080-0001-ND
 * Hardware modification required to add external u.FL connector to Pi Zero 2 W
@@ -165,7 +165,7 @@ Yagi Uda directional antenna
 ## Noise Floor - exceptional configuration
 In an open neighborhood park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
 With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
-Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency. 
+Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup is performing at near peak efficiency. 
 
 
 ## Hardware Setup & Pin Mapping
