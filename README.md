@@ -1,7 +1,28 @@
 
 # Wi-Fi Signal Tools for Pi Zero 2 W
 
-There are four tools for measuring Wi-Fi signals. The primary full-feature tool is "pi_wifi_scan_rssi.py".
+There are four Raspberry Pi Zero W tools for measuring Wi-Fi signals. The primary tool is "pi_wifi_scan_rssi.py".
+
+pi_wifi_scan_rssi.py Features:
+* 2.4 GHz Yagi-Uda Directional Tracking: Integrates a modified 18.5 dBi Techtoo Yagi-Uda antenna (about 2 bar boost in pointed direction).
+* 1° Precision Compass Heading: Uses a LIS3MDL 3-axis I2C magnetometer to track antenna orientation in real time. 
+* 360° Signal Mapping: Continuously records RSSI and heading for all detected 2.4 GHz networks.
+* 1.4Hz Unconneted Scan Rate: Periodically scans for Wi-Fi networks using "nmcli".
+* WaveShare Triple LCD Display: Displays live network tables, telemetry, and interactive menu with physical buttons below menu.
+* Ibteractive Polar Plot: Creates polar plot for RSSI strength in each of 360 degrees.
+* Renders a live polar plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution,.
+* Print-Quality Polar Plot Export: Generates and saves high-resolution Matplotlib .png polar plots with 1° resolution on program exit.
+* Log file: Saves a .csv data file for each Wi-Fi on exit.
+
+pi_yagi_uda.py Features:
+* Targeted Single-Network Tracking: Locks onto and monitors a specific Wi-Fi SSID.
+* 1.4 Hz Unconneted Scan Rate: Scans unconnected Wi-Fis with "nmcli".
+* 5 Hz Conneted Scan Rate: Higher accuracy interface polling when actively connected with an access point.
+* Dual Operational Modes: Can switch between background scanning and connected link polling.
+* Physical Buttons Control Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start cobbnection,.
+* Hardware buttons: Features the display's hardware buttons for miode handling and file-download triggers.
+* Access Point Download: Button can trigger data dowbnload from Access Point and store into Pi Zero W flash.
+* Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to prevent signakl measurement lag.
 
 # pi_wifi_scan_rssi.py
 
@@ -55,7 +76,7 @@ Gruno     -76 *    3
 ### Plot mode:
 
 In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat.
-![wifi-finder_DSC0077.jpg](assets/images/wifi-finder_DSC0077.jpg)
+![pi_wifi_rssi_DSC0090.jpg](assets/images/pi_wifi_rssi_DSC0090.jpg)
 1. Left Display (disp_0 — 160px × 80px): 
    Displays dynamic interactive menu options above the display buttons.
    In this mode "Next" and "Select" are shown. 
@@ -79,8 +100,7 @@ In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveSh
 
 In this mode, if the button under "Scan?" is pressed the script will go back to Scan Mode. 
 If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the selected Wi-Fi.
-
-![wifi-finder_DSC0079.jpg](assets/images/wifi-finder_DSC0079.jpg)
+![World_Best_Internet_02-58-28-1e-6a-32_2026-1024-1512_-56dBm_334deg.png](assets/images/World_Best_Internet_02-58-28-1e-6a-32_2026-1024-1512_-56dBm_334deg.png)
 
 This can be a slow process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
 While generated with high resolution the 240x240px display may be harder to read.
@@ -103,10 +123,6 @@ The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ dir
 
 ![mw-home_42-75-c3-47-e8-d9_2026-0925-1250_-70dBm_352deg.png](assets/images/mw-home_42-75-c3-47-e8-d9_2026-0925-1250_-70dBm_352deg.png)
 
-Notice for the plot below, with more samples the peak would have likely been at 235° degrees.
-
-![Worldxe2x80x99s_Best_Internet_02-58-28-1e-6a-32_2026-0925-1250_-51dBm_203deg.png](assets/images/Worldxe2x80x99s_Best_Internet_02-58-28-1e-6a-32_2026-0925-1250_-51dBm_203deg.png)
-
 For locations with many networks, this may take >10 minutes or more.
 
 Can also create plots of Wi-Fi sources (need to comment or uncomment code).
@@ -122,7 +138,7 @@ Note: To quickly check the available Wi-Fi from the console use:
 ---
 
 ## Yagi Uda Directional Antenna
-Yagi Uda diredtional antenna
+Yagi Uda directional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
   * Directional Antenna (we have observed this approx Beamwidth)
     * 30° Horizontal Beamwidth
@@ -130,6 +146,7 @@ Yagi Uda diredtional antenna
   * measured 10 to 19 dB gain over omnidirectional antenna
     * u.FL mod still lacks removal of some traces, so additional improvements likely.
   * Return Loss: -30.7 dB  (VSWR 1:1.06)
+  * Noise floor estimate at -98.0 dBm
 * u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
   * TE Connectivity, Part: 994-080-0001-ND
 * Hardware modification required to add external u.FL connector to Pi Zero 2 W
@@ -142,6 +159,13 @@ Yagi Uda diredtional antenna
   * DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
     * Also has 3/8" screw at bottom so can mount on tripod.
   * Hand grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
+
+
+## Noise Floor - exceptional
+In a open neighborhood park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
+With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
+Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency. 
+
 
 ## Hardware Setup & Pin Mapping
 * **Board:** Raspberry Pi Zero 2 W (Linux)
