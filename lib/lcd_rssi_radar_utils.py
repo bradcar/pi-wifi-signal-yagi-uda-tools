@@ -103,7 +103,7 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
     if heading is None:
         heading = 0.0
 
-    # Draw basic radar layout
+    # Draw basic radar screen layout
     draw.rectangle((0, 0, 240, 240), fill="#111111")
     draw.ellipse((center_x - max_radius, center_y - max_radius,
                   center_x + max_radius, center_y + max_radius),
@@ -133,26 +133,26 @@ def display_rssi_polar_plot_lcd(draw, cadence_fill, heading: float, signal_histo
                       weak_bound=rssi_min_plot, box_size=12, color="cyan")
 
         # RSSI Bar circles (-50 solid, -60/-70/-80 dashed)
-        rssi_targets = [
-            {"rssi": -50, "dashed": False},
-            {"rssi": -60, "dashed": True},
-            {"rssi": -70, "dashed": True},
-            {"rssi": -80, "dashed": True},
+        rssi_bar_circles = [
+            {"rssi": -50, "dash_deg": None, "gap_deg": None}, # None indicates solid circle
+            {"rssi": -60, "dash_deg": 10, "gap_deg": 5},
+            {"rssi": -70, "dash_deg": 10, "gap_deg": 20},
+            {"rssi": -80, "dash_deg": 15, "gap_deg": 30},
         ]
 
-        for item in rssi_targets:
-            val = item["rssi"]
+        for item in rssi_bar_circles:
+            rssi_circle = item["rssi"]
             # Check if target RSSI falls within current plot bounds
-            if rssi_min_plot <= val <= rssi_max_plot:
+            if rssi_min_plot <= rssi_circle <= rssi_max_plot:
                 # Map RSSI to radius, center is min_plot and outer edge is max_plot
-                fraction = (val - rssi_min_plot) / (rssi_max_plot - rssi_min_plot)
+                fraction = (rssi_circle - rssi_min_plot) / (rssi_max_plot - rssi_min_plot)
                 radius = int(max_radius * fraction)
 
-                if radius > 0:
-                    if item["dashed"]:
-                        draw_dashed_circle(draw, center_x, center_y,radius, outline="white", dash_deg=10, gap_deg=5,)
+                if fraction < 100.0:
+                    if item["dash_deg"] is not None:
+                        draw_dashed_circle(draw, center_x, center_y,radius, outline="white", dash_deg=item["dash_deg"], gap_deg=item["gap_deg"])
                     else:
-                        # Solid circle for -50 dBm
+                        # Solid circle for -50 dBm, dash 360 degrees
                         draw.ellipse([center_x - radius, center_y - radius, center_x + radius, center_y + radius,], outline="white")
 
     # Center axis core marker Blue give hex so it is bright blue
