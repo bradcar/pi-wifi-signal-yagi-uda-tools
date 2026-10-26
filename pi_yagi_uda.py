@@ -161,8 +161,8 @@ Power Draw:
 
 NOTES:
     * Colors blue and green are muted and dim, Must use "x00ff00" for green and "x0000ff" for blue
-
-TODO solder trigger button to gpio6 p31
+TODOs:
+    * TODO solder trigger button to gpio6 p31
 """
 import os
 import subprocess
@@ -337,7 +337,7 @@ def init_i2c():
     """
     i2c1 = busio.I2C(board.SCL, board.SDA)  # can't set frequency in Python on Pi Zero
     oled_detected, lis_detected = scan_i2c_bus(i2c1)
-    print(f"{oled_detected=} + {lis_detected=}")
+    print(f"{oled_detected=}/n{lis_detected=}")
     return i2c1, oled_detected, lis_detected
 
 
@@ -401,17 +401,18 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
         ]
     elif connected:
         items = [
-            ("Linked", (132, 0), lcd.font0_24pt, "#00ff00"),
+            (f"{TARGET_SSID}", (132, 0), lcd.font0_24pt, "white"),
+            ("Linked", (108, 0), lcd.font0_24pt, "#00ff00"),
         ]
-        # You are connected! Check if signal is strong enough for download prompt or just show connected status
+        # Connected. Check if signal is strong enough for download or just show connection request
         # if so append text to items to display two messages on disp_0
         if rssi is not None and rssi >= RSSI_DOWNLOAD_THRESHOLD:
             items.append(("down", (70, 0), lcd.font0_28pt, "#0000ff"))
             items.append(("load?", (44, 0), lcd.font0_28pt, "#0000ff"))
     elif not connected and rssi is not None and rssi >= RSSI_CONNECT_THRESHOLD:
         items = [
-            ("Con-", (132, 0), lcd.font0_28pt, "#00ff00"),
-            ("nect?", (108, 0), lcd.font0_28pt, "#00ff00"),
+            (f"{TARGET_SSID}", (132, 0), lcd.font0_24pt, "white"),
+            ("Link ?", (106, 0), lcd.font0_28pt, "#00ff00"),
         ]
     else:
         items = [
@@ -572,7 +573,7 @@ def handle_connected_mode(metrics, download_count, heading, target_ssid, url, de
         if current_ssid != target_ssid and current_ssid not in [None, "", "wlan0 essid unknown"]:
             is_connected = False
             return is_connected, None, None, None, None, download_count, None, False
-        # Allow temporary drop, check next scan
+        # Allow temporary drop, re-check next scan
         current_ssid = target_ssid
     else:
         # Since RSSI result, set ssid
@@ -973,10 +974,10 @@ def main():
     except KeyboardInterrupt:
         print("\nEnded Tracking (^c).")
 
-        # NOTE: RISKY using Control-C as signal because PyCharm will send 15:SIGTERM which will kill
-        # plot if it takes too long !!!
+        # NOTE: IT is RISKY to use Control-C as signal because PyCharm will send 15:SIGTERM which kills
+        # plot if it takes too long - in fact print after plot is never seen !
 
-        # Plot data file directory
+        # Read plot data from file directory
         plot_dir = Path(LOG_DIRECTORY)
         plot_dir.mkdir(exist_ok=True)
 
@@ -998,7 +999,8 @@ def main():
             is_omnidirectional = peak_cluster is not None and len(peak_cluster) >= 360
             peak_angle_string = "omni" if is_omnidirectional or peak_degree is None else f"{int(peak_degree)}"
 
-            print(f"\nLowest RSSI (noise floor): {min_rssi} dBm\n")
+            print(f"\nLowest RSSI (noise floor): {min_rssi} dBm")
+            print(f"Largest SNR: {max_rssi - min_rssi} dB\n")
 
 
             # Save direction vs RSSI history to CSV
@@ -1027,7 +1029,7 @@ def main():
                     file_name=str(plot_png_path)
                 )
             except Exception as e:
-                print(f"\n Warning: Failed to generate polar plot via library: {e}")
+                print(f"\n Warning: Failed to generate polar plot with MatPlotLib: {e}")
 
         else:
             print("\n No valid RSSI history data recorded to save.")
