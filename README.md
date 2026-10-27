@@ -319,5 +319,7 @@ pi_wifi_rssi_quality_rxrate_curses.py
 ### Analysis TECHTOO Wi-Fi Yagi Uda Antenna
 
 Analysis of TECHTOO 2.4 GHz Wi-Fi Yagi-Uda Antenna 2.4GHz with u.FL TO RP-SMA 4.1"
+Notice the superior reading (-30.69 dB 47.5 ohm and 89.1 pH) for Channel 11 (2462 MHz).
+
 
 ![image](assets/images/techtoo_yagi-uda_4in1_pigtail_nanoVNA-100926.png "Yagi Uda Analysis")

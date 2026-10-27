@@ -290,7 +290,7 @@ Radar Updates:      36.2 msec, 28 Hz
 Clock: 2026-09-14 10:14:20
 ```
 
-Configuration & Notes
+## Configuration & Notes
 
 Permissions: Ensure system utilities have setuid permissions for non-root execution:
 
@@ -298,50 +298,23 @@ Permissions: Ensure system utilities have setuid permissions for non-root execut
 
 
 
-## pi_wifi_rssi_quality_rxrate.py
-
-On Raspberry Pi Zero 2 W, repeatedly measure and print RSSI, Link Quality,
-and RX Bit Rate of the currently connected network on interface wlan0.
-
-Prototype for tracking signal vectors using a directional Yagi_Uda antenna.
-Reads metrics continuously to signal strength changes.
-
-### Power draw
-0.21a @ 5.22v (1.2w)
-
-### Usage:
-in terminal, python3 pi_wifi_rssi_quality_rxrate.py
-can also run in PyCharm
-
-There is also a Curses version:
-pi_wifi_rssi_quality_rxrate_curses.py
-
-### Sample output pi_wifi_rssi_quality_rxrate.py
-    WiFi Signal Monitor (Pi Zero): ABox-PDX
-    SSID:    ABox-PDX
-    RSSI:    -19 dBm  4 bars
-    Link Q:  70/70, Perfect Link
-    RX Rate: 72.2 Mb/s
-    Updates:  15.8 msec, 63 Hz
-    Clock: 2026-05-23 09:36:26
-
-
-
-### NOTES
+### NOTES:
 
 1. Python MUST be enabled in System Settings > Privacy & Security> Location Services.
 
 2. iwlist sudo
    1. Give the iwlist program setuid root permissions
-   sudo chmod u+s /usr/sbin/iwlist
-   2. Verify the permissions changed successfully
-   ls -l /usr/sbin/iwlist
 
-      
+   ```sudo chmod u+s /usr/sbin/iwlist```
+
+   2. Verify the permissions changed successfully
+
+   ```ls -l /usr/sbin/iwlist```
 
 
 ### Analysis TECHTOO Wi-Fi Yagi Uda Antenna
 
 Analysis of TECHTOO 2.4 GHz Wi-Fi Yagi-Uda Antenna 2.4GHz with u.FL TO RP-SMA 4.1"
+Notice the superior reading (-30.69 dB 47.5 ohm and 89.1 pH) for Channel 11 (2462 MHz).
 
 ![image](../assets/images/techtoo_yagi-uda_4in1_pigtail_nanoVNA-100926.png "Yagi Uda Analysis")
