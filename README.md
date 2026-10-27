@@ -4,25 +4,25 @@
 There are four Raspberry Pi Zero W tools for measuring Wi-Fi signals. The primary tool is "pi_wifi_scan_rssi.py".
 
 pi_wifi_scan_rssi.py Features:
-* 2.4 GHz Yagi-Uda Directional Tracking: Integrates a modified 18.5 dBi Techtoo Yagi-Uda antenna (about 2 bar boost in pointed direction).
+* 2.4 GHz Yagi Uda Directional Tracking: Integrates a modified 18.5 dBi Techtoo Yagi-Uda antenna (about 2 bar boost in pointed direction).
 * 1° Precision Compass Heading: Uses a LIS3MDL 3-axis I2C magnetometer to track antenna orientation in real time. 
 * 360° Signal Mapping: Continuously records RSSI and heading for all detected 2.4 GHz networks.
-* 1.4Hz Unconneted Scan Rate: Periodically scans for Wi-Fi networks using "nmcli".
+* 1.4Hz Unconnected Scan Rate: Periodically scans for Wi-Fi networks using "nmcli".
 * WaveShare Triple LCD Display: Displays live network tables, telemetry, and interactive menu with physical buttons below menu.
-* Ibteractive Polar Plot: Creates polar plot for RSSI strength in each of 360 degrees.
-* Renders a live polar plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution.
-* Print-Quality Polar Plot Export: Creates high-resolution Matplotlib polar plots with 1° resolution and saves them in .png format on program exit.
-* Log file: Saves a .csv data file for each Wi-Fi on exit.
+* Interactive Polar Plot: Creates polar plot for RSSI strength in each of 360 degrees.
+* Renders a Live Polar Plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution.
+* Print-quality Polar Plot Export: Creates high-resolution MatPlotLib polar plots with 1° resolution and saves them in .png format on program exit.
+* Log Files: Saves a .csv data file for each Wi-Fi on exit.
 
 pi_yagi_uda.py Features:
-* Targeted Single-Network Tracking: Locks onto and monitors a specific Wi-Fi SSID.
-* 1.4 Hz Unconneted Scan Rate: Scans unconnected Wi-Fis with "nmcli".
-* 5 Hz Conneted Scan Rate: Higher accuracy interface polling when actively connected with an access point.
+* Targeted Single-network Tracking: Locks onto and monitors a specific Wi-Fi SSID.
+* 1.4 Hz Unconnected Scan Rate: Scans unconnected Wi-Fis with "nmcli".
+* 5 Hz Connected Scan Rate: Higher accuracy interface polling when actively connected with an access point.
 * Dual Operational Modes: Can switch between background scanning and connected link polling.
-* Physical Buttons Control Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start cobbnection.
-* Hardware buttons: Features the display's hardware buttons for miode handling and file-download triggers.
-* Access Point Download: Button can trigger data dowbnload from Access Point and store into Pi Zero W flash.
-* Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to prevent signakl measurement lag.
+* Hardware Buttons Control Modes: Features the display's hardware buttons for mode handling and file-download triggers.
+* Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start connection mode.
+* Access Point Download: Button can trigger data download from Access Point and store into Pi Zero W flash.
+* Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to prevent signal measurement lag.
 ![pi_yagi_uda_DSC0092.jpg](assets/images/pi_yagi_uda_DSC0092.jpg)
 
 # pi_wifi_scan_rssi.py
@@ -33,7 +33,7 @@ It supports real-time visualization on a WaveShare Triple LCD HAT and creates hi
 You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (nmcli).
 ![yagi-uda-carpet.png](assets/images/yagi-uda-carpet.png)
 Prototype Configuration: Techtoo directional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
-Raspberry Pi Zero 2 W with Waveshare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white open box).
+Raspberry Pi Zero 2 W with WaveShare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white open box).
 ![wifi-finder_DSC0082.jpg](assets/images/wifi-finder_DSC0082.jpg)
 
 ## Hardware & Display Layout
@@ -84,7 +84,7 @@ In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveSh
 
    If the button under "Next" is pressed the selected row in yellow advances to the next Wi-Fi. 
    This will advance to the next signal and finally wrap around
-   If the button under "Select" is selected the script prepares a plots the selected Wi-Fi.
+   If the button under "Select" is selected the script prepares a plot of the selected Wi-Fi.
 
 2. Center Display (disp_2 — 240px × 240px):
   Shows a sorted list of the named Wi-Fi signals (strongest on top)
@@ -141,7 +141,7 @@ Note: To quickly check the available Wi-Fi from the console use:
 ## Yagi Uda Directional Antenna
 Yagi Uda directional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
-  * Directional Antenna (we have observed this approx Beamwidth)
+  * Directional Antenna (we have observed this approximate Beamwidth)
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
   * measured 10 to 19 dB gain over omnidirectional antenna
@@ -227,7 +227,7 @@ Automatically manages network state (nmcli) to toggle between unauthenticated sc
 Includes payload download capability when link budget is sufficient.
 
 The code automatically handles connection drops and resumes polling upon reconnect.
-When there is sufficient signal strength when connected, an option to download file on a specifiec webpage can be downloaded.
+When there is sufficient signal strength when connected, an option to download file on a specific webpage can be downloaded.
 
 Operational Modes:
 * Scan Mode (is_connected == False): Low-frequency pings via nmcli/iw (~5 Hz update rate).
@@ -288,7 +288,7 @@ Reads metrics continuously to signal strength changes.
 
 ### Usage:
 in terminal, python3 pi_wifi_rssi_quality_rxrate.py
-can also run in pycharm
+can also run in PyCharm
 
 There is also a Curses version:
 pi_wifi_rssi_quality_rxrate_curses.py
