@@ -95,9 +95,9 @@ Free pins:
     GPIO 17 (Physical Pin 11) — Free general-purpose GPIO.
 
 # Noise Floor - exceptional
-In a park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
+In a park we see -99 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
 With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
-Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency.
+Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda setup and -120.0 sentinel threshold are performing at peak efficiency.
 
 NOTES:
     * Colors blue and green are muted and dim, Must use "x00ff00" for green and "x0000ff" for blue
@@ -211,11 +211,17 @@ def update_bssid_map(data, heading, bssid_map):
         if heading is not None and rssi is not None:
             old_rssi = bssid_map[bssid]["rssi_history"][heading]
             if old_rssi is None or old_rssi < rssi:
-                bssid_map[bssid]["rssi_history"][heading] = rssi
+                if rssi != 0.0:
+                    bssid_map[bssid]["rssi_history"][heading] = rssi
+                else:
+                    print(f"* RSSI == 0.0 {heading=}, {old_rssi=}, {rssi=}")
         elif rssi is not None:
             old_rssi = bssid_map[bssid]["rssi_history"][0]
             if old_rssi is None or old_rssi < rssi:
-                bssid_map[bssid]["rssi_history"] = [float(rssi)] * 360
+                if rssi != 0.0:
+                    bssid_map[bssid]["rssi_history"] = [float(rssi)] * 360
+                else:
+                    print(f"* RSSI == 0.0 {heading=}, {old_rssi=}, {rssi=}")
 
 
 def get_lowest_rssi_detected(history):
@@ -754,7 +760,7 @@ def main():
 
                 print(
                     f"\n{'Only showing networks with >1-bar & 2.4GHz' if BLOCK_0_BAR else 'Only showing 2.4GHz networks'}")
-                print(f"  Tracking {above_80_rssi} of {len(bssid_map)} Networks, only {above_80_rssi} above -80 dBm (>1-bar)")
+                print(f"  Tracking: {above_80_rssi} of {len(bssid_map)} Networks above -80 dBm (>1-bar)")
                 print(f"  Clock: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"  Updates: {duration * 1000:.1f} msec, {1.0 / duration:.1f} Hz")
                 print(f"  Pi Zero 2W temp: {pi_celsius:.1f}°C ({celsius_to_fahrenheit(pi_celsius):.0f}°F)\n")
@@ -839,8 +845,8 @@ def main():
 
                 # Print Noise Floor / Lowest RSSI Report after scanning all signals
                 if lowest_rssi_global is not None:
-                    print(f"\nLowest RSSI detected for named SSID:  {lowest_rssi_global:.1f} dBm for SSID: {lowest_ssid_global}")
-                    print(f"Estimated local ambient RF noise floor for Pi Zero 2 W with Yagi Uda Antenna: {lowest_rssi_global:.1f} dBm\n")
+                    print(f"\nLowest RSSI detected for named SSID:  {lowest_rssi_global} dBm for SSID: {lowest_ssid_global}")
+                    print(f"Estimated local ambient RF noise floor for Pi Zero 2 W with Yagi Uda Antenna: {lowest_rssi_global} dBm\n")
                 else:
                     print(f"WARNING lowest RSSI is None")
 
