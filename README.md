@@ -14,7 +14,7 @@ pi_wifi_scan_rssi.py Features:
 * Print-quality Polar Plot Export: Creates high-resolution MatPlotLib polar plots with 1° resolution and saves them in .png format on program exit.
 * Log Files: Saves a .csv data file for each Wi-Fi on exit.
 
-pi_yagi_uda.py Features:
+pi_yagi_uda.py Features ([readme_pi_yagi_uda.md](docs/readme_pi_yagi_uda.md)) :
 * Targeted Single-network Tracking: Locks onto and monitors a specific Wi-Fi SSID.
 * 1.4 Hz Unconnected Scan Rate: Scans unconnected Wi-Fis with "nmcli".
 * 5 Hz Connected Scan Rate: Higher accuracy interface polling when actively connected with an access point.
@@ -38,7 +38,7 @@ Raspberry Pi Zero 2 W with WaveShare Triple display LCD (red open case), black 1
 
 ## Hardware & Display Layout
 
-The user interface is shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
+Data an images shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
 It also uses the left most screen for menu selection using the physical buttons on the Triple Display LCD Hat. These buttons are directly under the left-most screen.
 
 ### Scan Mode Displays
@@ -46,18 +46,18 @@ The program starts in Scan mode.
 
 ![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_DSC0067.jpg)
 
-1. Left Display (disp_0 — 160px × 80px): 
-   Displays dynamic interactive menu options above the display buttons.
+1. Left Display (disp_0: 160px × 80px): 
+   Displays dynamic menu options above the display buttons.
    In this mode "Plot RSSI?" and "Exit w/ Plots?" are shown. 
 
-   In this mode, if the button under "Plot RSSI?" is pressed the script will go into Plot mode. 
-   If the button under "Exit & Plot?" is selected the script will start preparing high-resolution plots for each Wi-Fi detected.
-   data with unknown SSID or with RSSI < -80db are skipped.
+   If the button under "Plot RSSI?" is pressed, Plot mode is started. 
+   If the button under "Exit & Plot?" is pressed, high-resolution plots for each Wi-Fi detected with be created and saved.
+   Data with unknown SSID or with RSSI < -80db are skipped.
 
-2. Center Display (disp_2 — 240px × 240px):
-  In Scan Mode, a live table of discovered 2.4 GHz networks is shown.
+2. Center Display (disp_2: 240px × 240px):
+  A live table of the strongest 2.4 GHz networks is shown.
   Each row shows SSID name, its RSSI values, its signal bars, and its channel number. 
-  They are sorted by the current measurements of RSSI signal strength.
+  They are sorted by the current RSSI signal strength at this direction.
   For Example: 
 ```
 SSID      dBm bar ch
@@ -71,27 +71,26 @@ Gruno     -76 *    3
 <hidden>  -78 *    4
 ```
 
-3. Right Display (disp_1 — 160px × 80px):
+3. Right Display (disp_1: 160px × 80px):
    Shows real-time telemetry metrics: current compass heading and system clock.
 
 ### Plot mode:
 
 In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat.
 ![pi_wifi_rssi_DSC0090.jpg](assets/images/pi_wifi_rssi_DSC0090.jpg)
-1. Left Display (disp_0 — 160px × 80px): 
+1. Left Display (disp_0: 160px × 80px): 
    Displays dynamic interactive menu options above the display buttons.
    In this mode "Next" and "Select" are shown. 
 
-   If the button under "Next" is pressed the selected row in yellow advances to the next Wi-Fi. 
-   This will advance to the next signal and finally wrap around
-   If the button under "Select" is selected the script prepares a plot of the selected Wi-Fi.
+   If the button under "Next" is pressed, the selected row (in yellow) advances to the next Wi-Fi. 
+   This will advance to the next signal and eventually wrap around back to first Wi-Fi.
+   If the button under "Select" is pressed, a plot of the selected Wi-Fi is created.
 
-2. Center Display (disp_2 — 240px × 240px):
+2. Center Display (disp_2: 240px × 240px):
   Shows a sorted list of the named Wi-Fi signals (strongest on top)
   Only named Wi-Fi's are shown in this list (code can be modified to show all signals).
-  If a Wi-Fi is selected, a polar plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat. 
-  The display uses the LIS3MDL magnetometer to orientate the screen so 0° points true north.
-  In this way the antenna can be used a dynamic pointer.
+  If a Wi-Fi is selected, a polar plot of a selected Wi-Fi network is shown in the center display. 
+  The display uses the LIS3MDL magnetometer to orientate the screen in the direction of the antenna.
   Wi-Fi signals are not updated in this mode.
 
 3. Right Display (disp_1 — 160px × 80px):
@@ -103,7 +102,7 @@ In this mode, if the button under "Scan?" is pressed the script will go back to 
 If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the selected Wi-Fi.
 ![World_Best_Internet_02-58-28-1e-6a-32_2026-1024-1512_-56dBm_334deg.png](assets/images/World_Best_Internet_02-58-28-1e-6a-32_2026-1024-1512_-56dBm_334deg.png)
 
-This can be a slow process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
+Creating Hi-Rez plots is a SLOW process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
 While generated with high resolution the 240x240px display may be harder to read.
 
 ### Exit w/ Plots:
@@ -116,7 +115,7 @@ In addition, orange rings are show at the bar equivalents.
 3. next ring is orange dashed at -60 dBm (3 bars),
 4. final ring is solid orange at -50 dBm (4 bars).
 
-On exit the data used to generate the plots is also saved in a CSV file with data for the entire 360° data collected in 1° increments.
+On exit, the data used to generate the plots is also saved in a CSV file with data for the entire 360° (1° increments).
 The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset. 
 Plots use the ".png" extension and CSV Files use the ".csv" extension.
 The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ directory.
@@ -124,7 +123,7 @@ The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ dir
 
 ![mw-home_42-75-c3-47-e8-d9_2026-0925-1250_-70dBm_352deg.png](assets/images/mw-home_42-75-c3-47-e8-d9_2026-0925-1250_-70dBm_352deg.png)
 
-For locations with many networks, this may take >10 minutes or more.
+For locations with hundreds of networks, this may take >10 minutes or more.
 
 Can also create plots of Wi-Fi sources (need to comment or uncomment code).
 
@@ -141,7 +140,7 @@ Note: To quickly check the available Wi-Fi from the console use:
 ## Yagi Uda Directional Antenna
 Yagi Uda directional antenna
 * TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
-  * Directional Antenna (we have observed this approximate Beamwidth)
+  * Directional Antenna (we have observed similar Beamwidth)
     * 30° Horizontal Beamwidth
     * 28° Vertical Beamwidth
   * measured 10 to 19 dB gain over omnidirectional antenna
@@ -163,9 +162,9 @@ Yagi Uda directional antenna
 
 
 ## Noise Floor - exceptional configuration
-In an open neighborhood park we see -98.0 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
+In an open neighborhood park we have seen -99 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
 With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
-Getting a clean beacon frame out at -98 dBm proves this directional Yagi-Uda setup is performing at near peak efficiency. 
+Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda setup is performing at near-peak efficiency. 
 
 
 ## Hardware Setup & Pin Mapping
