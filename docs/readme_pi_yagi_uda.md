@@ -47,11 +47,11 @@ It also uses the left most screen for menu selection using the physical buttons 
 
 When using the three-display Waveshare LCD HAT, the code uses the displays as follows:
 
-| Display           | Resolution | Purpose                                                        |
-|-------------------|-----------:|----------------------------------------------------------------|
-| Left (`disp_0`)   |   160 × 80 | Connection status, signal status, and download prompts         |
-| Center (`disp_2`) |  240 × 240 | Polar RSSI plot and directional signal history                 |
-| Right (`disp_1`)  |   160 × 80 | Compass heading and direction to the strongest recorded signal |
+| Display           | Resolution | Purpose                                                                  |
+|-------------------|-----------:|--------------------------------------------------------------------------|
+| Left (`disp_0`)   |   160 × 80 | Connection status, signal status, and download prompts                   |
+| Center (`disp_2`) |  240 × 240 | Polar RSSI plot and directional signal history                           |
+| Right (`disp_1`)  |   160 × 80 | Compass heading, current RSSI,  and direction to strongest recorded RSSI |
 
 The code also contains a vestigial OLED display path. 
 The display initialization logic selects the OLED path when an OLED is detected.
@@ -72,7 +72,7 @@ The connection and download requests are subject to the applicable RSSI threshol
 A button press does not guarantee that a connection or download will succeed.
 
 
-T## Operating modes
+## Operating modes
 
 ### 1. Scan Mode
 
@@ -220,7 +220,7 @@ The compass is configured in the current source with a 180° mounting orientatio
   * **LIS3MDL** 3-Axis I2C Magnetometer (for 360° compass headings)
 * **Display:** [WaveShare Triple LCD Display HAT](https://www.waveshare.com/zero-lcd-hat-a.htm) (ST7789 Drivers, rotated 180° / USB at bottom)
   * Left Display (disp_0): 160px × 80px (Menu Controls)
-  * Center Display (disp_2): 240px × 240px (Radar Plotter & Network Table)
+  * Center Display (disp_2): 240px × 240px (Radar Plot)
   * Right Display (disp_1): 160px × 80px (Telemetry & Clock)
 * **Button Controls (gpiozero with Pi internal pull-ups):**
   * `GPIO 26` (Top Button 2) : Scroll / Next in Menu | Toggle Scan/Connected Modes
@@ -280,8 +280,6 @@ Clock: 2026-09-14 10:14:12
 ```
 ** Connected your-network (channel = 11) RSSI: -23 dBm
 Bars:    4 bars
-Quality: 100%  Excellent
-RX Rate: 72.2 Mb/s
 -> download possible, trigger with button1
 Compass Heading: 332° NW
 Pi Zero 2W temp: 42.9°C
