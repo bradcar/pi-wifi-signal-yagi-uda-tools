@@ -1,20 +1,24 @@
-
 # Wi-Fi Signal Tools for Pi Zero 2 W
 
 There are four Raspberry Pi Zero W tools for measuring Wi-Fi signals. The primary tool is "pi_wifi_scan_rssi.py".
 
 pi_wifi_scan_rssi.py Features:
-* 2.4 GHz Yagi Uda Directional Tracking: Integrates a modified 18.5 dBi Techtoo Yagi-Uda antenna (about 2 bar boost in pointed direction).
-* 1° Precision Compass Heading: Uses a LIS3MDL 3-axis I2C magnetometer to track antenna orientation in real time. 
+
+* 2.4 GHz Yagi Uda Directional Tracking: Integrates a modified 18.5 dBi Techtoo Yagi-Uda antenna (about 2 bar boost in
+  pointed direction).
+* 1° Precision Compass Heading: Uses a LIS3MDL 3-axis I2C magnetometer to track antenna orientation in real time.
 * 360° Signal Mapping: Continuously records RSSI and heading for all detected 2.4 GHz networks.
 * 1.4Hz Unconnected Scan Rate: Periodically scans for Wi-Fi networks using "nmcli".
-* WaveShare Triple LCD Display: Displays live network tables, telemetry, and interactive menu with physical buttons below menu.
+* WaveShare Triple LCD Display: Displays live network tables, telemetry, and interactive menu with physical buttons
+  below menu.
 * Interactive Polar Plot: Creates polar plot for RSSI strength in each of 360 degrees.
 * Renders a Live Polar Plot of RSSI signal strength across all 360 degrees on the central display with 5° resolution.
-* Print-quality Polar Plot Export: Creates high-resolution MatPlotLib polar plots with 1° resolution and saves them in .png format on program exit.
+* Print-quality Polar Plot Export: Creates high-resolution MatPlotLib polar plots with 1° resolution and saves them in
+  .png format on program exit.
 * Log Files: Saves a .csv data file for each Wi-Fi on exit.
 
 pi_yagi_uda.py Features ([readme_pi_yagi_uda.md](docs/readme_pi_yagi_uda.md)) :
+
 * Targeted Single-network Tracking: Locks onto and monitors a specific Wi-Fi SSID.
 * 1.4 Hz Unconnected Scan Rate: Scans unconnected Wi-Fis with "nmcli".
 * 5 Hz Connected Scan Rate: Higher accuracy interface polling when actively connected with an access point.
@@ -22,43 +26,53 @@ pi_yagi_uda.py Features ([readme_pi_yagi_uda.md](docs/readme_pi_yagi_uda.md)) :
 * Hardware Buttons Control Modes: Features the display's hardware buttons for mode handling and file-download triggers.
 * Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start connection mode.
 * Access Point Download: Button can trigger data download from Access Point and store into Pi Zero W flash.
-* Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to prevent signal measurement lag.
-![pi_yagi_uda_DSC0092.jpg](assets/images/pi_yagi_uda_DSC0092.jpg)
+* Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to
+  prevent signal measurement lag.
+  ![pi_yagi_uda_DSC0092.jpg](assets/images/pi_yagi_uda_DSC0092.jpg)
 
 # pi_wifi_scan_rssi.py
 
 The primary script runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan all available 2.4 GHz Wi-Fi networks.
-When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI) with physical antenna headings to build 360° polar signal distribution maps.
-It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports with Matplotlib on program exit.
-You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (nmcli).
+When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI)
+with physical antenna headings to build 360° polar signal distribution maps.
+It supports real-time visualization on a WaveShare Triple LCD HAT and creates high-resolution print-quality plot exports
+with Matplotlib on program exit.
+You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (
+nmcli).
 ![yagi-uda-carpet.png](assets/images/yagi-uda-carpet.png)
-Prototype Configuration: Techtoo directional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
-Raspberry Pi Zero 2 W with WaveShare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white open box).
+Prototype Configuration: Techtoo directional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into
+it.
+Raspberry Pi Zero 2 W with WaveShare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white
+open box).
 ![wifi-finder_DSC0082.jpg](assets/images/wifi-finder_DSC0082.jpg)
 
 ## Hardware & Display Layout
 
 Data an images shown on the WaveShare Triple Display LCD HAT (ST7789 drivers).
-It also uses the left most screen for menu selection using the physical buttons on the Triple Display LCD Hat. These buttons are directly under the left-most screen.
+It also uses the left most screen for menu selection using the physical buttons on the Triple Display LCD Hat. These
+buttons are directly under the left-most screen.
 
 ### Scan Mode Displays
+
 The program starts in Scan mode.
 
 ![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_DSC0067.jpg)
 
-1. Left Display (disp_0: 160px × 80px): 
+1. Left Display (disp_0: 160px × 80px):
    Displays dynamic menu options above the display buttons.
-   In this mode "Plot RSSI?" and "Exit w/ Plots?" are shown. 
+   In this mode "Plot RSSI?" and "Exit w/ Plots?" are shown.
 
-   If the button under "Plot RSSI?" is pressed, Plot mode is started. 
-   If the button under "Exit & Plot?" is pressed, high-resolution plots for each Wi-Fi detected with be created and saved.
+   If the button under "Plot RSSI?" is pressed, Plot mode is started.
+   If the button under "Exit & Plot?" is pressed, high-resolution plots for each Wi-Fi detected with be created and
+   saved.
    Data with unknown SSID or with RSSI < -80db are skipped.
 
 2. Center Display (disp_2: 240px × 240px):
-  A live table of the strongest 2.4 GHz networks is shown.
-  Each row shows SSID name, its RSSI values, its signal bars, and its channel number. 
-  They are sorted by the current RSSI signal strength at this direction.
-  For Example: 
+   A live table of the strongest 2.4 GHz networks is shown.
+   Each row shows SSID name, its RSSI values, its signal bars, and its channel number.
+   They are sorted by the current RSSI signal strength at this direction.
+   For Example:
+
 ```
 SSID      dBm bar ch
 BOXY-NY   -52 ***  6
@@ -78,45 +92,50 @@ Gruno     -76 *    3
 
 In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat.
 ![pi_wifi_rssi_DSC0090.jpg](assets/images/pi_wifi_rssi_DSC0090.jpg)
-1. Left Display (disp_0: 160px × 80px): 
-   Displays dynamic interactive menu options above the display buttons.
-   In this mode "Next" and "Select" are shown. 
 
-   If the button under "Next" is pressed, the selected row (in yellow) advances to the next Wi-Fi. 
+1. Left Display (disp_0: 160px × 80px):
+   Displays dynamic interactive menu options above the display buttons.
+   In this mode "Next" and "Select" are shown.
+
+   If the button under "Next" is pressed, the selected row (in yellow) advances to the next Wi-Fi.
    This will advance to the next signal and eventually wrap around back to first Wi-Fi.
    If the button under "Select" is pressed, a plot of the selected Wi-Fi is created.
 
 2. Center Display (disp_2: 240px × 240px):
-  Shows a sorted list of the named Wi-Fi signals (strongest on top)
-  Only named Wi-Fi's are shown in this list (code can be modified to show all signals).
-  If a Wi-Fi is selected, a polar plot of a selected Wi-Fi network is shown in the center display. 
-  The display uses the LIS3MDL magnetometer to orientate the screen in the direction of the antenna.
-  Wi-Fi signals are not updated in this mode.
+   Shows a sorted list of the named Wi-Fi signals (strongest on top)
+   Only named Wi-Fi's are shown in this list (code can be modified to show all signals).
+   If a Wi-Fi is selected, a polar plot of a selected Wi-Fi network is shown in the center display.
+   The display uses the LIS3MDL magnetometer to orientate the screen in the direction of the antenna.
+   Wi-Fi signals are not updated in this mode.
 
 3. Right Display (disp_1 — 160px × 80px):
    If a Wi-Fi has not been selected this display shows the system clock.
    If a Wi-Fi has been selected, it shows the Peak RSSI that was measured for this Wi-Fi signal.
    It also shows the compass heading for that peak signal as well as the number of peaks with that same RSSI value.
 
-In this mode, if the button under "Scan?" is pressed the script will go back to Scan Mode. 
-If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the selected Wi-Fi.
+In this mode, if the button under "Scan?" is pressed the script will go back to Scan Mode.
+If the button under "Hi-Rez ~20s!" is selected the script will start preparing high-resolution .png plots for the
+selected Wi-Fi.
 ![World_Best_Internet_02-58-28-1e-6a-32_2026-1024-1512_-56dBm_334deg.png](assets/images/World_Best_Internet_02-58-28-1e-6a-32_2026-1024-1512_-56dBm_334deg.png)
 
-Creating Hi-Rez plots is a SLOW process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots directory.
+Creating Hi-Rez plots is a SLOW process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots
+directory.
 While generated with high resolution the 240x240px display may be harder to read.
 
 ### Exit w/ Plots:
 
-If the button under "Exit & Plot?" is selected the script will start preparing high-resolution print-ready Matplotlib polar plots for each of the Wi-Fi's detected (unknown and RSSI < -90db are skipped). 
+If the button under "Exit & Plot?" is selected the script will start preparing high-resolution print-ready Matplotlib
+polar plots for each of the Wi-Fi's detected (unknown and RSSI < -90db are skipped).
 These polar plots are scaled to show -99 dBm to -45 dBm range.
 In addition, orange rings are show at the bar equivalents.
-1. The innermost ring is solid orange at -80 dBm (1 bar), 
-2. next ring is orange dashed at -70 dBm (2 bars), 
+
+1. The innermost ring is solid orange at -80 dBm (1 bar),
+2. next ring is orange dashed at -70 dBm (2 bars),
 3. next ring is orange dashed at -60 dBm (3 bars),
 4. final ring is solid orange at -50 dBm (4 bars).
 
 On exit, the data used to generate the plots is also saved in a CSV file with data for the entire 360° (1° increments).
-The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset. 
+The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset.
 Plots use the ".png" extension and CSV Files use the ".csv" extension.
 The CSV files and high-resolution PNG radar plots into the logs_polar_plots/ directory.
 ![craftmaster_74-fe-ce-83-37-b2_2026-0925-1250_-57dBm_101deg.png](assets/images/craftmaster_74-fe-ce-83-37-b2_2026-0925-1250_-57dBm_101deg.png)
@@ -138,53 +157,58 @@ Note: To quickly check the available Wi-Fi from the console use:
 ---
 
 ## Yagi Uda Directional Antenna
-Yagi Uda directional antenna
-* TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
-  * Directional Antenna (we have observed similar Beamwidth)
-    * 30° Horizontal Beamwidth
-    * 28° Vertical Beamwidth
-  * measured 10 to 19 dB gain over omnidirectional antenna
-    * u.FL mod still lacks removal of some traces, so additional improvements are likely.
-  * Return Loss: -30.7 dB  (VSWR 1:1.06)
-  * Noise floor measure at unbelievably low -98.0 dBm.
-* u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
-  * TE Connectivity, Part: 994-080-0001-ND
-* Hardware modification required to add external u.FL connector to Pi Zero 2 W
-  * Voids warranty because one must cut traces and remove capacitors to solder u.FL connector to provided pads.
-  * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
-    * 100°C board heater
-    * 280°C hot air at low flow
-  * Buy the best u.FL connectors, many cheap ones do not hold up to the soldering heat.
-* Photographers hand grip
-  * DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
-    * Also has 3/8" screw at bottom so can mount on tripod.
-  * Hand grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
 
+Yagi Uda directional antenna
+
+* TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
+    * Directional Antenna (we have observed similar Beamwidth)
+        * 30° Horizontal Beamwidth
+        * 28° Vertical Beamwidth
+    * measured 10 to 19 dB gain over omnidirectional antenna
+        * u.FL mod still lacks removal of some traces, so additional improvements are likely.
+    * Return Loss: -30.7 dB  (VSWR 1:1.06)
+    * Noise floor measure at unbelievably low -98.0 dBm.
+* u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
+    * TE Connectivity, Part: 994-080-0001-ND
+* Hardware modification required to add external u.FL connector to Pi Zero 2 W
+    * Voids warranty because one must cut traces and remove capacitors to solder u.FL connector to provided pads.
+    * Zero 2 W: https://www.youtube.com/watch?v=6R8xhSzpJTU&t=166s
+        * 100°C board heater
+        * 405°C hot air at low flow (20% to 25%) (was...280°C hot air at low flow)
+    * Buy the best u.FL connectors, many cheap ones do not hold up to the soldering heat.
+* Photographers hand grip
+    * DSLR Camera Hand Grip Stabilizer https://www.amazon.com/dp/B01FUEXLGU
+        * Also has 3/8" screw at bottom so can mount on tripod.
+    * Hand grip attached to antenna bar with Hillman #10-24 x 5/8-in Rubber Well Nut
 
 ## Noise Floor - exceptional configuration
-In an open neighborhood park we have seen -99 dBm on a verified, named SSID. This value is nearly at the absolute bottom edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
-With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
-Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda setup is performing at near-peak efficiency. 
 
+In an open neighborhood park we have seen -99 dBm on a verified, named SSID. This value is nearly at the absolute bottom
+edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
+With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the
+Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
+Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda setup is performing at near-peak
+efficiency.
 
 ## Hardware Setup & Pin Mapping
+
 * **Board:** Raspberry Pi Zero 2 W (Linux)
 * **Sensors & Antenna:**
-  * 2.4GHz Directional Yagi-Uda Antenna
-  * **LIS3MDL** 3-Axis I2C Magnetometer (for 360° compass headings)
-* **Display:** [WaveShare Triple LCD Display HAT](https://www.waveshare.com/zero-lcd-hat-a.htm) (ST7789 Drivers, rotated 180° / USB at bottom)
-  * Left Display (disp_0): 160px × 80px (Menu Controls)
-  * Center Display (disp_2): 240px × 240px (Radar Plotter & Network Table)
-  * Right Display (disp_1): 160px × 80px (Telemetry & Clock)
+    * 2.4GHz Directional Yagi-Uda Antenna
+    * **LIS3MDL** 3-Axis I2C Magnetometer (for 360° compass headings)
+* **Display:** [WaveShare Triple LCD Display HAT](https://www.waveshare.com/zero-lcd-hat-a.htm) (ST7789 Drivers, rotated
+  180° / USB at bottom)
+    * Left Display (disp_0): 160px × 80px (Menu Controls)
+    * Center Display (disp_2): 240px × 240px (Radar Plotter & Network Table)
+    * Right Display (disp_1): 160px × 80px (Telemetry & Clock)
 * **Button Controls (gpiozero with Pi internal pull-ups):**
-  * `GPIO 26` (Top Button 2) : Scroll / Next in Menu | Toggle Scan/Connected Modes
-  * `GPIO 25` (Bottom Button 1) : Select BSSID | Toggle Hi-Rez Plot Generation
-  * `GPIO 6` (External Trigger Button 0) : Short press (Connect/Download) | Long press (Disconnect)
-
-
+    * `GPIO 26` (Top Button 2) : Scroll / Next in Menu | Toggle Scan/Connected Modes
+    * `GPIO 25` (Bottom Button 1) : Select BSSID | Toggle Hi-Rez Plot Generation
+    * `GPIO 6` (External Trigger Button 0) : Short press (Connect/Download) | Long press (Disconnect)
 
 ### Sample console output for pi_wifi_scan_rssi.py
 
+```
     SSID                    Band    BSSID             RSSI      Bars
     ------------------------------------------------------------------
     your-network            2.4 GHz B6:39:56:91:1D:0F  -20 dBm  4 bars
@@ -196,53 +220,67 @@ Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda set
     ORBI24                  2.4 GHz 28:80:88:46:FA:83  -79 dBm  1 bar
       Clock: 2026-05-22 23:08:38, Update every 0.84 secs
       Blocked <1-bar and only shows 2.4GHz on Zero 2 W
+```
 
 ### Power draw
+
 * Scanning Mode   : 0.25A, 1.31W @ 5.22V
 * Radar Graph UI  : 0.29A, 1.51W @ 5.22V
 * Idle            : 0.15A, 0.77W @ 5.22V
 
 ### Usage:
-  in terminal, python3 mac_wifi_scan_rssi.py
-  can also run from PyCharm
+
+in terminal:
+
+```python3 pi_yagi-uda.py```
+
+can also run in PyCharm
 
 ---
 
-Three other Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W. 
+Three other Python telemetry and scanning tools for measuring 2.4GHz Wi-Fi signals on a Raspberry Pi Zero 2 W.
 
 ### LCD Display Tools with directional antenna:
-1. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings (in section above)
+
+1. **`pi_yagi_uda.py`** – Live directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and LIS3MDL
+   magnetometer. Maps signal vectors (RSSI, Link Quality, RX Bitrate) to compass headings (in section above)
 
 ### Console-Only Tools:
-2. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (download rate from AP) for the connected network.
-3. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free, in-place metric updates.
+
+2. **`pi_wifi_rssi_quality_rxrate.py`** – High-frequency terminal monitor tracking RSSI, Link Quality, and RX Bitrate (
+   download rate from AP) for the connected network.
+3. **`pi_wifi_rssi_quality_rxrate_curses.py`** – Full-screen `curses` terminal dashboard providing flicker-free,
+   in-place metric updates.
 
 ---
 
 # pi_yagi_uda.py
 
 Targeted directional tracking integrating the Yagi-Uda antenna and LIS3MDL magnetometer.
-Automatically manages network state (nmcli) to toggle between unauthenticated scanning and high-speed multithreaded connected polling.
+Automatically manages network state (nmcli) to toggle between unauthenticated scanning and high-speed multithreaded
+connected polling.
 Includes payload download capability when link budget is sufficient.
 
 The code automatically handles connection drops and resumes polling upon reconnect.
-When there is sufficient signal strength when connected, an option to download file on a specific webpage can be downloaded.
+When there is sufficient signal strength when connected, an option to download file on a specific webpage can be
+downloaded.
 
 Operational Modes:
+
 * Scan Mode (is_connected == False): Low-frequency pings via nmcli/iw (~5 Hz update rate).
-* Connected Mode (is_connected == True): Multi-threaded direct network interface polling (~31 Hz metric updates, ~9 Hz UI updates).
+* Connected Mode (is_connected == True): Multi-threaded direct network interface polling (~31 Hz metric updates, ~9 Hz
+  UI updates).
 
 ### Power draw
+
 * Scanning:  0.29a, 1.49w, 5.22v
 * Connected: 0.31a, 1.62w, 5.22v
 * Idle:      0.15a, 0.77w, 5.22v
 
-### Usage:
-in terminal, python3 pi_yagi-uda.py
-can also run in PyCharm
-
 ### Sample console output pi_yagi_uda.py
+
 There are two modes with different information possible:
+
 ```
 ** Scanning your-network (channel=11) RSSI: -56 dBm
 Bars:      3 bars
@@ -272,8 +310,6 @@ Permissions: Ensure system utilities have setuid permissions for non-root execut
 
 ```sudo chmod u+s /usr/sbin/iwlist```
 
-
-
 ## pi_wifi_rssi_quality_rxrate.py
 
 On Raspberry Pi Zero 2 W, repeatedly measure and print RSSI, Link Quality,
@@ -283,9 +319,11 @@ Prototype for tracking signal vectors using a directional Yagi_Uda antenna.
 Reads metrics continuously to signal strength changes.
 
 ### Power draw
+
 0.21a @ 5.22v (1.2w)
 
 ### Usage:
+
 in terminal, python3 pi_wifi_rssi_quality_rxrate.py
 can also run in PyCharm
 
@@ -293,6 +331,7 @@ There is also a Curses version:
 pi_wifi_rssi_quality_rxrate_curses.py
 
 ### Sample output pi_wifi_rssi_quality_rxrate.py
+```
     WiFi Signal Monitor (Pi Zero): ABox-PDX
     SSID:    ABox-PDX
     RSSI:    -19 dBm  4 bars
@@ -300,26 +339,24 @@ pi_wifi_rssi_quality_rxrate_curses.py
     RX Rate: 72.2 Mb/s
     Updates:  15.8 msec, 63 Hz
     Clock: 2026-05-23 09:36:26
-
-
+```
 
 ### NOTES
 
 1. Python MUST be enabled in System Settings > Privacy & Security> Location Services.
 
 2. iwlist sudo
-   1. Give the iwlist program setuid root permissions
-   sudo chmod u+s /usr/sbin/iwlist
-   2. Verify the permissions changed successfully
-   ls -l /usr/sbin/iwlist
+    1. Give the iwlist program setuid root permissions
 
-      
+   ```sudo chmod u+s /usr/sbin/iwlist```
 
+    2. Verify the permissions changed successfully
+
+   ```ls -l /usr/sbin/iwlist```
 
 ### Analysis TECHTOO Wi-Fi Yagi Uda Antenna
 
 Analysis of TECHTOO 2.4 GHz Wi-Fi Yagi-Uda Antenna 2.4GHz with u.FL TO RP-SMA 4.1"
 Notice the superior reading (-30.69 dB 47.5 ohm and 89.1 pH) for Channel 11 (2462 MHz).
-
 
 ![image](assets/images/techtoo_yagi-uda_4in1_pigtail_nanoVNA-100926.png "Yagi Uda Analysis")
