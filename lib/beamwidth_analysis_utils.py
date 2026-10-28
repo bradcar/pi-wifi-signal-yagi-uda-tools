@@ -15,6 +15,9 @@ Functions:
     calculate_half_power_bandwidth()
         Calculates the -3 dB half-power beamwidth (HPBW), including sub-degree interpolation of both cutoff headings.
 
+    ADDED PRINT FUNCTION TO TEST CODE ON MANY CSVS - Doesn't seem like this code adds much value
+    def batch_analyze_saved_csv_files(log_directory_path, sigma, window_length):
+
 Important:
     - Input arrays must contain exactly 360 samples.
     - Index 0 corresponds to heading 0 degrees.
@@ -25,10 +28,8 @@ Important:
     - The lobe-validity flag is heuristic and must be validated against measured antenna patterns before operational use.
 
 TODOs
-* TODO - UNTESTED !!! - need testing and verification and code review !!!!
+*
 """
-
-import numpy as np
 
 _EXPECTED_SAMPLE_COUNT = 360
 _MISSING_RSSI_THRESHOLD = -120.0
@@ -327,3 +328,185 @@ def calculate_half_power_bandwidth(signal_history, use_smoothing=True, window_le
     # Compute clockwise span handling 360° circular wrap-around
     beamwidth = (right_crossing - left_crossing) % float(_EXPECTED_SAMPLE_COUNT)
     return float(peak_idx), float(beamwidth), (float(left_crossing), float(right_crossing)), beam_stats
+
+
+"""
+batch_analyze_radar_csvs.py
+
+Scans the radar log directory for saved 360-degree RSSI CSV files,
+computes beam statistics and half-power beamwidth (HPBW) using Gaussian smoothing,
+prints out analytical metrics, and generates before/after polar plots.
+"""
+
+from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def batch_analyze_saved_csv_files(log_directory_path, sigma, window_length):
+    log_directory = Path(log_directory_path)
+    if not log_directory.exists():
+        print(f"Error: Log directory '{log_directory}' does not exist.")
+        return
+
+    csv_file_list = list(log_directory.glob("*.csv"))
+    if not csv_file_list:
+        print(f"No CSV files found in '{log_directory}'.")
+        return
+
+    print(f"Found {len(csv_file_list)} radar CSV file(s) to process.\n")
+    print("=" * 70)
+
+    for csv_file_path in csv_file_list:
+        print(f"Analyzing file: {csv_file_path.name}")
+
+        try:
+            # Load CSV data created by np.savetxt (expects degree,rssi with header)
+            loaded_data = np.loadtxt(csv_file_path, delimiter=",", skiprows=1)
+            degrees_array = loaded_data[:, 0]
+            rssi_history_array = loaded_data[:, 1]
+        except Exception as error_message:
+            print(f" -> Error reading {csv_file_path.name}: {error_message}\n")
+            continue
+
+        # 1. Compute Raw Statistics
+        raw_beam_statistics = calculate_beam_statistics(rssi_history_array)
+
+        # 2. Run HPBW and Smoothed Analysis
+        peak_heading_degree, half_power_beamwidth_degrees, (left_cutoff_degree,
+                                                            right_cutoff_degree), _ = calculate_half_power_bandwidth(
+            rssi_history_array,
+            use_smoothing=True,
+            window_length=window_length,
+            sigma=sigma
+        )
+
+        # 3. Compute Smoothed Statistics for comparison
+        smoothed_rssi_array = smooth_signal_history_gaussian(
+            rssi_history_array,
+            window_length=window_length,
+            sigma=sigma
+        )
+        smoothed_beam_statistics = calculate_beam_statistics(smoothed_rssi_array)
+
+        # 4. Clean Print Layout
+        print(f"   Raw Signal Statistics")
+        print(f"   - Valid Sample Count   : {raw_beam_statistics['valid_sample_count']} / 360 samples")
+        print(f"   - RSSI Dynamic Range   : {raw_beam_statistics['rssi_dynamic_range_db']:.0f} dB")
+        print(f"   - Circular Std Dev     : {raw_beam_statistics['circular_std']:.0f}°")
+        print(f"   - Excess Kurtosis      : {raw_beam_statistics['excess_kurtosis']:.2f}")
+        print(f"   - Heuristic Valid Lobe : {raw_beam_statistics['is_valid_lobe']}")
+
+        print(f"\n   Smoothed Analysis (sigma={sigma}, window_length={window_length})")
+        print(f"   - Smoothed Dynamic Range: {smoothed_beam_statistics['rssi_dynamic_range_db']:.0f} dB")
+        print(f"   - Smoothed Kurtosis     : {smoothed_beam_statistics['excess_kurtosis']:.2f}")
+        if half_power_beamwidth_degrees is not None:
+            print(f"   - Peak Heading          : {peak_heading_degree:.0f}°")
+            print(f"   - Half-Power Beamwidth  : {half_power_beamwidth_degrees:.0f}°")
+            print(f"   -3 dB Cutoff Crossings  : Left @ {left_cutoff_degree:.0f}°, Right @ {right_cutoff_degree:.0f}°")
+        else:
+            print(f"   - Peak Heading          : {peak_heading_degree if peak_heading_degree is not None else 'N/A'}°")
+            print(f"   - Half-Power Beamwidth  : Unresolved (Main lobe too wide or cut off)")
+        print("-" * 70)
+
+        # Generate Before & After (Raw vs. Smoothed) Polar Plot
+        smoothed_rssi_array = smooth_signal_history_gaussian(
+            rssi_history_array,
+            window_length=window_length,
+            sigma=sigma
+        )
+
+        angles_in_radians = np.radians(degrees_array)
+
+        # Mask uninitialized noise floor values (-120.0 dBm) so they don't drag down the center plot line
+        raw_plot_values = np.where(rssi_history_array <= -120.0, np.nan, rssi_history_array)
+        smoothed_plot_values = np.where(smoothed_rssi_array <= -120.0, np.nan, smoothed_rssi_array)
+
+        figure, polar_axis = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(8, 8))
+
+        # Plot Raw RSSI
+        polar_axis.plot(
+            angles_in_radians,
+            raw_plot_values,
+            label='Raw RSSI measurements',
+            color='darkorange',
+            alpha=0.6,
+            linewidth=1.5
+        )
+
+        label_string = f"Smoothed RSSI (sigma={sigma}, window={window_length})"
+
+        # Plot Smoothed RSSI
+        polar_axis.plot(
+            angles_in_radians,
+            smoothed_plot_values,
+            label=label_string,
+            color='cyan',
+            linewidth=2.5
+        )
+
+        # --- DRAW BEAMWIDTH & PEAK INDICATOR LINES ---
+        min_radial_limit = polar_axis.get_rmin()
+        max_radial_limit = polar_axis.get_rmax()
+
+        # 1. Solid Red Line for Peak Heading
+        if peak_heading_degree is not None:
+            peak_rad = np.radians(peak_heading_degree)
+            polar_axis.plot(
+                [peak_rad, peak_rad],
+                [min_radial_limit, max_radial_limit],
+                color='red',
+                linestyle='-',
+                linewidth=2.0,
+                label=f'Peak ({peak_heading_degree:.0f}°)'
+            )
+
+        # 2. Dotted Red Lines for Left and Right -3dB Cutoff Degrees
+        if left_cutoff_degree is not None and right_cutoff_degree is not None:
+            left_rad = np.radians(left_cutoff_degree)
+            right_rad = np.radians(right_cutoff_degree)
+
+            polar_axis.plot(
+                [left_rad, left_rad],
+                [min_radial_limit, max_radial_limit],
+                color='red',
+                linestyle=':',
+                linewidth=1.5,
+                label='-3dB Cutoffs'
+            )
+            polar_axis.plot(
+                [right_rad, right_rad],
+                [min_radial_limit, max_radial_limit],
+                color='red',
+                linestyle=':',
+                linewidth=1.5
+            )
+        # ---------------------------------------------
+
+        # Configure polar plot orientation (North 0° at top, clockwise sweep)
+        polar_axis.set_theta_zero_location('N')
+        polar_axis.set_theta_direction(-1)
+
+        tick_angles_degrees = np.arange(0, 360, 15)
+        polar_axis.set_thetagrids(tick_angles_degrees)
+
+        plot_title = f"Wi_Fi RSSI Measured by Yagi Uda (peak at {peak_heading_degree if peak_heading_degree is not None else 'N/A'}°)\n{csv_file_path.stem}"
+        polar_axis.set_title(plot_title, va='bottom', fontsize=11, color='black')
+        polar_axis.legend(loc='upper right', bbox_to_anchor=(1.3, 0.03))
+
+        # Style for dark background telemetry aesthetic
+        polar_axis.tick_params(colors='gray', labelsize=9)
+        polar_axis.grid(True, color='gray', alpha=0.4, linestyle='--')
+
+        comparison_plot_path = csv_file_path.with_name(f"{csv_file_path.stem}_comparison.png")
+
+        figure.savefig(comparison_plot_path, dpi=150, bbox_inches='tight')
+        plt.close(figure)
+
+        print(f" -> Saved comparison plot to: {comparison_plot_path.name}\n")
+
+
+if __name__ == "__main__":
+    # Point to existing log directory where CSVs are saved
+    TARGET_LOG_DIRECTORY = "./"
+    batch_analyze_saved_csv_files(TARGET_LOG_DIRECTORY, sigma=1.5, window_length=9)
