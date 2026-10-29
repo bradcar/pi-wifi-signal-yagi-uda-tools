@@ -1,13 +1,13 @@
 # Wi-Fi Directional finder and download for Pi Zero 2 W
 
-TArgeted (one Wi-Fi network) Directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and an LIS3MDL magnetometer.
+Directional tracking of a targeted Wi-Fi network (one network) using a Yagi-Uda antenna and an LIS3MDL magnetometer.
 This code was designed to determine the location of a Wi-Fi network and then download a telemetry dataset to the
 Raspberry Pi Zero 2 W's flash storage for later analysis.
 
 pi_yagi_uda.py tracks the signal strength of a selected 2.4 GHz Wi-Fi network as a hand-held directional Yagi-Uda
 antenna is rotated.
-The received signal strength (RSSI) is recorded at each compass heading (1° resolution), measured using the LIS3MDL
-magnetometer to build a 360° directional signal history.
+The received signal strength (RSSI) is recorded at each compass heading in order to build a 360° directional signal history.
+Data is stored with 1° resolution as measured with a LIS3MDL magnetometer.
 
 The code runs on a Raspberry Pi Zero 2 W under Linux and uses the nmcli utility to measure RSSI.
 It supports a Waveshare Triple LCD HAT or a detected OLED display and provides live Wi-Fi telemetry.
