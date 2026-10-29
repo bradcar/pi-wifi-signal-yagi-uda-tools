@@ -29,13 +29,15 @@ pi_yagi_uda.py Features:
 * Dual Operational Modes: Can switch between background scanning and connected link polling.
 * Hardware Buttons Control Modes: Features the display's hardware buttons for mode handling and file-download triggers.
 * Modes: Scans unconnected Wi-Fi (nmcli) when signal strength sufficient can start connection mode.
+* Signal Strength: We have connected/linked with -85 to -88 dBm signals (0 bars, almost -1 bars). 
+We have downloaded files at -80 dBm (0 bars)
 * Access Point Download: Button can trigger data download from Access Point and store into Pi Zero W flash.
 * Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to
   prevent signal measurement lag.
 
 # pi_yagi_uda.py
 
-The primary script runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan a 2.4 GHz Wi-Fi networs.
+Thecode runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan a 2.4 GHz Wi-Fi networs.
 When paired with a Yagi Uda directional antenna and a LIS3MDL 3-axis magnetometer, it correlates signal strength (RSSI)
 with physical antenna headings to build 360° polar signal distribution map.
 It supports real-time visualization on a WaveShare Triple LCD HAT and creates a high-resolution print-quality plot
