@@ -58,7 +58,7 @@ The program starts in Scan mode.
 ![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_finder_list.jpg)
 
 1. Left Display (disp_0: 160px × 80px):
-   Displays dynamic menu options above the display buttons.
+   Displays dynamic menu options above the display's integrated buttons.
    In this mode "Plot RSSI?" and "Exit w/ Plots?" are shown.
 
    If the button under "Plot RSSI?" is pressed, Plot mode is started.
@@ -183,11 +183,9 @@ Yagi Uda directional antenna
 
 ## Noise Floor - exceptional configuration
 
-In an open neighborhood park we have seen -99 dBm on a verified, named SSID. This value is nearly at the absolute bottom
-edge of what silicon can physically resolve on a 2.4 GHz Wi-Fi channel.
-With a theoretical thermal noise floor around -101 dBm for a 20 MHz wide channel and hardware sensitivity limits on the
-Broadcom/Cypress chipset likely bottoms out at -100 to -105 dBm.
-Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda setup is performing at near-peak
+We have seen -100 dBm on a verified, named SSID. This value is nearly at the theoretical thermal noise floor around -105 dBm for a 20 MHz wide channel and hardware sensitivity limits on the
+Broadcom/Cypress chipset.
+Getting a clean beacon frame out at -100 dBm proves this directional Yagi-Uda setup is performing at near-peak
 efficiency.
 
 ## Hardware Setup & Pin Mapping
