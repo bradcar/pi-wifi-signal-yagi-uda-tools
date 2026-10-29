@@ -179,6 +179,7 @@ from PIL import Image, ImageDraw
 from dotenv import load_dotenv
 from gpiozero import Button
 
+from lib.beamwidth_analysis_utils import calculate_half_power_bandwidth
 import lib.lcd_st7789_utils as lcd
 from lib.download_file_utils import download_file
 from lib.lcd_rssi_radar_utils import display_rssi_polar_plot_lcd, extract_radar_metrics, arrow_annotation, \
@@ -186,11 +187,11 @@ from lib.lcd_rssi_radar_utils import display_rssi_polar_plot_lcd, extract_radar_
 from lib.lcd_st7789_utils import create_lcd_display_canvases, display_2_splash_lcd
 from lib.lis3mdl_utils import init_lis3mdl, get_compass_8pt_string, get_compass_heading_hard_soft_corrections, \
     set_compass_orientation_declination
+from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
 from lib.oled_1305_utils import init_oled_display, clear_display_oled, OLED_HEIGHT
 from lib.oled_pi_yagi_uda import display_metrics_oled
 from lib.oled_rssi_radar_utils import display_radar_oled
 from lib.pi_zero_utils import pico_temperature, timeout
-from lib.matplot_rssi_radar_utils import plot_rssi_polar_matplotlib
 from lib.wifi_utils import get_ssid, query_wifi, scan_target_ssid, rssi_to_string, quality_to_string, connect_ssid, \
     remove_ssid
 
@@ -209,11 +210,10 @@ LOG_PRELIM_CSV_TO_FLASH = False
 DEBUG = False
 
 # Network Signal Thresholds
-RSSI_CONNECT_THRESHOLD = -91.0  # Minimum signal to allow a hardware connection, maybe -85 orig -80
-RSSI_DOWNLOAD_THRESHOLD = -80.0  # Minimum signal to execute data payload transfer, maybe -80
+RSSI_CONNECT_THRESHOLD = -91.0  # Minimum signal to link/connectn, have linked -85 to -88
+RSSI_DOWNLOAD_THRESHOLD = -81.0  # Minimum signal to download payload transfer, have downloaded at -80
 
 USE_MONO_TYPE = False
-
 
 try_connect = False
 try_download = False
@@ -416,9 +416,9 @@ def display_0_metrics_lcd(lcd, disp_0, rssi, download_count, connected, try_conn
         ]
     else:
         items = [
-            ("Waiting", (132, 0), lcd.font0_20pt, "yellow"),
-            ("for the", (112, 0), lcd.font0_20pt, "yellow"),
-            ("Signal...", (87, 0), lcd.font0_20pt, "yellow"),
+            ("Search", (132, 0), lcd.font0_20pt, "yellow"),
+            ("for... ", (112, 0), lcd.font0_20pt, "yellow"),
+            (f"{TARGET_SSID}", (87, 0), lcd.font0_20pt, "white"),
         ]
 
     if download_count > 0:
@@ -470,8 +470,6 @@ def display_1_metrics_lcd(lcd, disp_1, rssi, compass_heading, shortest_angle, co
             arrow_annotation(disp1_draw, shortest_angle,
                              left_arrow_position=(39, 2),
                              right_arrow_position=(39, 61))
-        else:
-            print(f"******* rssi = {rssi}, do NOT add Arrows")
 
     else:
         items.append(("? °", (48, 30), lcd.font0_34pt, "yellow"))
@@ -701,7 +699,7 @@ def print_metrics(connected, ssid, rssi, quality, rx_rate, heading, download_cou
             quality_string = quality_to_string(quality)
             print(f"Bars:    {rssi_to_string(rssi)}")
             print(f"Quality: {f'{quality:>3}%' if quality is not None else 'n/a'}  {quality_string}")
-            print(f"RX Rate: {f'{rx_rate:.1f} Mb/s' if rx_rate is not None else 'n/a'}")
+            print(f"RX Rate (download): {f'{rx_rate:.1f} Mb/s' if rx_rate is not None else 'n/a'}")
 
             if rssi >= RSSI_DOWNLOAD_THRESHOLD:
                 print(f"-> download possible, trigger with button1 - (Currently {download_count} downloads)")
@@ -1002,6 +1000,21 @@ def main():
             print(f"\nLowest RSSI (noise floor): {min_rssi} dBm")
             print(f"Largest SNR: {max_rssi - min_rssi} dB\n")
 
+            # Analyze beamwidth and stats
+            (peak_heading_degree, half_power_beamwidth_degrees, (left_cutoff_degree,right_cutoff_degree),
+                beam_statistics_dictionary) = calculate_half_power_bandwidth(
+                cleaned_history,
+                use_smoothing=True,
+                window_length=15
+            )
+            if half_power_beamwidth_degrees is not None:
+                print(
+                    f" -> Measured HPBW (Half-power Beamwidth = 3 dB): {half_power_beamwidth_degrees:.1f}° (Peak @ {peak_heading_degree:.0f}°)")
+                print(f" -> -3dB Cutoffs: Left @ {left_cutoff_degree:.0f}°, Right @ {right_cutoff_degree:.0f}°")
+                print(
+                    f" -> Beam Stats: SNR = {beam_statistics_dictionary['snr']:.1f} dB | Kurtosis = {beam_statistics_dictionary['excess_kurtosis']:.2f} | Valid Lobe: {beam_statistics_dictionary['is_valid_lobe']}\n")
+            else:
+                print(" -> HPBW (Half-power Beamwidth): Main lobe too wide or cut off to resolve cleanly.\n")
 
             # Save direction vs RSSI history to CSV
             summary_csv_path = plot_dir / f"wifi_summary_{TARGET_SSID}_{timestamp}.csv"

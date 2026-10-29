@@ -28,8 +28,7 @@ pi_yagi_uda.py Features ([readme_pi_yagi_uda.md](docs/readme_pi_yagi_uda.md)) :
 * Access Point Download: Button can trigger data download from Access Point and store into Pi Zero W flash.
 * Multi-Threading: Handles faster background network polling, while slower display rendering runs asynchronously to
   prevent signal measurement lag.
-  ![pi_yagi_uda_DSC0092.jpg](assets/images/pi_yagi_uda_DSC0092.jpg)
-
+![pi_yagi_uda_link-54dBm.jpg](assets/images/pi_yagi_uda_link-54dBm.jpg)
 # pi_wifi_scan_rssi.py
 
 The primary script runs on a Raspberry Pi Zero 2 W (Linux) to continuously scan all available 2.4 GHz Wi-Fi networks.
@@ -56,7 +55,7 @@ buttons are directly under the left-most screen.
 
 The program starts in Scan mode.
 
-![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_DSC0067.jpg)
+![wifi-finder_DSC0067.jpg](assets/images/wifi-finder_finder_list.jpg)
 
 1. Left Display (disp_0: 160px × 80px):
    Displays dynamic menu options above the display buttons.
@@ -91,8 +90,8 @@ Gruno     -76 *    3
 ### Plot mode:
 
 In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveShare Triple Display Hat.
-![pi_wifi_rssi_DSC0090.jpg](assets/images/pi_wifi_rssi_DSC0090.jpg)
-
+![pi_wifi_finder_cerberos-70dBm.jpg](assets/images/pi_wifi_finder_cerberos-70dBm.jpg)
+![pi_wifi_finder_bruno-lo-rez-lcd-plot.jpg.jpg](assets/images/pi_wifi_finder_bruno-lo-rez-lcd-plot.jpg.jpg)
 1. Left Display (disp_0: 160px × 80px):
    Displays dynamic interactive menu options above the display buttons.
    In this mode "Next" and "Select" are shown.
@@ -100,7 +99,7 @@ In Plot Mode a graphical plot of a selected Wi-Fi network is shown on the WaveSh
    If the button under "Next" is pressed, the selected row (in yellow) advances to the next Wi-Fi.
    This will advance to the next signal and eventually wrap around back to first Wi-Fi.
    If the button under "Select" is pressed, a plot of the selected Wi-Fi is created.
-
+![pi_wifi_finder_list_select.jpg](assets/images/pi_wifi_finder_list_select.jpg)
 2. Center Display (disp_2: 240px × 240px):
    Shows a sorted list of the named Wi-Fi signals (strongest on top)
    Only named Wi-Fi's are shown in this list (code can be modified to show all signals).
@@ -120,6 +119,7 @@ selected Wi-Fi.
 
 Creating Hi-Rez plots is a SLOW process that takes 20 to 30 seconds. This ".png" is also saved to the logs_polar_plots
 directory.
+![pi_wifi_finder_bruno-hi-rez-plot.jpg](assets/images/pi_wifi_finder_bruno-hi-rez-plot.jpg)
 While generated with high resolution the 240x240px display may be harder to read.
 
 ### Exit w/ Plots:

@@ -1,6 +1,6 @@
 # Wi-Fi Directional finder and download for Pi Zero 2 W
 
-Directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and an LIS3MDL magnetometer.
+TArgeted (one Wi-Fi network) Directional tracking of a targeted Wi-Fi network using a Yagi-Uda antenna and an LIS3MDL magnetometer.
 This code was designed to determine the location of a Wi-Fi network and then download a telemetry dataset to the
 Raspberry Pi Zero 2 W's flash storage for later analysis.
 
@@ -20,7 +20,7 @@ It scans for unconnected networks at 1.4 Hz and polls a user-initiated connectio
 accurate measurements.
 When in connected mode, multithreading keeps network measurements responsive while display rendering runs
 asynchronously, minimizing delays in signal measurements.
-
+![pi_yagi_uda_scan.jpg](../assets/images/pi_yagi_uda_scan.jpg)
 pi_yagi_uda.py Features:
 
 * Targeted Single-network Tracking: Locks onto and monitors a specific Wi-Fi SSID.
@@ -43,7 +43,7 @@ exports with Matplotlib on program exit.
 You will need to enter in the Pi Zero 2 W's password for Wi-Fi scans, since it uses system call to get network state (
 nmcli).
 
-irectional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
+Directional Yagi Uda Antenaa with photograher handgrip and small tripod screwed into it.
 Raspberry Pi Zero 2 W with WaveShare Triple display LCD (red open case), black 10000maH battery, and a LIS3MDL (white
 open box).
 
@@ -96,13 +96,14 @@ The connection is attempted only when a usable RSSI measurement is available and
 
 If the signal is below the threshold, the code with return to unconnected scan mode.
 After a successful connection, the recorded RSSI heading history is reset for connected scanning.
+![pi_yagi_uda_link-54dBm.jpg](../assets/images/pi_yagi_uda_link-54dBm.jpg)
 
 ### 2. Connected Mode
 
 In Connected Mode, the code polls the connected Wi-Fi interface for network metrics.
 With asynchronous monitoring enabled, a background worker handles connected-mode updates while the main loop manages the
 displays and other output.
-
+![pi_yagi_uda_scan.jpg](../assets/images/pi_yagi_uda_scan.jpg)
 The code collects or displays the following metrics where available:
 
 - **RSSI:** Received Wi-Fi signal strength in dBm.
@@ -115,7 +116,8 @@ A temporary missing RSSI measurement does not automatically mean the connection 
 ## Downloading a file
 
 The default configuration is intended to download a binary file from the `shell-fi` access point.
-
+One can perform multiple downloads and the dowbload count is tracked on screen.
+![pi_yagi_uda_download5-69.jpg](../assets/images/pi_yagi_uda_download5-69.jpg)
 Current settings in `pi_yagi_uda.py`:
 
 ```python
@@ -151,7 +153,8 @@ In addition, orange rings are show at the bar equivalents.
 2. next ring is orange dashed at -70 dBm (2 bars),
 3. next ring is orange dashed at -60 dBm (3 bars),
 4. final ring is solid orange at -50 dBm (4 bars).
-
+5. 
+![radar_plot_shell-fi_2026-1028-1605.png](../assets/images/radar_plot_shell-fi_2026-1028-1605.png)
 On exit, the data used to generate the plot is also saved in a CSV file with data for the entire 360° (1° increments).
 The file names are labeled with SSID Name, BSSID, Date/Time plot created, and strongest RSSI in this dataset.
 Plots use the ".png" extension and CSV Files use the ".csv" extension.
