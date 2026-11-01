@@ -140,16 +140,16 @@ PyCharm Remote Deployment Notes:
 
 ================================================================================
 
-Empirical Link Budget Reference Table:
-    +-------------------------+-------------------+---------------------------------------------------------+
-    | RSSI Target             | Distance Estimate | Practical Context / Range                               |
-    +-------------------------+-------------------+---------------------------------------------------------+
-    | -64 dBm (Measured)      |   46 meters       | ~150 feet (Calibrated baseline)                         |
-    | -75 dBm (Download Thr.) | ~163 meters       | ~535 feet (~0.1 mi) - Hi-throughput data transfer zone  |
-    | -80 dBm (Connect Thr.)  | ~290 meters       | ~950 feet (~0.2 mi) - Reliable beacon handshake zone    |
-    | -85 dBm (Fringe Limit)  | ~515 meters       | ~1,690 feet (~0.3 mi) - Rear fringe / precise pointing  |
-    +-------------------------+-------------------+---------------------------------------------------------+
+RSSI and Distance Reference Table:
 
+| RSSI    | Measure/Est | Operation      | Meters (ft)    | Notes                                                    |
+| ------- | ----------- | -------------- | -------------- | -------------------------------------------------------- |
+| -67 dBm | Measured    | Download       |  72.5 m (238') | 1st light pole @ Delta park.                             |
+| -75 dBm | Est         | Download       | 121.6 m (399') |                                                          |
+| -78 dBm | Measured    | Download       | 147.5 m (484') | 2nd light pole @ Delta. (tested off-angle 10-15° -80dBm) |
+| -80 dBm | Est         | Max Download ? | 167.8 m (550') | Max download ?                                           |
+| -85 dBm | Est         | Fringe Limit   | 231.8 m (760') | Estimated Extended fringe range.                         |
+| -88 dBm | Est         | Link limit ?   | 281.3 m (923') | Estimated Maximum open-field link limit.                 |
 
 ================================================================================
 
@@ -211,7 +211,7 @@ DEBUG = False
 
 # Network Signal Thresholds
 RSSI_CONNECT_THRESHOLD = -91.0  # Minimum signal to link/connectn, have linked -85 to -88
-RSSI_DOWNLOAD_THRESHOLD = -81.0  # Minimum signal to download payload transfer, have downloaded at -80
+RSSI_DOWNLOAD_THRESHOLD = -85.0  # Minimum signal to download payload transfer, successful downloaded achieved at -80 dBm
 
 USE_MONO_TYPE = False
 
@@ -590,7 +590,7 @@ def handle_connected_mode(metrics, download_count, heading, target_ssid, url, de
                 if lcd and disp0 and disp1:
                     display_0_trying_download_lcd(disp0, download_count)
 
-                success, filename = download_file(url, destination_dir, timeout=5)
+                success, filename = download_file(url, destination_dir, timeout=3)
                 if success:
                     download_count += 1
                     print(f" -> Successful download to {destination_dir}/{filename}")
