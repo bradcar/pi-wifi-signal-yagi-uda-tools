@@ -151,6 +151,8 @@ RSSI and Distance Reference Table:
 | -85 dBm | Est         | Fringe Limit   | 231.8 m (760') | Estimated Extended fringe range.                         |
 | -88 dBm | Est         | Link limit ?   | 281.3 m (923') | Estimated Maximum open-field link limit.                 |
 
+first measurement in Raleigh Park was -62 dBm at 46m (148') some trees in path. would expect -59 dBm
+
 ================================================================================
 
 
