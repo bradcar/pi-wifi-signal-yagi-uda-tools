@@ -102,11 +102,16 @@ Getting a clean beacon frame out at -99 dBm proves this directional Yagi-Uda set
 NOTES:
     * Colors blue and green are muted and dim, Must use "x00ff00" for green and "x0000ff" for blue
 
-CLI on Pi Zero 2 W:
+Pi Zero 2 W Command line:
     $ sudo nmcli dev wifi list
 
-TODOs:
+macOS Noise estimate - can correclate with Yagi Uda output:
+    $ sudo wdutil info | grep -E 'RSSI|Noise'
+    * Returns
+        RSSI   : -29 dBm
+        Noise  : -94 dBm
 
+TODOs:
 
 """
 import subprocess

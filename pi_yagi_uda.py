@@ -140,16 +140,22 @@ PyCharm Remote Deployment Notes:
 
 ================================================================================
 
-RSSI and Distance Reference Table:
+macOS Noise estimate - can correclate with Yagi Uda output:
+    sudo wdutil info | grep -E 'RSSI|Noise'
+    * Returns
+        RSSI   : -29 dBm
+        Noise  : -94 dBm
 
-| RSSI    | Measure/Est | Operation      | Meters (ft)    | Notes                                                    |
-| ------- | ----------- | -------------- | -------------- | -------------------------------------------------------- |
-| -67 dBm | Measured    | Download       |  72.5 m (238') | 1st light pole @ Delta park.                             |
-| -75 dBm | Est         | Download       | 121.6 m (399') |                                                          |
-| -78 dBm | Measured    | Download       | 147.5 m (484') | 2nd light pole @ Delta. (tested off-angle 10-15° -80dBm) |
-| -80 dBm | Est         | Max Download ? | 167.8 m (550') | Max download ?                                           |
-| -85 dBm | Est         | Fringe Limit   | 231.8 m (760') | Estimated Extended fringe range.                         |
-| -88 dBm | Est         | Link limit ?   | 281.3 m (923') | Estimated Maximum open-field link limit.                 |
+RSSI vs. Distance Reference Table:
+
+| RSSI    | Measured? | Operation      | Meters (ft)    | Notes                                                     |
+| ------- | --------- | -------------- | -------------- | --------------------------------------------------------- |
+| -67 dBm | Measured  | Download       |  72.5 m (238') | 1st light pole @ Delta park.  2.5 Bar                     |
+| -75 dBm |    Est    | Download       | 121.6 m (399') |                                                           |
+| -78 dBm | Measured  | Download       | 147.5 m (484') | 2nd light pole @ Delta. 1.2-bar (off-angle 10-15° -80dBm) |
+| -80 dBm |    Est    | Max Download ? | 167.8 m (550') | Max download ?                                            |
+| -85 dBm |    Est    |   ?            | 231.8 m (760') | Estimated Extended fringe range.                          |
+| -88 dBm |    Est    | Link limit ?   | 281.3 m (923') | Estimated Maximum open-field link limit.                  |
 
 first measurement in Raleigh Park was -62 dBm at 46m (148') some trees in path. would expect -59 dBm
 
