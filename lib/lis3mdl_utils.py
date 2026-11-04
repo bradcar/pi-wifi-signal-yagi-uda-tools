@@ -2,7 +2,29 @@
 """
 lis3mdl_utils.py
 
-LIS3MDL Utilities
+LIS3MDL Magnetometer Utilities for precision compass heading calculations.
+Handles sensor initialization, orientation/declination calibration, 8-point string formatting, and 2D/3D hard/soft-iron calibration corrections.
+
+Calibration:
+    * hard_soft_callibration_lis3mdl.py - hard & soft , use this even if hard is major correction (just more math).
+    * hard_only_callibration_lis3mdl.py - hard & soft , use this even if hard is major correction (just more math).
+
+    Example of creating output file that can be imported:
+    lis3mdl_calibration_parameters.py
+
+Sensor Specifications (Adafruit LIS3MDL Magnetometer, I2C)
+- Measurement Axes: 3-Axis (X, Y, Z)
+
+Configuration & Initialization
+    set_compass_orientation_declination(): Sets global compass orientation offset and magnetic declination correction.
+    init_lis3mdl(): Initializes and connects to the LIS3MDL sensor.
+
+Heading & Calibration
+    get_compass_heading(): Computes a 2D compass heading using hard-iron calibration offsets.
+    get_compass_heading_hard_soft_corrections(): Computes 3D geographic heading using hard-iron offsets and a 3x3 soft-iron matrix.
+
+Utilities & Formatting
+    get_compass_8pt_string(): Converts a numeric heading into an 8-point compass cardinal string (N, NE, E, etc.).
 """
 import math
 import adafruit_lis3mdl

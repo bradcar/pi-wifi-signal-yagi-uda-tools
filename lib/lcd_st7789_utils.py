@@ -21,7 +21,7 @@ Text Renditions
     print_270(): Use anti-aliased transparency map to rotate string 270 degrees
     print_rotated(): Use anti-aliased transparency map to rotate string arbitrary degrees
 
-Vector Primitive Layouts & Splash Art
+Vector Primitive Layouts & Splash Images
     display_2_splash_lcd(): Reads images from asset/image to the hardware display driver.
     draw_directional_arrow(): Draws bitmap array to screen coordinates.
 
@@ -54,7 +54,7 @@ Add LCD st7789 to user code:
     def main():
     global button1_pressed, button2_pressed
 
-NOTICE WAVE SHARE NUMBERS THE DISPLAYS DIFFERENTLY in the table below:
+NOTICE: WAVE SHARE NUMBERS THE DISPLAYS DIFFERENTLY in the table below:
     left Display    WS = Disp1   pi_wifi_scan_rssi: Screen 0: Interactive Menu Option
     Center Display  WS = Disp0   pi_wifi_scan_rssi: Screen 2: Wi-Fi RSSI Table
     Right Display   WS = Disp2   pi_wifi_scan_rssi: Screen 1: Heading & Clock
