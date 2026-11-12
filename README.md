@@ -158,16 +158,15 @@ Note: To quickly check the available Wi-Fi from the console use:
 
 ## Yagi Uda Directional Antenna
 
-Yagi Uda directional antenna
-
-* TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi High, RP-SMA Connector
-    * Directional Antenna (we have observed similar Beamwidth)
-        * 30° Horizontal Beamwidth
-        * 28° Vertical Beamwidth
-    * measured 10 to 19 dB gain over omnidirectional antenna
-        * u.FL mod still lacks removal of some traces, so additional improvements are likely.
-    * Return Loss: -30.7 dB  (VSWR 1:1.06)
-    * Noise floor measure at unbelievably low -98.0 dBm.
+The best low-cost Yagi-Udaa antenna I've foudn is the TECHTOO Wi-Fi Yagi-Uda Antenna 2.4GHz 18dBi, RP-SMA Connector.
+I have a writeup of the analysis and field testing: [analysis_yagi_uda_nanovna_field.md](docs/analysis_yagi_uda_nanovna_field.md)
+* Directional Antenna (we have observed similar Beamwidth)
+    * 30° Horizontal Beamwidth
+    * 28° Vertical Beamwidth
+* measured 10 to 19 dB gain over omnidirectional antenna
+    * u.FL mod still lacks removal of some traces, so additional improvements are likely.
+* Return Loss: -30.7 dB  (VSWR 1:1.06)
+* Noise floor measure at unbelievably low -98.0 dBm.
 * u.FL TO RP-SMA 4.1" Pigtail - Required to hook RP-SMA to Pi Zero 2 W
     * TE Connectivity, Part: 994-080-0001-ND
 * Hardware modification required to add external u.FL connector to Pi Zero 2 W
