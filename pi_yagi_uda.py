@@ -218,8 +218,8 @@ LOG_PRELIM_CSV_TO_FLASH = False
 DEBUG = False
 
 # Network Signal Thresholds
-RSSI_CONNECT_THRESHOLD = -91.0  # Minimum signal to link/connectn, have linked -85 to -88
-RSSI_DOWNLOAD_THRESHOLD = -85.0  # Minimum signal to download payload transfer, successful downloaded achieved at -80 dBm
+RSSI_CONNECT_THRESHOLD = -95.0  # Minimum signal to link/connectn, have linked -85 to -88
+RSSI_DOWNLOAD_THRESHOLD = -89.0  # Minimum signal to download payload transfer, successful downloaded achieved at -85 dBm
 
 USE_MONO_TYPE = False
 
