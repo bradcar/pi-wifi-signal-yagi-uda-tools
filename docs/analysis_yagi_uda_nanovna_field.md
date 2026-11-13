@@ -1,23 +1,34 @@
 # Yagi Uda Analysis with nanoVNA and Field Test
 
-## Analyzing Antenna efficiencies
+## My Use Case
+We're going to launch a Raspberry Pi Pico 2 W (with its built-in Wi-Fi antenna) about 180 meters (~600 feet) into the air.
+It will collect telemetry data from several onboard sensors and land somewhere within a 75-meter radius (250 feet) of the launch area.
+
+We need to locate the Pico after it lands using a directional antenna attached to a Raspberry Pi Zero 2 W and remotely download its telemetry data.
+
+The challenge is that Wi-Fi has limited range, maybe over 30 meters (100 feet). 
+How can we maximize signal strength and communicate with the Pico over the needed distance?
+
+## Analyzing Antenna Efficiencies
 
 Efficient antenna operation depends on both the antenna and the signal feed line (coax cable).
 A vector network analyzer (VNA) is used to measure how much power is reflected back due to mismatch between the antenna and feed line.
 In addition to measuring the reflected signal strength, the VNA also measures the phase of the reflected signal.
-With this one can evaluate and adjust resistance and reactance (inductive and capacitive reactance).
+
+With these measurements one can evaluate and adjust resistance and reactance (inductive and capacitive reactance).
 NanoVNA's are small relatively low-cost VNAs (<$150) that are impressively accurate.
 
-## Vector network analyzer results
+## Vector Network Analyzer (VNA) Results
 
 Typical NanoVNAs have two ports, but only one port is needed for basic antenna characterization. 
 The NanoVNA can sweep through a range of frequencies, measuring the amplitude and phase of the signal reflected back to the same port (S11).
 The amplitude of the returned signal tells us how much power is reflected due to any mismatch between the antenna and feed line.
 The reflected signal (S11) is measured in decibels (dB), with more negative values indicating less reflected power and better impedance matching.
+
 Well-matched antennas should show an S11 below -20 dB (1% reflected and 99% accepted by the antenna). 
 An antenna that shows -10 dB (10% reflected, 90% accepted) is considered an acceptable for most applications.
 
-## Adding external Yagi Uda Antenna
+## Adding an External Yagi Uda Antenna to Raspberry Pi
 To connect an external antenna (like the Techtoo Yagi-Uda antenna) to a Raspberry Pi Zero 2 W, one must add an u.FL connector.
 In addition, the PCB antenna trace must also be cut to disconnect the on-board antenna.
 Since most antennas have RP-SMA type connectors an u.FL to RP-SMA pigtail is used to connect the Pi to the antenna.
@@ -29,7 +40,7 @@ Channel 11 showed near-perfect lab-quality s11 of -30.25 dB and a VSWR of 1.0634
 This means that 99.91% of the power was accepted and only 0.09% was reflected.
 Given this great result we set up our access point (Raspberry Pi Pico 2 W) and our signal finder (Raspberryt Pi Zero 2 W) to both use Channel 11.
 
-## Directionality and Antenna metrics: dB, dBi, and dBm and Directionality
+## Directionality and Antenna Metrics: dB, dBi, and dBm and Directionality
 
 There are three commonly used measurements in antenna analysis: dB, dBm, and dBi. 
 Above, we've been using dB to characterize reflected signal power
@@ -57,7 +68,7 @@ By changing the antenna orientation, we saw the strongest signal when the antenn
 As a very crude rule of thumb, an 18 dBi Yagi-Uda antenna could provide about 18 dB of added received signal strength (roughly two Wi-Fi bars) in its preferred direction.
 When we compared a good-quality omnidirectional antenna to this Yagi-Uda antenna, we measured approximately 21 dB more received signal strength.
 
-## Field measurements – Will a Yagi-Uda really work?
+## Field measurements – Will a Yagi-Uda Really Work?
 Our use case is being able to locate a remote  Raspberry Pi Pico 2 W and remotely download telemetry data. 
 
 We tested our devices in a field containing three regulation soccer pitches to provide reasonably accurate distance measurements.
@@ -69,6 +80,8 @@ The expected distance between our Pi Pico sensor and Wi-Fi access point is only 
 Our demonstrated range provides a comfortable margin for our design needs. Therefore...
 
 Answer: Yes!
+
+Wi-Fi range could be increased with both Wi-Fi had Yagi-Uda antennas aimed at each other.
 
 ![delta-park-antenna-measurements-1-Nov-2026.png](../assets/images/delta-park-antenna-measurements-1-Nov-2026.png)
 
