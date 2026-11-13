@@ -4,9 +4,9 @@
 We're going to launch a Raspberry Pi Pico 2 W (with its built-in Wi-Fi antenna) about 180 meters (~600 feet) into the air.
 It will collect telemetry data from several onboard sensors and land somewhere within a 75-meter radius (250 feet) of the launch area.
 
-We need to locate the Pico after it lands using a directional antenna attached to a Raspberry Pi Zero 2 W and remotely download its telemetry data.
+We need to locate the Pico after it lands using a directional antenna attached to a Raspberry Pi Zero 2 W and be able to remotely download its telemetry data.
 
-The challenge is that Wi-Fi has limited range, maybe over 30 meters (100 feet). 
+The challenge is that Wi-Fi has limited range, maybe over 30 meters (~100 feet). 
 How can we maximize signal strength and communicate with the Pico over the needed distance?
 
 ## Analyzing Antenna Efficiencies
@@ -36,13 +36,13 @@ Since most antennas have RP-SMA type connectors an u.FL to RP-SMA pigtail is use
 With the NanoVNA, we tested 6 different u.FL to RP-SMA pigtails to connect the antenna directly to the NanoVNA and swept all 11 Wi-Fi channels. 
 The best pigtail-and-antenna combination measured an S11 of -23.96 dB on Wi-Fi Channel 1, -18.38 dB on Channel 6, and an impressive -30.25 dB on Channel 11.
 
-Channel 11 showed near-perfect lab-quality s11 of -30.25 dB and a VSWR of 1.0634:1.
+Channel 11 showed near-perfect lab-quality S11 of -30.25 dB and a VSWR of 1.0634:1.
 This means that 99.91% of the power was accepted and only 0.09% was reflected.
 Given this great result we set up our access point (Raspberry Pi Pico 2 W) and our signal finder (Raspberryt Pi Zero 2 W) to both use Channel 11.
 
 ## Directionality and Antenna Metrics: dB, dBi, and dBm and Directionality
 
-There are three commonly used measurements in antenna analysis: dB, dBm, and dBi. 
+There are three commonly used metrics in antenna analysis: dB, dBi, and dBm. 
 Above, we've been using dB to characterize reflected signal power
 
 When using Wi-Fi we are used to seeing signal strength in number of bars.
